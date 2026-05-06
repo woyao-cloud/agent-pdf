@@ -1,0 +1,28 @@
+# 第 12 章 附录
+> **本章导读**：速查表、错误码、推荐书单和术语表， 作为日常开发的工具参考。## 1. 常用速查表
+### 1.1 变量与类型
+```go
+// 变量var x intvar s string = "hello"// 短声明x := 10s := "hello"// 常量const Pi = 3.14```### 1.2 切片操作```go
+s := []int{1, 2, 3}// 添加s = append(s, 4)s = append(s, 5, 6)// 删除s = append(s[:1], s[2:]...) // 删除 index 1// 复制copy(dst, src)// 排序sort.Ints(s)sort.Strings(s)```### 1.3 Map 操作```go
+m := make(map[string]int)// 添加m["key"] = value// 读取v, ok := m["key"]// 删除delete(m, "key")// 遍历for k, v := range m {    fmt.Print(k, v)}```### 1.4 字符串操作```go
+// 拼接s := strings.Join([]string{"a", "b"}, "-")// 分割s := strings.Split("a-b", "-")// 包含strings.Contains("hello", "ll")// 替换strings.Replace("hello", "l", "L", 1)  // 1 次strings.ReplaceAll("hello", "l", "L")  // 全部```### 1.5 并发操作
+```go
+// goroutinego func() { }()// channelch := make(chan int)ch <- 1v := <-ch// WaitGroupvar wg sync.WaitGroupwg.Add(1)go func() { defer wg.Done() }()wg.Wait()// Mutexvar mu sync.Mutexmu.Lock()defer mu.Unlock()```## 2. 常见错误码
+### 2.1 编译错误
+| 错误 | 说明 | 解决方案 | |------|------|----------| | undefined: xxx | 未定义 | 检查导入 | | cannot assign | 不可赋值 | 使用指针 | | cannot reference | 引用未导出 | 大写开头 | | cannot use | 类型不匹配 | 强制转换 |### 2.2 运行时错误
+| 错误 | 说明 | 解决方案 | |------|------|----------| | index out of range | 索引越界 | 检查边界 | | invalid memory address | nil 指针 | 检查 nil | | concurrent map read/write | 并发 Map | 加锁/sync.Map | | deadlock | 死锁 | 检查 channel 阻塞 |## 3. 推荐书单
+### 3.1 Go 专项
+| 书名 | 难度 | 评价 | |------|------|-----| | The Go Programming Language (TRPL) | 低 | 必读 | | Go in Action | 中 | 入门 | | Go 编程语言 | 中 | 中文版 TRPL | | The Go Runtime | 高 | 内部实现 |### 3.2 并发编程
+| 书名 | 难度 | 说明 | |------|------|-----| | Concurrency in Go | 中 | 并发模式 |### 3.3 实践
+| 书名 | 难度 | 说明 | |------|------|-----| | Go Web Programming | 中 | Web 开发 | | Go for DevOps | 中 | DevOps |## 4. 术语表
+### 4.1 核心概念
+| 英文 | 中文 | 简释 | |------|------|------| | Goroutine | 协程 | 轻量级线程 | | Channel | 通道 | CSP 通信 | | Slice | 切片 | 动态数组 | | Map | 映射 | 键值对 | | Interface | 接口 | 行为抽象 | | Defer | 延迟 | 函数返回时执行 | | Panic | 恐慌 | 程序异常 | | Recover | 恢复 | 捕获 panic |### 4.2 并发概念
+| 英文 | 中文 | 简释 | |------|------|------| | WaitGroup | 等待组 | 等待一组 goroutine | | Mutex | 互斥锁 | 独占访问 | | RWMutex | 读写锁 | 读共享写独占 | | Once | 一次性 | 只执行一次 | | Context | 上下文 | 传递取消信号 |### 4.3 工具概念
+| 英文 | 中文 | 简释 | |------|------|------| | Module | 模块 | Go 1.11+ 依赖管理 | | Package | 包 | 代码组织单元 | | go.mod | 模块定义 | 依赖声明文件 | | go.sum | 模块校验 | 依赖哈希 |## 5. 环境配置
+### 5.1 安装 Go
+```bash
+# macOS / Linuxbrew install go# Windows# 下载 https://go. dev/dl/# 验证go version```### 5.2 GOPATH vs Go Modules
+```bash
+# 旧方式（已废弃）export GOPATH=$HOME/goexport PATH=$PATH:$GOPATH/bin# 新方式（Go Modules）mkdir myprojectcd myprojectgo mod init github.com/user/project```### 5.3 代理配置```bash
+# 设置代理go env -w GOPROXY=https://goproxy.cn,directgo env -w GOSUMDB=off```## 6. 参考链接
+### 6.1 官方资源- Go 官网：https:// go. dev/- Go 标准库：https:// pkg. go. dev/- Go 语言规范：https:// go. dev/ref/spec### 6.2 社区资源- Go 语言中文博客：https:// blog. golang. org/- Go Time 播客：https:// gotime. fm/- Gopher Daily：https://gopherdaily. istio- gotools：https:// gotools. org/- Go 爱好者周刊：https:// github. com/polaris1119/golang- weekly### 6.3 学习资源- Go by Example：https:// gbyexample. com/- Go 练习场：https:// go. dev/play/- Exercism Go：https:// exercism. org/ tracks/go----**全 书 结 束**> 祝你学习 Go 顺利！如有问题，欢迎在仓库提 Issue。

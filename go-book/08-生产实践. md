@@ -1,0 +1,35 @@
+# 第 8 章 生产实践
+> **本章导读**：依赖管理、测试、CI/CD、配置管理。Go 的工具链让生产级开发更规范。> 🏭 **生产层**：本章内容直接对应生产环境，强烈建议按顺序阅读。## 1. 依赖管理（Go Modules）
+### 1.1 初始化模块
+```bash# 创建模块go mod init github. com/user/project# 添加依赖go get github.com/gin-gonic/gin@v1.9.1# 清理未使用依赖go mod tidy```### 1.2 go.mod 结构
+```go
+module github.com/user/projectgo 1.21require (    github.com/gin-gonic/gin v1.9.1    github.com/stretchr/testify v1.8.4)```### 1.3 版本管理
+```bash
+# 升级到最新补丁版go get -u github.com/gin-gonic/gin# 升级到最新次版本go get -u=patch github.com/gin-gonic/gin# 查看可更新go list -u -m all# 降级版本go get github.com/gin-gonic/gin@v1.8.0```### 1.4 go.sum
+- 记录所有依赖的哈希值- 必须提交到版本控制- 确保构建可重现## 2. 测试
+### 2.1 单元测试
+```go
+// math_test.go
+package mathimport "testing"func TestAdd(t *testing.T) {    result := Add(2, 3)    if result != 5 {        t.Errorf("Add(2, 3) = %d; want 5", result)    }}func TestAddTable(t *testing.T) {    tests := []struct {        a, b, want int    }{        {1, 2, 3},        {0, 0, 0},        {-1, 1, 0},    }    for _, tt := range tests {        t.Run(            fmt.Sprint(tt.a, "+", tt.b),            func(t *testing.T) {                if got := Add(tt.a, tt.b); got != tt.want {                    t.Errorf("Add(%d, %d) = %d; want %d", tt.a, tt.b, got, tt.want)                }            },        )    }}```### 2.2 Benchmark
+```go
+func BenchmarkAdd(b *testing.B) {    for i := 0; i < b.N; i++ {        Add(2, 3)    }}```### 2.3 Mock
+```go
+import "github.com/stretchr/testify/mock"type MockDB struct {    mock.Mock}func (m *MockDB) GetUser(id int) (*User, error) {    args := m.Called(id)    if args.Get(0) == nil {        return nil, args.Error(1)    }    return args.Get(0).(*User), args.Error(1)}func TestGetUser(t *testing.T) {    mockDB := new(MockDB)    mockDB.On("GetUser", 1).Return(&User{ID: 1, Name: "Alice"}, nil)    service := NewUserService(mockDB)    user, _ := service.GetUser(1)    mockDB.AssertExpectations(t)}```### 2.4 测试覆盖率
+```bash
+# 生成覆盖率报告go test -coverprofile=coverage.out./...go tool cover -html=coverage.out -o coverage.html```## 3. CI/CD
+### 3.1 GitHub Actions
+```yaml
+# .github/workflows/go.ymlname: Goon: [push, pull_request]jobs:  test:    runs-on: ubuntu-latest    steps:      - uses: actions/checkout@v4      - uses: actions/setup-go@v5        with:          go-version: '1.21'      - run: go mod download      - run: go fmt --check        with:        - run: go vet      - run: go test -v -race ./...  build:    needs: test    runs-on: ubuntu-latest    steps:      - uses: actions/checkout@v4      - uses: actions/setup-go@v5        with:          go-version: '1.21'      - run: go build -o myapp```### 3.2 Docker 多阶段构建
+```dockerfile# 构建阶段FROM golang:1.21-alpine AS builderWORKDIR /appCOPY go.mod go.sum ./RUN go mod downloadCOPY . .RUN CGO_ENABLED=0 go build -o app# 运行阶段FROM alpine:latestCOPY --from=builder /app/ ./appCMD ["./app"]```## 4. 配置管理
+### 4.1 环境变量
+```go
+import "os"func main() {    port := os.Getenv("PORT")    if port == "" {        port = "8080"    }}```### 4.2 配置文件
+```go
+import "encoding/json"type Config struct {    Server struct {        Port int `json:"port"`        Host string `json:"host"`    } `json:"server"`    Database struct {        Host string `json:"host"`        Port int `json:"port"`    } `json:"database"`}func LoadConfig(path string) (*Config, error) {    data, err := os.ReadFile(path)    if err != nil {        return nil, err    }    var cfg Config    if err := json.Unmarshal(data, &cfg); err != nil {        return nil, err    }    return &cfg, nil}```### 4.3 Viper（推荐）
+```go
+import "github.com/spf13/viper"func main() {    viper.SetConfigName("config")    viper.SetConfigType("yaml")    viper.AddConfigPath(".")    viper. ReadInConfig()        host := viper.GetString("database.host")    port := viper.GetInt("server.port")}```## 5. 项目结构
+### 5.1 标准布局
+```.
+├── cmd/           # 可执行命令│   └── myapp/│       └── main.go├── internal/      # 内部包│   ├── handler/│   ├── service/│   └── repo/├── pkg/           # 可导出包├── configs/       # 配置文件├── scripts/       # 脚本├── go.mod├── go.sum└── README.md```### 5.2 领域驱动布局
+```.├── domain/        # 领域模型│   ├── user.go│   └── order.go├── usecase/       # 用例├── repository/    # 数据访问├── delivery/      # 接口层└── main.go```## 6. 小结
+| 实践 | 工具 | 重要性 | |------|------|--------| | 依赖管理 | go mod | 必须 | | 测试 | go test | 必须 | | CI/CD | GitHub Actions | 强烈推荐 | | 配置 | Viper | 推荐 | | 项目结构 | 标准布局 | 强烈推荐 |**延伸阅读**：- Go Modules：https:// go. dev/blog/using-go-modules- Go 项目结构：https:// github.com/golang-standards/project-layout**下一章** → [09 潜在风险与典型问题](./09-潜在风险与典型问题. md)

@@ -1,0 +1,40 @@
+# 第 7 章 性能与优化
+> **本章导读**：Go 的运行时性能、内存管理、GC 调优、以及代码级性能技巧。让你的 Go 程序跑得更快。> 🏭 **生产层**：本章节内容直接对应生产性能要求，建议逐节精读。## 1. Go 运行时
+### 1.1 Go 编译器
+Go 编译流程：```源代码 → AST → 类型检查 → SSA 生成 → 优化 → 机器码 → 链接```### 1.2 编译选项
+```bash
+# 开发模式（快速编译，无优化）go build -o app# 发布模式（优化 + 内联）go build -o app -ldflags="-s -w"# 禁用内联（调试）go build -gcflags="-l" -o app```> 💡 **进阶**：`go build -gcflags="-S"` 可查看生成的汇编。## 2. 内存管理
+### 2.1 堆 vs 栈
+- **栈**：函数调用，分配在栈上，自动回收
+- **堆**：动态分配，GC 管理
+```go
+// 在函数内创建变量func foo() {    x := 10       // 可能栈分配    s := make([]int, 10)  // 堆分配    s = append(s, 1)      // 可能触发堆分配}```### 2.2 逃逸分析
+Go 编译器决定变量分配在哪里：```gofunc main() {    x := 10           // 栈    s := make([]int, 10)  // 逃逸到堆    return &x          // 逃逸到堆}```查看逃逸：```bashgo build -gcflags="-m" app.go```## 3. GC 调优
+### 3.1 GC 工作原理
+Go 使用并发标记-清除 GC：- STW（Stop The World）时间短（<1ms）
+- 自动触发，基于内存增长率### 3.2 GC 环境变量```bash
+# 目标 GC 暂停时间GOGC=100  # 默认，增长 100% 时触发GOGC=50   # 更激进，50% 时触发GOGC=off  # 禁用 GC（危险）```### 3.3 手动触发 GC
+```go
+import "runtime"// 强制 GCruntime.GC()// 获取 GC 统计var m runtime. MemStatsruntime. ReadMemStats(&m)fmt.Printf("GC count: %d\n", m.NumGC)```## 4. 性能测试
+### 4.1 Benchmark
+```go
+import "testing"func BenchmarkHello(b *testing.B) {    for i := 0; i < b. N; i++ {        hello()    }}func BenchmarkHelloParallel(b *testing.B) {    b.RunParallel(func(pb *testing.PB) {        for pb.Next() {            hello()        }    })}```运行：```bash
+go test -bench=. -benchmem```### 4.2 Profiling
+```go
+import (    "runtime/pprof"    "os")func main() {    // CPU Profiling    f, _ := os.Create("cpu.prof")    pprof.StartCPUProfile(f)    defer pprof.StopCPUProfile()        // 业务代码    doSomething()        // 内存 Profiling    f2, _ := os.Create("mem.prof")    pprof.WriteHeapProfile(f2)}```使用 pprof：```bashgo tool pprof cpu.prof(pprof) top 10```## 5. 代码级优化
+### 5.1 避免不必要的分配
+```go
+// 低效：s = fmt.Sprintf("%s-%s", a, b)
+// 高效：使用 strings.Buildervar builder strings.Builderbuilder.WriteString(a)builder.WriteString("-")builder.WriteString(b)s := builder.String()```### 5.2 减少 GC 压力
+```go
+// 使用 sync.Pool 减少分配var pool = sync.Pool{    New: func() interface{} {        return make([]byte, 1024)    },}func process() {    buf := pool.Get().([]byte)    defer pool.Put(buf)    // 使用 buf}```### 5.3 预分配容量
+```go
+// 低效s := []int{}for i := 0; i < 1000; i++ {    s = append(s, i)  // 多次重新分配}// 高效s := make([]int, 0, 1000)for i := 0; i < 1000; i++ {    s = append(s, i)  // 一次分配}```## 6. 并发优化
+### 6.1 Goroutine 池
+```go
+import "github.com/ivpusic/grpool"pool := grpool.NewPool(10, 20)pool.SubmitJob(func() {    // 任务})```### 6.2 避免 Goroutine 泄漏
+```go
+func main() {    // 错误：goroutine 可能泄漏    ch := make(chan int)    go func() {        for {            select {            case <-ch:                return            case i := <-ch:                process(i)            }        }    }()        // 正确：使用 context 取消    ctx, cancel := context.WithCancel(context.Background())    ch := make(chan int)    go worker(ctx, ch)    // ...    cancel()  // 取消}```## 7. 性能 checklist
+```bash
+□ 编译用 -release 或 -ldflags□ GC 调优（GOGC）□ 使用 sync.Pool 减少分配□ 预分配切片容量□ 避免字符串拼接□ 正确关闭 channel□ 减少全局变量□ 用 buffer 减少 I/O 调用```## 8. 小结
+| 优化点 | 预期收益 | 复杂度 | |--------|---------|--------| | GC 调优 | 减少暂停 | 低 | | sync.Pool | 减少分配 | 中 | | 预分配 | 减少分配 | 低 | | string.Builder | 减少分配 | 低 | | pprof 分析 | 定位瓶颈 | 中 |**延伸阅读**：- Go 性能分析：https:// go. dev/blog/pprof- Go 调度器：https:// go. dev/src/runtime/chan/prof.go**下一章** → [08 生产实践](./08-生产实践. md)

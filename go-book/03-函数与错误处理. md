@@ -1,0 +1,118 @@
+# 第 3 章 函数与错误处理
+> **本章导读**：Go 的函数特性、defer/panic/recover 机制、以及错误处理的最佳实践。Go 的错误处理是显式的，这是它的特色。
+## 1. 函数基础
+### 1.1 函数定义
+```go
+// 基础函数
+func add(a, b int) int {
+    return a + b
+}
+
+// 多返回值
+func divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, errors.New("division by zero")
+    }
+    return a / b, nil
+}
+
+// 命名返回值
+func split(sum int) (x, y int) {
+    x = sum * 4 / 9
+    y = sum - x
+    return  // 返回命名值
+}
+```### 1.2 变长参数
+```go
+func sum(nums ...int) int {
+    total := 0
+    for _, n := range nums {
+        total += n
+    }
+    return total
+}
+
+sum(1, 2, 3, 4) // 10
+```### 1.3 闭包
+```go
+// 闭包
+func adder() func(int) int {
+    sum := 0
+    return func(x int) int {
+        sum += x
+        return sum
+    }
+}
+
+// 使用
+f := adder()
+f(1) // 1
+f(2) // 3
+f(3) // 6
+```## 2. defer
+### 2.1 defer 用法
+defer 在函数返回前执行，常用于资源释放：
+```go
+func readFile(path string) {
+    file, err := os.Open(path)
+    if err != nil {        return
+    }
+    defer file.Close()  // 无论函数如何返回，都会执行
+    // 读取文件...}
+```### 2.2 defer 执行顺序
+```go
+func main() {
+    fmt.Println("start")
+    defer fmt.Println("defer1")
+    defer fmt.Println("defer2")
+    defer fmt.Println("defer3")
+    fmt.Println("end")
+}// 输出：
+// start
+// end
+// defer3
+// defer2
+// defer1```> 💡 **进阶**：多个 defer 按 LIFO（后进先出）顺序执行。### 2.3 defer 捕获返回值
+```go
+func foo() int {    var i int
+    defer func() {        // defer 在 return 之后执行
+        i++    }()    return i  // i 是 0，但 return 的是 0，defer 后 i 变成 1
+}
+func main() {    // 注意：如果返回命名值，defer 可以修改
+    result := bar()    fmt.Println(result)  // 100}func bar() (i int) {    defer func() {        i = 100    }()    return 0  // 返回 0，但 defer 把 i 改成 100
+}
+```## 3. Panic 与 Recover
+### 3.1 Panic
+panic 触发程序终止，用于不可恢复的错误：
+```go
+func main() {    // 程序会 panic    panic("something went wrong")
+}```### 3.2 Recover
+recover 捕获 panic，防止程序崩溃：
+```go
+func safeCall() {    defer func() {        if r := recover(); r != nil {            fmt.Println("Recovered:", r)        }    }()    panic("panic!")}```### 3.3 实际应用：HTTP Server
+```go
+func handleRequest(w http.ResponseWriter, r *http.Request) {    defer func() {        if r := recover(); r != nil {            log.Error("Panic:", r)            http.Error(w, "Internal Server Error", 500)        }    }()    // 处理请求...
+}```## 4. 错误处理
+### 4.1 Go 的错误哲学
+Go 没有 try-catch，而是显式返回 error：```go
+// 读取文件（可能出错）func readFile(path string) ([]byte, error) {    data, err := os.ReadFile(path)    if err != nil {        return nil, err    }    return data, nil}// 使用：必须处理错误func main() {    data, err := readFile("config. json")    if err != nil {        log.Fatal(err)    }}
+```### 4.2 错误包装（Go 1.13+）
+```go
+import "fmt"
+import "errors"// 包装错误func read() error {    return fmt. errors. New("failed to read"):        // 业务错误
+}func process() error {    if err := read(); err != nil {        return fmt. Errorf("process failed: %w", err)    }    return nil
+}func main() {    err := process()    if errors.Is(err, someError) {        // 处理特定错误    }    if errors.As(err, &customError) {        // 类型断言    }}```### 4.3 自定义错误类型
+```go
+type ValidationError struct {    Field   string    Message string}func (e *ValidationError) Error() string {    return fmt.Sprintf("%s: %s", e.Field, e.Message)}func validate(age int) error {    if age < 0 {        return &ValidationError{"age", "must be non-negative"}    }    return nil}```> ✅ **最佳实践**：使用 `fmt.Errorf` 包装错误，使用 `errors.Is` 和 `errors.As` 检查错误。## 5. 错误处理模式
+### 5.1 快速失败
+```go
+func mustRead(path string) []byte {    data, err := os.ReadFile(path)    if err != nil {        panic(err)    }    return data
+}```### 5.2 错误日志记录
+```go
+func handle(w http.ResponseWriter, r *http.Request) {    err := doSomething()    if err != nil {        log.Printf("error in doSomething: %v", err)        http.Error(w, "Internal Error", 500)    }}```### 5.3 批量错误
+```go
+type MultiError []errorfunc (m MultiError) Error() string {    var s []string    for _, e := range m {        s = append(s, e.Error())    }    return strings. Join(s, "; ")
+}
+func validateAll() error {    var errs MultiError    if err := validateName(); err != nil {        errs = append(errs, err)    }    if err := validateAge(); err != nil {        errs = append(errs, err)    }    if len(errs) > 0 {        return errs    }    return nil
+}```## 6. 小结
+**本章重点**：- **函数**：多返回值、命名返回值、变长参数- **defer**：延迟执行、资源释放、捕获返回值- **panic/recover**：异常处理、防止崩溃- **错误处理**：显式返回 error、错误包装、错误检查**延伸阅读**：- Go 错误处理：https://go. dev/blog/errors- Go 错误检查：https://go. dev/blog/error-handling-and-go**下一章** → [04 并发编程](./04-并发编程.md)

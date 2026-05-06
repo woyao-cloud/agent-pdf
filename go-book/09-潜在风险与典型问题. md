@@ -1,0 +1,34 @@
+# 第 9 章 潜在风险与典型问题
+> **本章导读**：Go 使用中的常见风险、陷阱、调试方法。帮助你在生产环境中避开 Go 的"坑"。## 1. 并发陷阱
+### 1.1 Goroutine 泄漏
+```go
+// ❌ 问题：channel 永不关闭func main() {    ch := make(chan int)    go func() {        for i := 0; i < 10; i++ {            ch <- i        }        // 没有 close(ch)    }()    // main 退出太快    time.Sleep(time.Second)}// ✅ 正确：使用 context 或 WaitGroupfunc main() {    ctx, cancel := context.WithCancel(context.Background())    ch := make(chan int)    go producer(ctx, ch)    go consumer(ch)    time.Sleep(time.Second)    cancel()}```### 1.2 竞态条件
+```go
+// ❌ 问题：多个 goroutine 同时写入var counter = 0func main() {    var wg sync.WaitGroup    for i := 0; i < 1000; i++ {        wg.Add(1)        go func() {            defer wg.Done()            counter++  // 竞态        }()    }    wg.Wait()    fmt. Println(counter)  // 结果不确定}// ✅ 正确：使用互斥锁var counter = 0var mu sync.Mutexfunc main() {    var wg sync.WaitGroup    for i := 0; i < 1000; i++ {        wg.Add(1)        go func() {            defer wg.Done()            mu.Lock()            counter++            mu.Unlock()        }()    }    wg.Wait()    fmt. Println(counter)  // 1000}```### 1.3 死锁
+```go
+// ❌ 问题：channel 死锁func main() {    ch := make(chan int)    ch <- 1     // 阻塞，因为没有 receiver    <-ch      // 永远无法执行}// ✅ 正确：使用 select 或 goroutinefunc main() {    ch := make(chan int, 1)  // 带缓冲    ch <- 1    v := <-ch    fmt. Println(v)}```## 2. 内存问题
+### 2.1 切片共享底层数组
+```go
+// ❌ 问题：子切片共享数组func main() {    s := []int{1, 2, 3, 4, 5}    s1 := s[:2]  // 共享底层数组    s1[0] = 100  // s 也被修改    fmt. Println(s)  // [100, 2, 3, 4, 5]}// ✅ 正确：使用 copyfunc main() {    s := []int{1, 2, 3, 4, 5}    s1 := make([]int, 2)    copy(s1, s[:2])    s1[0] = 100    fmt. Println(s)  // [1, 2, 3, 4, 5]}```### 2.2 Map 非线程安全
+```go
+// ❌ 问题：并发读写 mapfunc main() {    m := make(map[string]int)    go func() {        for {            m["key"] = 1        }    }()    go func() {        for {            _ = m["key"]        }    }()    time.Sleep(time.Second)}// fatal error: concurrent map read and map write```## 3. 常见编译错误
+### 3.1 未使用的变量/导入
+```go
+import (    "fmt"    "strings"  // ❌ 未使用)func main() {    x := 10  // ❌ 未使用    fmt. Println("Hello")}```> ⚠️ **注意**：Go 不允许未使用的变量和导入，编译会失败。### 3.2 类型不匹配
+```go
+// ❌ 问题：类型不匹配func main() {    var a int = 10    var b float64 = a  // 编译错误    var c = float64(a)  // ✅ 正确}```### 3.3 nil 指针
+```go
+// ❌ 问题：nil 指针调用方法type Foo struct {    Name string}func (f *Foo) Hello() {    if f == nil {        return    }    fmt. Println(f.Name)}func main() {    var f *Foo    // f.Hello()  // ❌ panic: invalid memory address    f.Hello()  // ✅ 安全}```## 4. 性能陷阱
+### 4.1 字符串拼接
+```go
+// ❌ 低效：频繁分配func main() {    s := ""    for i := 0; i < 1000; i++ {        s += "a"  // 每次创建新字符串    }}// ✅ 高效：使用 strings.Builderfunc main() {    var builder strings.Builder    for i := 0; i < 1000; i++ {        builder.WriteString("a")    }    s := builder.String()}```### 4.2 预分配容量
+```go
+// ❌ 低效：频繁扩容func main() {    s := make([]int, 0)    for i := 0; i < 1000; i++ {        s = append(s, i)  // 可能多次扩容    }}// ✅ 高效：预分配func main() {    s := make([]int, 0, 1000)  // 预分配容量    for i := 0; i < 1000; i++ {        s = append(s, i)    }}```## 5. 调试技巧
+### 5.1 Delve 调试器
+```bash
+# 安装dlv debug app.go# 常用命令break main. mainbreak foo  # 设置断点next (n)      # 下一行step (s)     # 进入函数print var     # 打印变量continue (c)  # 继续执行quit (q)     # 退出```### 5.2 pprof
+```go
+import (    "net/http"    _ "net/http/pprof")func main() {    go func() {        http.ListenAndServe("localhost:60", nil)    }()    // 访问 http://localhost:60/debug/pprof/}```### 5.3 Trace
+```bash
+go test -trace=trace. out ./...go tool trace trace. out```## 6. 小结
+| 风险类别 | 常见问题 | 解决方案 | |----------|-----------|-----------| | 并发 | Goroutine 泄漏 | 使用 context | | 并发 | 竞态条件 | 使用 Mutex/Atomic | | 并发 | 死锁 | 使用 select、避免嵌套锁 | | 内存 | Map 非线程安全 | sync.Map / 加锁 | | 性能 | 字符串拼接 | strings.Builder | | 性能 | 频繁扩容 | 预分配容量 |**延伸阅读**：- Go 常见错误：https://github. com/golang/go/wiki/Common- Go 并发缺陷：https:// github. com/golang/go/wiki/Concurrency- bugs**下一章** → [10 开发者技能矩阵](./10-开发者技能矩阵. md)

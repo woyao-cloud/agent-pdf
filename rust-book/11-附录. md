@@ -1,0 +1,39 @@
+# 第 11 章 附录
+> **本章导读**：速查表、错误码、推荐书单和术语表， 作为日常开发的工具参考。## 1. 常用速查表
+### 1.1 所有权速查
+```rust
+// 移动（默认）let s1 = String::from("hello");let s2 = s1;  // s1 失效// 复制（Copy 类型）let x = 5;let y = x;  // x 仍有效// 借用let s = String::from("hello");let r = &s;  // 不可变借用let m = &mut s;  // 可变借用（同一作用域只有一个）```### 1.2 常用宏
+```rust
+// 打印
+println!("{}", x);           // 格式化print!("{}", x);           // 不换行eprintln!("{}", x);          // 错误输出// 调试
+dbg!(x);                    // 打印变量名和值// 断言assert!(condition);assert_eq!(a, b);assert_ne!(a, b);debug_assert!(condition);  // 仅 debug 模式// 错误处理unimplemented!();todo!();unreachable!();panic!("message");```### 1.3 常用 trait
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]struct Point { x: i32, y: i32, }// 需要手动实现的traitimpl Display for Point { fn fmt(...) }impl std::error::Error for MyError {}```### 1.4 常用集合方法
+```rust
+let mut v = vec![1, 2, 3];// 添加v.push(4);v.extend([5, 6]);// 获取v.get(0);           // Optionv[0];                // panic// 遍历for i in &v {}for i in v.iter() {}for (i, v) in v.iter().enumerate() {}// 修改v.sort();v.reverse();v.dedup();```### 1.5 字符串转换
+```rust
+let s = "hello";// 互转let string = s.to_string();let str = &string;let string = String::from("hello");// 与数字互转let n = "42".parse::<i32>().unwrap();let s = 42.to_string();// 格式化let s = format!("{} + {} = {}", 1, 2, 3);```## 2. 常见错误码
+### 2.1 所有权相关错误
+| 错误码 | 说明 | 解决方案 | |--------|------|---------| | E0501 | 借用冲突 | 检查可变/不可变借用 | | E0502 | 同时借用 | 调整借用顺序 | | E0505 | 值已移动 | 使用克隆或引用 | | E0507 | 移动到闭包 | 使用引用或 clone |### 2.2 生命周期错误
+| 错误码 | 说明 | 解决方案 | |--------|------|---------| | E0109 | 生命周期参数 | 添加 `'a` 标注 | | E0106 | 生命周期不足 | 调整生命周期 | | E0597 | 生命周期太短 | 确保引用有效 |### 2.3 类型错误
+| 错误码 | 说明 | 解决方案 | |--------|------|---------| | E0308 | 类型不匹配 | 检查类型 | | E0277 | 未实现 trait | 实现 trait | | E0614 | 类型强制转换 | 使用 `as` |### 2.4 常用调试命令
+```bash
+# 详细编译错误rustc --error-format=long file.rs# 查看类型（需要 nightly）rustup +nightly cargo expand# 追踪所有权问题RUST_LOG=trace cargo run```## 3. 推荐书单
+### 3.1 Rust 专项
+| 书名 | 难度 | 评价 | |------|------|-----| | The Rust Programming Language (TRPL) | 低 | 官方入门书 | | Programming Rust | 中 | O'Reilly | | Rust for Rustaceans | 高 | 进阶 | | The Rustonomicon | 高 | unsafe 编程 | | Rust by Example | 低 | 示例驱动 |### 3.2 系统编程
+| 书名 | 难度 | 评价 | |------|------|-----| | Code Complete | 中 | 代码重构经典 | | Effective C++ | 中 | C++ 最佳实践 | | Systems Programming in Rust | 高 | Rust 系统编程 |### 3.3 并发/异步
+| 书名 | 难度 | 评价 | |------|------|-----| | Rust Atomics and Locks | 高 | 底层并发 | | Async in Rust | 中 | 异步编程 |## 4. 术语表
+### 4.1 核心概念
+| 英文 | 中文 | 简释 | |------|------|------| | Ownership | 所有权 | 每个值有唯一所有者 | | Borrowing | 借用 | 通过引用使用值 | | Lifetime | 生命周期 | 引用有效的范围 | | Ownership | 所有权 | 每个值有唯一所有者 | | Borrow | 借用 | 通过引用使用值 | | Lifetime | 生命周期 | 引用有效的范围 | | Move | 移动 | 转移所有权 | | Clone | 克隆 | 深复制 | | Copy | 复制 | 按位复制 | | RAII | 资源获取即初始化 | 构造函数获取资源，析构函数释放 |### 4.2 语法概念
+| 英文 | 中文 | 简释 | |------|------|------| | Trait | 特质 | 类似接口 | | Generic | 泛型 | 参数化多态 | | Macro | 宏 | 编译时代码生成 | | Pattern | 模式 | 解构和匹配 | | Closure | 闭包 | 捕获环境的函数 | | Iterator | 迭代器 | 遍历集合 |### 4.3 并发概念
+| 英文 | 中文 | 简释 | |------|------|------| | Thread | 线程 | 操作系统线程 | | Mutex | 互斥锁 | 独占访问 | | Arc | 原子引用计数 | 线程安全引用计数 | | Channel | 通道 | 消息传递 | | Future | 未来 | 异步操作 | | Send/Sync | 发送/同步 | 线程安全 trait |### 4.4 工具概念
+| 英文 | 中文 | 简释 | |------|------|------| | Cargo | 货物 | 包管理器和构建工具 | | Crate | 板条箱 | Rust 编译单元/包 | | Module | 模块 | 代码组织单元 | | Workspace | 工作区 | 多包项目 | | Toolchain | 工具链 | 编译器+标准库 |## 5. 环境配置
+### 5.1 安装 Rust
+```bash
+# 安装 rustup（推荐）curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh# 验证rustc --versioncargo --version# 更新rustup update# 卸载rustup self uninstall```### 5.2 常用工具安装
+```bash
+# 组件rustup component add clippy rustfmt rust-docs# 工具cargo install cargo-watch    # 文件监视cargo install cargo-audit   # 安全审计cargo install cargo-asm      # 汇编查看cargo install cargo-bloat  # 二进制大小分析```### 5.3 开发环境
+```bash
+# VS Code 扩展- rust-analyzer- rust- extensions（LLDB）# CLION/IDEA- IntelliJ Rust plugin```## 6. 参考链接
+### 6.1 官方资源- 官方文档：https://doc. rust-lang. org/book/- API 文档：https://doc. rust-lang. org/std/- Cargo 文档：https://doc. rust-lang. org/cargo/- Rust by Example：https://doc. rust-lang. org/rust-by-example/### 6.2 社区资源- This Week in Rust：https://this-week-in-rust. org/- Rust Blog：https://blog. rust-lang. org/- Rust Internals：https://internals. rust-lang. org/- Reddit r/rust：https://www. reddit. com/r/rust/### 6.3 学习资源- Rustlings：https://github. com/rust-lang/rustlings- Exercism Rust：https://exercism. org/tracks/rust- Rust Design Patterns：https://rust-unofficial.github.io/patterns/- Idiomatic Rust：https://github. com/mre/idiomatic-rust---**全 书 结 束**
+> 祝你学习 Rust 顺利！如果有任何问题，欢迎在仓库提 Issue。

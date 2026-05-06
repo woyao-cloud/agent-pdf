@@ -1,0 +1,40 @@
+# 第 6 章 标准库与工具
+> **本章导读**：Go 的标准库非常丰富，掌握这些能大大提高开发效率。本章介绍常用标准库和工具。## 1. fmt - 格式化
+### 1.1 Print 系列
+```go
+// 打印到标准输出fmt.Print("a", "b", "c")   // 无换行fmt.Println("a", "b", "c") // 有换行// 格式化fmt.Printf("name: %s, age: %d", "Alice", 30)// 占位符%v   通用格式%#v  Go 语法格式%s   字符串%d   整数%f   浮点%.2f 浮点（2位小数）%T   类型%p   指针```### 1.2 字符串格式化
+```gos := fmt.Sprintf("name: %s", "Alice")
+// 常用格式化：fmt.Sprintf("%.2f", 3.14159)  // "3.14"fmt.Sprintf("%+v", person)    // 结构体字段名```## 2. io - I/O 操作
+### 2.1 Reader/Writer 接口
+```go
+type Reader interface {    Read(p []byte) (n int, err error)}type Writer interface {    Write(p []byte) (n int, err error)}```### 2.2 常用组合
+```go
+// 复制数据io.Copy(os.Stdout, file)// 读取整个文件data, _ := io.ReadAll(file)// 缓冲读写reader := bufio.NewReader(file)writer := bufio.NewWriter(file)```### 2.3 io/ioutil（已废弃，用 os）```go
+// 读取文件data, _ := os.ReadFile("file.txt")// 写文件_ = os.WriteFile("file.txt", data, 0644)// 创建临时文件f, _ := os.CreateTemp("", "prefix")```## 3. time - 时间
+### 3.1 时间操作
+```go
+// 当前时间now := time.Now()// 解析time.Parse("2006-01-02", "2024-01-01")// 格式化now.Format("2006-01-02 15:04:05")// 加减duration := 3 * time.Hourlater := now.Add(duration)earlier := now.Add(-duration)// 睡眠time.Sleep(100 * time.Millisecond)// 定时器timer := time.NewTimer(2 * time.Second)<- timer.C```### 3.2 时区
+```go
+loc, _ := time.LoadLocation("Asia/Shanghai")t := time. In(loc, time.Now())```## 4. encoding - 编码
+### 4.1 JSON
+```go
+import "encoding/json"// 编码type Person struct {    Name string `json:"name"`    Age  int    `json:"age"`}p := Person{Name: "Alice", Age: 30}data, _ := json.Marshal(p)// 解码var p2 Personjson.Unmarshal(data, &p2)// 格式化输出data, _ = json.MarshalIndent(p, "", "  ")// 流式编解码enc := json.NewEncoder(os.Stdout)enc.Encode(p)dec := json.NewDecoder(os.Stdin)dec.Decode(&p)```### 4.2 其他编码
+```go
+import (    "encoding/xml"    "encoding/csv"    "encoding/gob"    "encoding/hex")```## 5. reflect - 反射
+### 5.1 类型和值
+```go
+var x = 42t := reflect.TypeOf(x)      // intv := reflect.ValueOf(x)  // 42```### 5.2 动态调用
+```go
+func setField(obj interface{}, field string, value interface{}) {    v := reflect.ValueOf(obj).Elem()    f := v.FieldByName(field)    if f.IsValid() && f.CanSet() {        f.Set(reflect.ValueOf(value))    }}```> ⚠️ **注意**：反射会降低性能，谨慎使用。## 6. unsafe - 不安全操作
+### 6.1 指针操作
+```go
+import "unsafe"// 获取结构体字段偏移量type Foo struct {    A int8    B int8    C int8    D int8}func main() {    fmt.Println(unsafe.Offsetof(Foo{}.C))  // 2}```### 6.2 类型转换
+```go
+// []byte 转 string（不复制）func String(b []byte) string {    return *(*string)(unsafe. Pointer(&b))}// string 转 []byte（不复制）func Bytes(s string) []byte {    return *(*[]byte)(unsafe. Pointer(&s))}```> ⚠️ **警告**：unsafe 包绕过类型系统，谨慎使用。## 7. 常用第三方库
+### 7.1 Web 框架
+| 库 | 说明 | |-----|------| | gin | 高性能 Web 框架 | | echo | 模块化 Web 框架 | | fiber | Express-like 框架 | | chi | 轻量级路由器 |### 7.2 数据库
+| 库 | 说明 | |-----|------| | gorm | ORM | | sqlx | 原生 SQL 增强 | | pgx | PostgreSQL 驱动 | | go-redis | Redis 客户端 |### 7.3 工具
+| 库 | 说明 | |-----|------| | logrus | 日志 | | zap | 高性能日志 | | validator | 参数验证 | | jwt-go | JWT |## 8. 工具命令
+```bash
+# 格式化go fmt ./...  # 格式化go vet        # 静态分析go build       # 编译go run         # 运行go install     # 安装go test         # 测试go mod init     # 初始化模块go mod tidy     # 清理依赖go get          # 获取依赖go list         # 列出包```## 9. 小结
+**本章重点**：- **fmt**：格式化输出- **io/ioutil**：I/O 操作- **time**：时间处理- **encoding**：JSON/XML 编码- **reflect**：反射- **unsafe**：不安全操作- **常用库**：gin、gorm、logrus 等**延伸阅读**：- Go 标准库文档：https://pkg. go. dev/std- Go 第三方库：https://awesome- go. com/**下一章** → [07 性能与优化](./07-性能与优化. md)

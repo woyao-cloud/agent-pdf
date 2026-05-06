@@ -1,0 +1,244 @@
+# 第 11 章 附录
+
+> **本章导读**：本章提供速查表、错误码、推荐书单和术语表，作为日常开发的工具参考。
+
+## 1. 常用速查表
+### 1.1 Keras 层速查
+
+| 层 | 用途 | 关键参数 |
+|----|------|---------|
+| Dense | 全连接 | units, activation |
+| Conv2D | 卷积 | filters, kernel_size, strides |
+| MaxPooling2D | 池化 | pool_size |
+| BatchNormalization | 归一化 | momentum, epsilon |
+| Dropout | 正则化 | rate |
+| Embedding | 词嵌入 | input_dim, output_dim |
+| LSTM/GRU | 循环层 | units, return_sequences |
+| MultiHeadAttention | 注意力 | num_heads, key_dim |
+| LayerNormalization | 层归一化 | epsilon |
+| Concatenate/Multiply | 合并 | axis |
+### 1.2 tf.data 速查
+
+```python
+# 完整管线
+dataset = (
+    tf.data.Dataset. from_tensor_slices((x, y))
+    .shuffle(10000)              # 随机打乱
+    .map(preprocess, num_parallel_...=tf.data.AUTOTUNE)  # 并行处理
+    .cache()                     # 缓存
+    .batch(32, drop_remainder=True)  # 定长 batch
+    .prefetch(tf.data.AUTOTUNE)  # 预取
+)
+```
+### 1.3 优化器速查
+
+| 优化器 | 适用场景 | 关键参数 |
+|--------|---------|---------|
+| Adam | 默认首选 | lr, beta_1, beta_2 |
+| SGD | 大批量 | lr, momentum, nesterov |
+| AdamW | 正则化 | weight_decay |
+| RMSprop | RNN | lr, rho |
+| Adagrad | 稀疏特征 | lr |
+### 1.4 损失函数速查
+
+| 损失函数 | 用途 | 参数 |
+|----------|------|------|
+| SparseCategoricalCrossentropy | 多分类（整数标签） | from_logits |
+| CategoricalCrossentropy | 多分类（one-hot 标签） | from_logits |
+| BinaryCrossentropy | 二分类 | from_logits |
+| MSE / MAE | 回归 | - |
+| KLDivergence | 分布匹配 | - |
+
+### 1.5 回调速查
+
+```python
+callbacks = [
+    tf.keras.callbacks. ModelCheckpoint(       # 保存模型
+        'model_{epoch:02d}-{val_loss:.2f}.h5'),
+    tf.keras.callbacks. EarlyStopping(        # 早停
+        monitor='val_loss', patience=5),
+    tf.keras.callbacks. ReduceLROnPlateau(    # 学习率衰减
+        monitor='val_loss', factor=0.1, patience=3),
+    tf.keras.callbacks. TensorBoard(          # 可视化
+        log_dir='./logs', histogram_freq=1),
+    tf.keras.callbacks. LearningRateScheduler( # 自定义学习率
+        schedule=lambda x: 1e-3 * 0.1**(x//30)),
+]
+```
+## 2. 常见错误码
+### 2.1 TF 错误类型
+
+| 错误 | 原因 | 解决方案 |
+|------|------|----------|
+| `InvalidArgumentError` | shape/dtype 不匹配 | 检查 input_shape, cast |
+| `ResourceExhaustedError` | GPU OOM | 减小 batch, 梯度 checkpoint |
+| `ValueError` | 参数错误 | 检查 API 文档 |
+| `NotFoundError` | 资源不存在 | 检查路径 |
+| `OpNotFoundError` | 算子不支持 | 检查 TFLite 支持列表 |
+| `FailedPreconditionError` | 未初始化 | 调用 init |
+| `AbortedError` | 并发冲突 | 检查多线程安全 |
+### 2.2 调试命令
+
+```bash
+# 开启 Eager 调试
+TF_CPP_MIN_LOG_LEVEL=0 python train.py
+
+# 开启详细日志
+tf.debugging.set_log_device_placement(True)
+
+# 查看 GPU 信息
+nvidia-smi
+tf.config.list_physical_devices('GPU')
+```
+## 3. 推荐书单
+### 3.1 TensorFlow 专项
+
+| 书名 | 难度 | 评价 |
+|------|------|-----|
+| 《Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow》 | 中 | 经典 |
+| 《Learning TensorFlow.js》 | 低 | Web 端 |
+| 《Machine Learning Engineering on AWS》 | 高 | 云上部署 |
+| 《Building Machine Learning Pipelines》 | 中高 | TFX 专书 |
+### 3.2 深度学习理论
+
+| 书名 | 难度 | 评价 |
+|------|------|-----|
+| 《Deep Learning》 (Ian Goodfellow) | 高 | 理论圣经 |
+| 《Neural Networks and Deep Learning》 | 低 | 入门经典 |
+| 《Dive into Deep Learning》 | 中 | 代码驱动 |
+### 3.3 PyTorch 拓展（用于对比学习）
+
+| 书名 | 难度 | 评价 |
+|------|------|-----|
+| 《Deep Learning with PyTorch》 | 中 | 官方推荐 |
+| 《Programming PyTorch》 | 低 | 入门 |
+## 4. 术语表
+### 4.1 核心概念
+
+| 英文 | 中文 | 简释 |
+|------|------|------|
+| Tensor | 张量 | 多维数组，TF 基本数据结构 |
+| Operation / Op | 算子 | 计算图中的节点 |
+| Graph | 计算图 | 算子构成的有向无环图 |
+| Eager Execution | 急切执行 | 算子立即求值（TF 2.x 默认） |
+| Static Graph | 静态图 | 先定义后执行（TF 1.x） |
+| @tf.function | 函数装饰器 | 把 Python 函数转成计算图 |
+| Autodiff | 自动微分 | 自动计算梯度 |
+| GradientTape | 梯度带 | 记录计算过程用于求导 |
+| XLA | XLA 编译器 | 加速线性代数编译 |
+| SavedModel | 保存模型 | TF 标准化模型格式 |
+### 4.2 训练相关
+
+| 英文 | 中文 | 简释 |
+|------|------|------|
+| Epoch | 轮次 | 遍历完整数据集一次 |
+| Batch | 批次 | 一次前向+反向计算的样本数 |
+| Batch Size | 批大小 | 每批的样本数量 |
+| Learning Rate | 学习率 | 梯度更新的步长 |
+| Optimizer | 优化器 | 参数更新算法 |
+| Loss | 损失 | 预测与真值的差异 |
+| Metric | 指标 | 评估模型性能 |
+| Overfitting | 过拟合 | 训练好但泛化差 |
+| Underfitting | 欠拟合 | 训练不足 |
+| Regularization | 正则化 | 防止过拟合的技术 |
+| Dropout | Dropout | 随机丢弃神经元 |
+| Batch Normalization | 批归一化 | 稳定训练 |
+### 4.3 部署相关
+
+| 英文 | 中文 | 简释 |
+|------|------|------|
+| Inference | 推理 | 用训练好的模型预测 |
+| Deployment | 部署 | 把模型放到生产环境 |
+| Serving | 服务化 | 提供实时预测接口 |
+| Quantization | 量化 | 减少模型精度/体积 |
+| Pruning | 剪枝 | 删除不重要的权重 |
+| Distillation | 蒸馏 | 用大模型训练小模型 |
+| Latency | 延迟 | 请求到响应的耗时 |
+| Throughput | 吞吐 | 单位时间处理请求数 |
+### 4.4 分布式相关
+
+| 英文 | 中文 | 简释 |
+|------|------|------|
+| Distributed Training | 分布式训练 | 多 GPU/多机训练 |
+| Data Parallelism | 数据并行 | 每 GPU 跑不同数据 |
+| Model Parallelism | 模型并行 | 不同 GPU 跑模型不同部分 |
+| All-Reduce | 全规约 | 多 GPU 梯度汇总 |
+| Gradient Checkpointing | 梯度检查点 | 以时间换显存 |
+| Mixed Precision | 混合精度 | float16 + float32 |
+## 5. 环境配置模板
+### 5.1 Python 环境
+
+```bash
+# 创建虚拟环境
+python -m venv tf_env
+source tf_env/bin/activate  # Linux/macOS
+tf_env\Scripts\activate     # Windows
+
+# 安装 TensorFlow
+pip install tensorflow>=2.15.0
+
+# GPU 支持（额外安装）
+pip install nvidia-tensorrt  # 可选
+
+# 常用依赖
+pip install numpy matplotlib pandas scikit-learn
+pip install tensorflow-estimator tensorflow-datasets
+```
+### 5.2 Docker 环境
+
+```dockerfile
+FROM tensorflow/tensorflow:2.15.0-gpu
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . /app
+CMD ["python", "train.py"]
+```
+### 5.3 分布式训练配置
+
+```python
+# 多机配置 JSON
+{
+    "cluster": {
+        "worker": [
+            "worker0.example.com:2222",
+            "worker1.example.com:2222",
+            "worker2.example.com:2222",
+            "worker3.example.com:2222"
+        ],
+        "ps": [
+            "ps0.example.com:2222",
+            "ps1.example.com:2222"
+        ]
+    },
+    "task": {
+        "type": "worker",
+        "index": 0
+    }
+}
+```
+## 6. 参考链接
+### 6.1 官方资源
+
+- 官方文档：https://www. tensorflow. org/learn
+- Keras 指南：https://keras. io/guides/
+- TF API：https://www. tensorflow. org/api_docs/python/tf
+- TFLite 文档：https://www. tensorflow. org/lite
+- TF Serving：https://www. tensorflow. org/tfx/guide/serving
+### 6.2 社区资源
+
+- TF 论坛：https://discuss. tensorflow. org
+- Stack Overflow：搜索 [tensorflow]
+- Reddit：r/MachineLearning
+- GitHub：https://github. com/tensorflow/tensorflow
+### 6.3 学习路径
+
+- 官方教程：https://www. tensorflow. org/tutorials
+- Google ML Crash Course：https://developers. google. com/machine-learning/crash-course
+- DeepLearning. AI：TensorFlow 专项课程
+---
+**全 书 结 束**
+
+> 祝你学习 TensorFlow 顺利！如果有任何问题，欢迎在仓库提 Issue。
