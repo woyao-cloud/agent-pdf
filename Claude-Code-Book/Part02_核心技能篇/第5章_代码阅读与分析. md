@@ -1,0 +1,364 @@
+# 第5章 代码阅读与分析
+
+## 5.1 大规模代码阅读技巧
+
+当面对一个大型代码库时，如何高效地阅读和理解代码是一个重要的技能。本节将介绍使用 Claude Code 进行大规模代码阅读的技巧。
+
+### 5.1.1 分层阅读策略
+
+**自顶向下的阅读方法**
+
+```
+第一层：架构概览
+├── 理解系统整体结构
+├── 识别主要模块和它们的职责
+└── 了解模块之间的交互关系
+
+第二层：模块级理解
+├── 深入每个核心模块
+├── 理解模块的公共接口
+└── 追踪模块内部的数据流
+
+第三层：细节实现
+├── 阅读具体函数和类的实现
+├── 理解算法和逻辑细节
+└── 分析边界条件和异常处理
+```
+
+**使用 Claude 进行分层阅读**
+
+```bash
+# 第一层：架构概览
+claude "用 500 字概括这个系统的架构"
+
+# 第二层：模块级理解
+claude "详细解释 user 模块的设计和功能"
+
+# 第三层：细节实现
+claude "分析 UserService.create 方法的具体实现"
+```
+
+### 5.1.2 重点定位
+
+**快速定位关键代码**
+
+在大型代码库中，不需要逐行阅读所有代码，而是要学会快速定位关键部分：
+
+**按重要性筛选**
+
+| 优先级 | 内容 | 阅读方式 |
+|--------|------|----------|
+| 高 | 核心业务逻辑、关键算法 | 精读 |
+| 中 | 辅助功能、工具函数 | 略读 |
+| 低 | 模板代码、配置 | 扫读 |
+
+**使用 Claude 定位重点**
+
+```bash
+# 找到最核心的代码
+claude "这个项目最重要的 10 个函数是什么"
+
+# 找到业务逻辑核心
+claude "订单处理的核心逻辑在哪里"
+
+# 找到数据流动的关键点
+claude "用户数据是如何流转的"
+```
+
+### 5.1.3 文档辅助
+
+**充分利用现有文档**
+
+```bash
+# 让 Claude 总结现有文档
+claude "总结这个项目的所有文档"
+
+# 生成文档缺失报告
+claude "分析哪些功能缺少文档"
+```
+
+**创建代码笔记**
+
+```bash
+# 让 Claude 生成阅读笔记
+claude "为 user 模块生成详细的阅读笔记"
+```
+
+Claude 可能会输出：
+
+```markdown
+# User 模块阅读笔记
+
+## 模块概述
+- 位置：src/models/user.py, src/services/user_service.py
+- 功能：用户管理和认证
+- 主要类：User, UserService, UserRepository
+
+## 核心功能
+1. 用户创建
+2. 用户认证
+3. 用户信息更新
+4. 权限管理
+
+## 关键方法
+- create(): 创建新用户
+- authenticate(): 验证用户凭据
+- update_profile(): 更新用户资料
+- has_permission(): 检查权限
+
+## 数据流
+1. API -> UserService -> UserRepository -> Database
+2. 缓存层：Redis
+
+## 注意事项
+- 密码使用 bcrypt 加密
+- 敏感字段被脱敏处理
+- 有 3 个已知的 tech debt
+```
+
+## 5.2 依赖分析
+
+理解代码之间的依赖关系是阅读大型代码库的关键。Claude Code 可以帮助你分析复杂的依赖网络。
+
+### 5.2.1 导入关系图
+
+**分析 Python 项目的导入关系**
+
+```bash
+# 分析项目的导入结构
+claude "分析这个项目的模块导入关系"
+```
+
+输出示例：
+
+```python
+# 模块导入关系
+main. py
+├── app. py
+│   ├── config. py
+│   ├── routes/
+│   │   ├── auth. py (导入: models/user. py, services/auth. py)
+│   │   ├── users. py (导入: models/user. py, services/user_service. py)
+│   │   └── orders. py (导入: models/order. py, services/order_service. py)
+│   ├── models/
+│   │   ├── user. py (导入: utils/security. py)
+│   │   ├── order. py
+│   │   └── product. py
+│   └── services/
+│       ├── auth. py (导入: models/user. py, utils/jwt. py)
+│       ├── user_service. py (导入: models/user. py)
+│       └── order_service. py (导入: models/order. py, utils/validators. py)
+```
+
+**生成导入关系图**
+
+```bash
+# 生成可视化的依赖图
+claude "生成模块依赖的 Mermaid 图表"
+```
+
+### 5.2.2 模块依赖
+
+**依赖深度分析**
+
+```bash
+# 分析某个模块的依赖链
+claude "分析 UserService 模块的完整依赖链"
+```
+
+```
+UserService 依赖链：
+
+level 1: UserService (src/services/user_service.py)
+    │
+    ├── User (models/user.py)
+    │   └── SecurityUtils (utils/security.py)
+    │
+    ├── UserRepository (repositories/user_repo.py)
+    │   └── Database (core/database.py)
+    │
+    ├── JWTUtils (utils/jwt.py)
+    │   └── Config (config/settings.py)
+    │
+    └── EmailService (services/email.py)
+        └── SMTPClient (utils/smtp.py)
+```
+
+### 5.2.3 循环依赖检测
+
+**检测循环依赖**
+
+```bash
+# 检查项目中是否存在循环依赖
+claude "检测项目中是否存在循环依赖"
+```
+
+如果发现循环依赖，Claude 会报告：
+
+```markdown
+# 循环依赖警告
+
+发现 2 处循环依赖：
+
+1. a.py -> b.py -> c.py -> a.py
+   - a.py 导入 b.py
+   - b.py 导入 c.py
+   - c.py 导入 a.py
+   影响：模块初始化顺序不确定
+
+2. utils/format.py -> utils/validator.py -> utils/format.py
+   影响：可能导致运行时错误
+
+建议重构方案：...
+```
+
+## 5.3 代码质量评估
+
+Claude Code 不仅能帮助你阅读代码，还能评估代码质量并提供改进建议。
+
+### 5.3.1 复杂度分析
+
+**圈复杂度分析**
+
+```bash
+# 分析函数的圈复杂度
+claude "分析项目中复杂度最高的 10 个函数"
+```
+
+输出：
+
+```markdown
+# 复杂度最高的函数 Top 10
+
+1. OrderProcessor.process_payment() - 复杂度 15
+   位置: src/services/payment.py:89
+   问题: 15 个条件分支，建议拆分
+
+2. UserValidator.validate() - 复杂度 12
+   位置: src/utils/validator.py:45
+   问题: 大量验证逻辑，建议拆分为多个验证器
+
+3. ReportGenerator.generate() - 复杂度 11
+   位置: src/services/report.py:112
+   问题: 嵌套循环较深，建议优化算法
+```
+
+**代码行数分析**
+
+```bash
+# 统计各文件的代码行数
+claude "统计项目各模块的代码行数"
+```
+
+### 5.3.2 潜在问题识别
+
+**代码异味检测**
+
+```bash
+# 检测代码异味
+claude "检测这个项目中的代码异味"
+```
+
+检测项目：
+
+| 类型 | 检测内容 | 严重程度 |
+|------|----------|----------|
+| 重复代码 | 相似度 > 80% 的代码块 | 高 |
+| 过长函数 | 超过 100 行的函数 | 中 |
+| 过多参数 | 参数超过 5 个的函数 | 中 |
+| 全局变量 | 跨模块的全局状态 | 高 |
+| 魔法数字 | 未命名的常量 | 低 |
+
+**潜在 Bug 识别**
+
+```bash
+# 识别潜在的 bug
+claude "识别代码中可能存在的 bug"
+```
+
+常见问题：
+
+```python
+# 问题 1: 资源未关闭
+file = open('data.txt', 'r')
+data = file.read()
+# 缺少: file.close()
+
+# 问题 2: 竞态条件
+def increment():
+    count = get_count()
+    count += 1
+    save_count(count)
+# 多线程调用时会有竞态条件
+
+# 问题 3: 空指针引用
+user = get_user()
+return user.name
+# user 可能为 None
+```
+
+### 5.3.3 重构建议
+
+**生成重构报告**
+
+```bash
+# 生成重构建议报告
+claude "生成一份详细的代码重构建议报告"
+```
+
+报告结构：
+
+```markdown
+# 代码重构建议报告
+
+## 高优先级
+
+### 1. 提取重复代码
+位置: src/utils/format.py, src/utils/display.py
+建议: 将通用的格式化逻辑提取到 shared/ 目录
+
+### 2. 拆分过大类
+类名: OrderProcessor
+当前行数: 580
+建议: 拆分为 OrderCreator, OrderUpdater, OrderValidator
+
+## 中优先级
+
+### 3. 移除魔法数字
+位置: src/services/pricing.py:45, 67, 89
+建议: 定义常量类 TAX_RATE, DISCOUNT_RATE
+
+### 4. 简化条件表达式
+位置: src/core/workflow.py:120
+建议: 使用策略模式替代复杂的 if-else
+
+## 低优先级
+
+### 5. 改进命名
+- `func1` -> `calculate_total`
+- `temp` -> `temporary_file_path`
+```
+
+## 本章小结
+
+本章介绍了使用 Claude Code 进行代码阅读与分析的技巧。通过本章的学习，你应该能够：
+
+1. 使用分层阅读策略高效阅读大型代码库
+2. 快速定位关键代码和重点内容
+3. 分析模块之间的依赖关系
+4. 评估代码质量并识别潜在问题
+5. 获取具体的重构建议
+
+这些技能在日常开发中非常实用，能够显著提升你理解和维护代码的效率。
+
+## 练习题
+
+1. 选择一个你熟悉的项目，使用分层阅读法进行分析
+2. 使用 Claude 分析项目的依赖关系
+3. 让 Claude 检测代码中的潜在问题
+4. 根据重构建议，尝试重构一个模块
+
+## 参考资源
+
+- 代码分析工具：https://docs. anthropic. com/ claude- code/analyze
+- 重构模式：https://refactoring. com/

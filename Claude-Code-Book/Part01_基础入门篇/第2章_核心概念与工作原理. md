@@ -1,0 +1,508 @@
+# 第2章 核心概念与工作原理
+
+## 2.1 对话模式与交互方式
+
+Claude Code 提供了多种对话模式，以适应不同的使用场景。理解这些模式的特点和使用方式，能够帮助你更高效地与 AI 进行交互。
+
+### 2.1.1 交互式对话
+
+交互式对话是 Claude Code 最常用的模式，它启动一个持续的会话，允许你与 AI 进行多轮对话。
+
+**启动交互式会话**
+
+```bash
+# 直接启动交互式会话
+claude
+
+# 指定项目目录启动
+claude /path/to/project
+
+# 带初始提示启动
+claude "帮我分析这个代码库的结构"
+```
+
+**会话特征**
+
+在交互式模式下，每一轮对话都包含完整的上下文。AI 能够记住之前对话的内容，包括：
+- 你之前要求它执行的操作
+- 它读取或修改的文件
+- 你提供的反馈和纠正
+- 之前对话中提到的偏好和设置
+
+**会话管理命令**
+
+```
+/new          # 开始新会话
+/save         # 保存当前会话
+/load         # 加载历史会话
+/history      # 查看对话历史
+/clear        # 清除会话记忆
+/exit         # 退出会话
+```
+
+**最佳实践**
+
+1. **保持主题聚焦**：每个会话最好聚焦在一个具体任务上，复杂任务可以拆分多个会话
+2. **定期保存**：重要会话应及时保存，避免丢失
+3. **使用上下文提示**：在长对话开始时，明确说明项目的背景信息
+4. **适度重置**：当对话偏离主题或上下文变得混乱时，使用 /new 开始新会话
+
+### 2.1.2 单次命令
+
+单次命令模式允许你执行一条指令后立即获得结果，适用于快速查询或简单任务。
+
+**基本语法**
+
+```bash
+# 单次查询
+claude "什么是装饰器模式"
+
+# 单次文件操作
+claude --file test.py "添加单元测试"
+
+# 单次代码生成
+claude "生成一个快速排序算法"
+```
+
+**使用场景**
+
+单次命令特别适合以下场景：
+
+1. **快速查询**：获取某个概念的解释、语法查询等
+2. **小规模修改**：修改单个文件或执行单个操作
+3. **批量处理**：对多个文件执行相同操作
+4. **管道输入**：通过管道将其他命令的输出传递给 Claude
+
+**管道输入示例**
+
+```bash
+# 将错误信息传给 Claude 分析
+./run-tests 2>&1 | claude "分析这个错误"
+
+# 将代码传给 Claude 审查
+cat main.py | claude "审查这段代码"
+
+# 将 git diff 传给 Claude
+git diff | claude "这个改动有什么问题"
+```
+
+### 2.1.3 管道输入
+
+管道输入是 Claude Code 的一个强大特性，它允许你将其他程序的输出直接传递给 Claude 进行分析和处理。
+
+**工作原理**
+
+管道输入将标准输入（stdin）的数据作为用户消息的一部分发送给 Claude。AI 可以分析这些数据并提供相应的帮助。
+
+**常见用法**
+
+**1. 错误分析**
+
+当你运行一个命令得到错误输出时，可以直接将错误传给 Claude：
+
+```bash
+# 编译错误分析
+make 2>&1 | claude "帮我分析这个编译错误"
+
+# 测试失败分析
+npm test 2>&1 | claude "为什么这些测试失败了"
+
+# 运行错误分析
+python app.py 2>&1 | claude "这个运行时错误是什么原因"
+```
+
+**2. 代码审查**
+
+```bash
+# 审查特定文件
+git diff HEAD~1 | claude "审查这次提交的代码变更"
+
+# 审查新增代码
+git diff --cached | claude "审查暂存区的改动"
+```
+
+**3. 日志分析**
+
+```bash
+# 应用日志分析
+tail -f app.log | claude "分析这个日志中的异常"
+
+# 系统日志分析
+dmesg | claude "帮我分析系统启动日志"
+```
+
+**4. 数据处理**
+
+```bash
+# CSV 数据分析
+cat data.csv | claude "分析这个 CSV 数据的结构"
+
+# JSON 数据分析
+curl api.example.com/data | claude "分析这个 API 返回的数据"
+```
+
+**输出处理**
+
+Claude 的输出可以通过管道传递给其他命令：
+
+```bash
+# 生成代码并保存到文件
+claude "生成一个 Python HTTP 服务器" > server.py
+
+# 生成配置并写入文件
+claude "生成 nginx 配置文件" | sudo tee /etc/nginx/nginx.conf
+```
+
+**组合使用**
+
+更复杂的管道组合：
+
+```bash
+# 完整的工作流示例
+git log --oneline -20 | claude "分析这个仓库最近的提交趋势" | tee analysis.md
+```
+
+## 2.2 工具系统（Tools）
+
+Claude Code 的核心优势之一是它的工具系统。工具使得 AI 能够执行实际操作，而不仅仅是返回文本。本节将详细介绍工具系统的各个方面。
+
+### 2.2.1 内置工具一览
+
+Claude Code 内置了多个工具，涵盖了开发过程中最常见的操作需求：
+
+**文件操作工具**
+
+| 工具名称 | 功能 | 使用场景 |
+|---------|------|----------|
+| Read | 读取文件内容 | 查看代码、配置、日志 |
+| Write | 创建或覆盖文件 | 生成新文件、写代码 |
+| Edit | 修改文件内容 | 代码修改、文本编辑 |
+| Glob | 搜索文件 | 查找特定类型的文件 |
+| Grep | 搜索文件内容 | 代码搜索、文本检索 |
+
+**Shell 执行工具**
+
+| 工具名称 | 功能 | 使用场景 |
+|---------|------|----------|
+| Bash | 执行系统命令 | 运行脚本、构建项目、执行测试 |
+| Task | 创建后台任务 | 长时间运行的命令 |
+
+**开发辅助工具**
+
+| 工具名称 | 功能 | 使用场景 |
+|---------|------|----------|
+| TDD-Guide | 测试驱动开发指导 | 编写测试、遵循 TDD 流程 |
+| Code-Reviewer | 代码审查 | 审查代码质量 |
+| Debugger | 调试指导 | 问题排查和修复 |
+
+### 2.2.2 工具权限管理
+
+Claude Code 实现了细粒度的权限管理系统，确保工具的使用安全和可控。
+
+**权限层级**
+
+权限系统分为三个层级：
+
+1. **全局层级**：在 `~/.claude/settings.json` 中配置，影响所有会话
+2. **项目层级**：在 `.claude.json` 中配置，只影响当前项目
+3. **会话层级**：在会话开始时指定，只影响当前会话
+
+**配置示例**
+
+```json
+// ~/.claude/settings.json - 全局配置
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write:extensions:[.js,.ts,.py]",
+      "Bash:commands:[npm,git,python]"
+    ],
+    "deny": [
+      "Write:paths:[/etc/**]",
+      "Bash:commands:[rm -rf,sudo]"
+    ]
+  }
+}
+```
+
+**语法说明**
+
+- `Tool:constraint` - 基本语法
+- `Read:extensions:[.js,.py]` - 限制可读文件类型
+- `Write:paths:[src/**]` - 限制可写目录
+- `Bash:commands:[npm,git]` - 限制可执行命令
+
+**动态权限请求**
+
+当 AI 需要使用未授权的工具时，会请求用户批准：
+
+```
+[权限请求] Claude 想要执行 "Bash: npm run build"
+- 允许本次执行
+- 永久允许
+- 拒绝
+```
+
+**安全最佳实践**
+
+1. **最小权限原则**：只授予任务所需的最小权限
+2. **定期审查**：定期检查和更新权限配置
+3. **敏感目录保护**：对系统关键目录实施额外保护
+4. **命令白名单**：对危险命令（如 rm、sudo）实施白名单
+
+### 2.2.3 自定义工具
+
+除了内置工具，你还可以创建自定义工具来扩展 Claude Code 的能力。
+
+**自定义工具定义**
+
+在 `.claude.json` 中定义自定义工具：
+
+```json
+{
+  "tools": [
+    {
+      "name": "my-tool",
+      "description": "自定义工具的描述",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "param1": {
+            "type": "string",
+            "description": "参数1的说明"
+          }
+        },
+        "required": ["param1"]
+      },
+      "handler": "./tools/my-tool-handler.py"
+    }
+  ]
+}
+```
+
+**工具处理程序示例**
+
+```python
+#!/usr/bin/env python3
+# tools/my-tool-handler.py
+
+import json
+import sys
+
+def main():
+    # 从 stdin 读取输入
+    input_data = json.load(sys.stdin)
+
+    # 处理逻辑
+    result = process(input_data)
+
+    # 输出结果
+    print(json.dumps(result))
+
+def process(input_data):
+    param1 = input_data.get('param1')
+    # 实现你的逻辑
+    return {"status": "success", "result": param1}
+
+if __name__ == "__main__":
+    main()
+```
+
+**工具开发的最佳实践**
+
+1. **单一职责**：每个工具只完成一件事
+2. **清晰的接口**：定义清晰的输入输出格式
+3. **错误处理**：完善的异常处理和错误信息
+4. **文档完善**：提供详细的使用说明和示例
+
+## 2.3 上下文管理
+
+上下文管理是 Claude Code 提供优质对话体验的关键技术。理解上下文管理的工作原理，能够帮助你更有效地与 AI 交互。
+
+### 2.3.1 消息历史
+
+Claude Code 会自动维护对话历史，使得多轮对话成为可能。
+
+**历史记录内容**
+
+每次对话中，Claude 维护以下信息：
+
+1. **用户消息**：你发送的所有消息
+2. **AI 回复**：AI 生成的所有响应
+3. **工具调用**：使用的工具和返回结果
+4. **文件变更**：对文件的所有修改
+
+**查看历史**
+
+```bash
+# 查看会话历史
+claude /history
+
+# 查看特定会话
+claude /history session-123
+
+# 搜索历史
+claude /history search "重构"
+```
+
+**历史管理命令**
+
+```
+/history            # 列出所有历史会话
+/history 123        # 查看指定会话
+/history clear      # 清除所有历史
+/history export     # 导出历史到文件
+```
+
+**历史存储**
+
+历史记录存储在 `~/.claude/memory/` 目录中：
+
+```
+~/.claude/memory/
+├── sessions/       # 会话记录
+│   ├── 2024-01-01-001.json
+│   └── 2024-01-02-002.json
+└── index.json      # 索引文件
+```
+
+### 2.3.2 项目上下文
+
+Claude Code 能够理解并记忆项目相关的信息，这使得它能够提供更加精准的帮助。
+
+**自动项目扫描**
+
+首次在项目目录中启动 Claude Code 时，它会自动扫描项目：
+
+1. **目录结构**：了解项目的文件组织
+2. **技术栈**：识别使用的编程语言和框架
+3. **依赖管理**：分析依赖配置文件
+4. **构建系统**：识别构建工具和配置
+
+**项目信息存储**
+
+项目上下文存储在项目的 `.claude.json` 中：
+
+```json
+{
+  "project": {
+    "name": "my-awesome-project",
+    "type": "python",
+    "framework": "fastapi",
+    "dependencies": ["fastapi", "uvicorn", "pydantic"],
+    "structure": {
+      "src": "src/",
+      "tests": "tests/",
+      "config": "config/"
+    }
+  }
+}
+```
+
+**手动提供上下文**
+
+对于复杂项目，可以手动提供更多上下文信息：
+
+```bash
+# 提供项目说明
+claude "这是一个使用 FastAPI 开发的后端服务，主要提供用户管理功能"
+
+# 提供架构文档
+claude "参考 docs/architecture.md 了解系统架构"
+
+# 指定关注点
+claude "请关注 src/api/ 目录的实现"
+```
+
+### 2.3.3 记忆系统
+
+Claude Code 的记忆系统允许 AI 记住跨会话的信息，提供更加个性化的服务。
+
+**记忆类型**
+
+1. **短期记忆**：当前会话中的信息，会话结束后清除
+2. **项目记忆**：与特定项目相关的信息，长期保存
+3. **用户记忆**：用户的偏好和习惯
+
+**项目记忆示例**
+
+```json
+// ~/.claude/projects/my-project/memory.json
+{
+  "preferences": {
+    "code_style": "PEP 8",
+    "testing_framework": "pytest",
+    "documentation": "中文"
+  },
+  "context": {
+    "team": "后端开发组",
+    "sprint": "Sprint 23",
+    "current_focus": "用户认证模块"
+  }
+}
+```
+
+**用户记忆示例**
+
+```json
+// ~/.claude/user/preferences.json
+{
+  "language": "zh-CN",
+  "model_preference": "sonnet",
+  "code_style": "简洁优先",
+  "notification_preferences": {
+    "on_complete": true,
+    "on_error": true
+  }
+}
+```
+
+**记忆命令**
+
+```
+/remember something  # 记住当前会话中的信息
+/memory list         # 查看所有记忆
+/memory delete item  # 删除特定记忆
+/memory clear        # 清除所有记忆
+```
+
+**使用场景**
+
+1. **项目规范记忆**：记住项目的代码规范和约定
+2. **团队信息记忆**：记住团队成员、协作方式
+3. **个人偏好记忆**：记住个人的工作习惯和偏好
+4. **上下文延续**：在新会话中继续之前的工作
+
+**隐私考虑**
+
+记忆系统涉及用户数据的存储，需要注意：
+
+1. **敏感信息**：不要在记忆中存储敏感信息
+2. **定期清理**：定期审查和清理不必要的记忆
+3. **加密存储**：对敏感项目启用加密存储
+4. **导出控制**：注意记忆数据的导出和备份
+
+## 本章小结
+
+本章深入介绍了 Claude Code 的核心概念和工作原理。通过本章的学习，你应该能够：
+
+1. 熟练使用交互式对话、单次命令和管道输入三种模式
+2. 理解工具系统的组成和权限管理机制
+3. 掌握上下文管理和记忆系统的使用方法
+
+这些核心概念是高效使用 Claude Code 的基础。在下一章中，我们将通过实际示例，展示如何将这些概念应用到日常开发工作中。
+
+## 练习题
+
+1. 尝试使用三种不同的对话模式完成同一任务，比较它们的差异
+2. 配置一个项目级别的工具权限，限制可执行的命令
+3. 使用管道输入分析一个实际的错误日志
+4. 创建自定义工具来处理特定的项目需求
+5. 设置项目记忆并验证在新会话中是否能正确回忆
+
+## 参考资源
+
+- Claude Code 工具文档：https://docs. anthropic.com/ claude-code/tools
+- 权限配置指南：https://docs. anthropic.com/ claude-code/permissions
+- 管道使用示例：https://docs. anthropic.com/ claude-code/ piping

@@ -1,0 +1,112 @@
+# 第7章 调试与问题排查
+## 7.1 错误分析与定位
+调试是开发过程中不可避免的一部分。Claude Code 提供了强大的错误分析能力，帮助你快速定位和解决问题。
+### 7.1.1 错误信息解读**基本错误分析**
+```bash
+# 分析错误信息
+claude "分析这个错误信息"```常见错误类型及解读：| 错误类型 | 特征 | 常见原因 | 解决思路 | |----------|------|----------|----------|| SyntaxError | 语法错误 | 拼写错误、缺少符号 | 检查语法 | | ImportError | 导入错误 | 模块不存在、路径错误 | 检查导入路径 |
+| TypeError | 类型错误 | 类型不匹配 | 检查数据类型 | | ValueError | 值错误 | 值不符合预期 | 检查输入值 || RuntimeError | 运行时错误 | 逻辑错误 | 添加调试信息 |**传递错误信息的方式**```bash
+# 方式 1：直接复制错误claude """这个错误是什么意思？Traceback (most recent call last):
+  File "app.py", line 45, in <module>
+    user = get_user(123)  File "app.py", line 23, in get_user
+    return User.query.get(id)AttributeError: 'NoneType' object has no attribute 'query'"""# 方式 2：通过管道
+python app. py 2>&1 | claude "分析这个错误"# 方式 3：读取日志文件
+claude "分析 logs/error. log 中的错误"```
+### 7.1.2 堆栈跟踪分析**理解堆栈跟踪**```bash
+# 让 Claude 解释堆栈跟踪claude """解释这个堆栈跟踪并找出根本原因：Traceback (most recent call last):
+  File "main.py", line 78, in <module>    app.run()
+  File "main.py", line 45, in <module>    init_app()  File "app.py", line 23, in init_app()    db.create_all()  File "database.py", line 34, in create_all()    for model in get_models():  File "models.py", line 67, in get_models()    return [User(), Order()]  File "models.py", line 12, in <module>    from new_module import NewClassModuleNotFoundError: No module named 'new_module'"""```**堆栈跟踪分析要点**1. **错误类型**：最后的异常类型是问题的直接表现
+2. **错误消息**：异常的错误消息提供了具体信息
+3. **调用顺序**：从下往上看，理解调用链4. **源码位置**：文件:行号 指向问题发生的位置### 7.1.3 根因定位
+**多层次分析方法**
+```bash
+# 使用 5 Why 方法分析问题claude "使用 5 Why 方法分析这个问题的根本原因"
+```示例分析：```markdown# 问题：用户无法登录## 分析：Why 1: 为什么用户无法登录？
+-> 错误信息是 "Invalid token"Why 2: 为什么 token 无效？-> Token 已过期Why 3: 为什么 token 过期了？
+-> Token 的有效期设置太短（15 分钟）## Why 4: 为什么设置为 15 分钟？-> 配置文件中 TOKEN_EXPIRE_MINUTES = 15Why 5: 为什么使用这个值？-> 复制了旧项目的配置，没有根据新需求调整## 根本原因：
+配置值不符合当前业务需求## 解决方案：
+将 TOKEN_EXPIRE_MINUTES 改为 1440（24 小时）
+```**快速定位技巧**```bash
+# 定位最可能的根因claude "根据错误堆栈，这个问题的最可能根因是什么？"
+```
+## 7.2 调试技巧
+### 7.2.1 日志分析
+**日志分析命令**```bash
+# 分析最近错误
+claude "分析最近 100 行日志中的错误"# 分析特定时间的日志claude "分析今天下午 2 点到 3 点的日志"# 按错误类型分类claude "将日志中的错误按类型分类统计"
+```**日志模式识别**```bash
+# 识别重复出现的错误claude "找出日志中重复出现最多的 5 个错误"# 找出相关错误claude "找出可能相关的错误序列"```
+### 7.2.2 断点策略**建议添加断点的位置**
+1. **函数入口**：验证参数是否正确传入2. **循环前**：验证循环条件
+3. **条件分支**：验证分支条件4. **返回值**：验证返回数据
+5. **异常捕获**：验证异常信息```bash
+# 让 Claude 建议断点claude "为 find_user 函数建议合适的断点位置"# 让 Claude 添加调试打印claude "在关键位置添加调试打印语句"```### 7.2.3 逐步排查
+**系统化调试方法**
+```bash
+# 使用排除法claude "使用排除法排查这个问题的可能原因"# 最小复现案例
+claude "帮我创建一个最小复现案例"# 二分查找定位
+claude "使用二分查找方法定位问题"```
+**调试会话示例**```
+> 运行 pytest 时有一个测试失败
+> 失败信息：assert user.is_active == True
+> 预期结果：创建的用户应该是激活状态让我逐步排查：1. 检查用户创建逻辑2. 检查 is_active 的默认值3. 检查测试的预期值
+```## 7.3 常见问题处理
+### 7.3.1 环境问题**常见环境问题**1. **Python 版本不匹配**
+   ```bash
+   claude "修复 Python 版本不兼容问题"
+   ```
+
+2. **依赖版本冲突**
+   ```bash
+   claude "解决依赖版本冲突"   ```3. **环境变量缺失**
+   ```bash
+   claud "识别缺失的环境变量并提供配置建议"   ```**环境诊断命令**```bash
+# 诊断环境问题
+claude "诊断这个项目的环境问题"# 检查依赖
+claude "检查依赖是否满足要求"# 检查配置
+claude "检查所有必要的配置是否正确"```### 7.3.2 依赖问题
+**依赖问题诊断**```bash
+# 分析依赖问题claude "分析 requirements. txt 中可能的依赖问题"# 解决版本冲突claude "建议解决依赖版本冲突的方案"# 清理并重新安装
+claude "提供清理并重新安装依赖的命令"```
+### 7.3.3 配置问题
+**配置调试流程**```bash
+# 检查配置加载claude "这个项目的配置是如何加载的？"# 验证配置值claude "验证所有配置值是否正确"# 常见配置错误claude "列出这个项目常见的配置错误"
+```**配置问题示例**```markdown
+# 问题：应用无法启动# 可能原因：1. 缺少必需的配置文件
+2. 配置文件格式错误
+3. 配置值不符合要求
+4. 环境变量未设置# 排查步骤：1. 读取配置文件
+2. 检查必需字段3. 验证值类型4. 检查环境变量```## 7.4 实战调试案例
+### 7.4.1 案例：API 返回 500 错误
+**问题描述**
+```
+POST /api/users/orders 500 Internal Server Error```**调试过程**```
+> 1. 首先获取完整的错误信息
+> 2. 检查服务器日志
+> 3. 定位到异常位置
+> 4. 分析异常原因
+> 5. 修复代码
+> 6. 测试验证
+```**完整调试会话**```bash
+# 步骤 1：获取错误信息
+> 帮我看看这个错误：Internal Server Error# 步骤 2：检查日志
+> 查看最近的服务日志# 步骤 3：定位问题> 错误发生在 order_ service. py 的第 89 行# 步骤 4：分析原因> 这是一个空指针错误，order. user 是 None# 步骤 5：修复> 为 order_ service. py 添加空值检查
+# 步骤 6：验证> 运行测试确认问题已修复
+```### 7.4.2 案例：性能问题
+**问题**：接口响应时间过长**调试流程**
+```bash# 1. 确定性能基线
+claude "测试当前接口的响应时间"# 2. 性能分析
+claude "分析性能瓶颈在哪里"# 3. 优化建议
+claude "提供性能优化建议"# 4. 实施优化
+claude "实施第一个优化方案"# 5. 验证效果
+claude "验证优化后的性能改进"```
+### 7.4.3 案例：数据不一致**问题**：数据库数据显示不一致**调试流程**```bash# 1. 收集信息
+claude "检查数据库中的实际数据"# 2. 分析原因
+claude "分析数据不一致的可能原因"# 3. 修复数据
+claude "修复数据不一致问题"# 4. 防止复发
+claude "建议防止数据不一致的措施"```## 本章小结本章介绍了使用 Claude Code 进行调试和问题排查的技巧。 通过本章的学习，你应该能够：1. 正确解读错误信息和堆栈跟踪2. 使用日志分析问题
+3. 制定调试策略并逐步排查
+4. 处理常见的环境、依赖和配置问题5. 进行系统化的调试实践这些技能对于快速解决开发中的问题至关重要。## 练习题1. 使用 Claude 分析一个实际的错误2. 使用日志分析功能排查问题
+3. 模拟一个性能问题并使用 Claude 优化4. 创建一个常见问题的快速诊断指南## 参考资源- 调试技巧：https://docs. anthropic. com/ claude- code/debugging
+- Python 调试：https://docs. python. org/3/ library/ pdb. html
+- 日志最佳实践：https://docs. python. org/3/ howto/ logging-cookbook. html

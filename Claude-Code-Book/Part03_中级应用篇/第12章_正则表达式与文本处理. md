@@ -1,0 +1,24 @@
+# 第12章 正则表达式与文本处理
+## 12.1 正则表达式基础
+### 12.1.1 语法详解
+**基础语法**```正则表达式常用符号：.       匹配任意字符\d      匹配数字\w      匹配字母数字下划线\s      匹配空白字符^       匹配字符串开始$       匹配字符串结束*       0 次或多次+       1 次或多次?       0 次或 1 次{n}     精确 n 次{n, }   n 次或更多{n,m}  n 到 m 次|       或[abc]     字符集[^abc]   否定字符集```**示例**```python
+import re# 匹配邮箱pattern = r'^[\w. +-]+@[\w. -]+\.[a-zA-Z]{2,}$'re. match(pattern, "user@example. com")# 匹配手机号pattern = r'^1[3-9]\d{9}$'re. match(pattern, "13812345678")```### 12.1.2 匹配模式
+**常用匹配模式**```python
+# 精确匹配re. exact_match(pattern, string)# 全局搜索re. findall(pattern, string)# 迭代搜索for match in re. finditer(pattern, string):    print(match. group())# 替换re. sub(pattern, replacement, string)# 分割re. split(pattern, string)```### 12.1.3 捕获组
+**捕获组语法**```python
+# 命名捕获组pattern = r'(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})'match = re. match(pattern, "2024-01-15")print(match. group('year'))   # 2024print(match. group('month'))  # 01print(match. group('day'))    # 15# 非捕获组(?:pattern)  # 不捕获# 反向引用\1, \2     # 引用第1、2个捕获组```## 12.2 文本处理实战
+### 12.2.1 数据提取
+**从文本中提取数据**```python
+import re# 提取所有 URLstext = "访问 https://example. com 或 http://test. org"urls = re. findall(r'https?://[\w. -]+(?:/[\w. -]*)*', text)# 提取日期text = "2024-01-01 和 2024-12-31"dates = re. findall(r'\d{4}-\d{2}-\d{2}', text)# 提取 HTML 标签content = "<div>Hello</div><span>World</span>"tags = re. findall(r'<(\w+)[^>]*>(.*?)</\1>', content)```### 12.2.2 格式转换
+**文本格式转换**```python
+# CSV 转 JSONimport re, jsondef csv_to_json(csv_text):    lines = csv_text. strip(). split('\n')    headers = re. split(r',\s*', lines[0])    result = []    for line in lines[1:]:        values = re. split(r',\s*', line)        result. append(dict(zip(headers, values)))    return json. dumps(result, ensure_ascii=False)# 驼峰转下划线def camel_to_snake(name):    return re. sub(r'(?<!^)(?=[A-Z])', '_', name). lower()# 下划线转驼峰def snake_to_camel(name):    components = name. split('_')    return components[0] + ''. join(x. title() for x in components[1:])```### 12.2.3 批量替换
+**多规则批量替换**```python
+import re# 多个替换规则rules = [    (r'\bTODO\b', '[TODO]'),    (r'\bFIXME\b', '[FIXME]'),    (r'\bXXX\b', '[需要审查]'),]def batch_replace(text, rules):    for pattern, replacement in rules:        text = re. sub(pattern, replacement, text)    return text```## 12.3 复杂文本场景
+### 12.3.1 多行匹配
+**多行模式**```python
+# 使用 re. MULTILINE 使 ^ $ 匹配每行开头/结尾text = """第一行内容第二行内容第三行内容"""# 匹配每行开头的数字re. findall(r'^\d+', text, re. MULTILINE)# 使用 re. DOTALL 使 . 匹配换行符html = "<div>内容\n换行</div>"re. findall(r'<div>(.*?)</div>', html, re. DOTALL)```### 12.3.2 贪心与非贪心
+**匹配模式对比**```python
+text = "<div>内容1</div><div>内容2</div>"# 贪心：匹配尽可能多re. findall(r'<div>.*</div>', text)# 结果：['<div>内容1</div><div>内容2</div>']# 非贪心：匹配尽可能少re. findall(r'<div>.*?</div>', text)# 结果：['<div>内容1</div>', '<div>内容2</div>']```### 12.3.3 预判与回溯
+**预判（Lookahead/Lookbehind）**```python
+# 正向预判 (?=)re. findall(r'\w+(?=@)', 'user@ex.com, admin@test.org')# 结果：['user', 'admin']# 负向预判 (?!)re. findall(r'\w+(?!@)', 'user@ex.com test')# 结果：['test']# 正向回顾 (?<=)re. findall(r'(?<=#)\w+', 'color=#FF0000')# 结果：['FF0000']# 负向回顾 (?<!)re. findall(r'(?<!/)\w+', 'test/path')# 结果：['path']```**性能优化**```python
+# 避免过度回溯# 不好：可能引起回溯问题pattern = r'(a+)+b'# 好：明确范围pattern = r'a{1,10}b'```## 本章小结本章介绍了正则表达式与文本处理。涵盖正则基础语法、匹配模式、捕获组、数据提取、格式转换和复杂文本场景处理。## 练习题1. 编写正则匹配邮箱2. 从网页中提取所有链接3. 实现一个文本清理函数
