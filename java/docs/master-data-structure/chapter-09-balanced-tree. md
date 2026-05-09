@@ -1,0 +1,130 @@
+# 第9章 平衡二叉树
+## 9.1 二叉搜索树（BST）
+### 解决的问题
+二叉搜索树（Binary Search Tree, BST）将二分查找与树结构结合，支持O(log n)的查找、插入、删除。
+### BST性质
+- 左子树所有节点值 < 根节点值
+- 右子树所有节点值 > 根节点值
+- 左右子树也是BST
+### 操作时间复杂度
+| 操作 | 平衡时 | 退化为链表时 |
+|------|--------|-------------|
+| 查找 | O(log n) | O(n) |
+| 插入 | O(log n) | O(n) |
+| 删除 | O(log n) | O(n) |
+### 问题：退化为链表
+当插入数据有序时，BST退化为链表：
+```java
+// 插入 1,2,3,4,5 后
+//     1
+//      \
+//       2
+//        \
+//         3
+//          \
+//           4
+//            \
+//             5  ← 退化为链表！
+```
+## 9.2 AVL树
+### 解决的问题
+AVL树是**自平衡**的二叉搜索树，任一节点的左右子树高度差不超过1。解决了BST退化为链表的问题。
+### 旋转操作
+```java
+// 左旋 - 右子树过高
+private TreeNode leftRotate(TreeNode x) {
+    TreeNode y = x.right;
+    x.right = y.left;
+    y.left = x;
+    updateHeight(x);
+    updateHeight(y);
+    return y;
+}
+
+// 右旋 - 左子树过高
+private TreeNode rightRotate(TreeNode y) {
+    TreeNode x = y.left;
+    y.left = x.right;
+    x.right = y;
+    updateHeight(y);
+    updateHeight(x);  // 先更新y，再更新x
+    return x;
+}
+```
+### AVL vs BST
+| 对比 | BST | AVL |
+|------|-----|-----|
+| 平衡性 | 不保证 | 严格平衡 |
+| 高度差 | 可能很大 | ≤1 |
+| 插入/删除开销 | 低 | 需要旋转 |
+| 查询性能 | 不稳定 | 稳定O(log n) |
+## 9.3 红黑树
+### 解决的问题
+红黑树是一种**近似平衡**的二叉搜索树，通过颜色约束保证最长路径不超过最短路径的2倍。在插入删除频繁的场景下，比AVL树更高效。
+### 红黑树性质
+1. 节点是红色或黑色
+2. 根节点是黑色
+3. 叶子节点（NIL）是黑色
+4. 红色节点的子节点必须是黑色
+5. 任意节点到叶子的路径包含相同数量的黑色节点
+### JDK源码：TreeMap红黑树
+```java
+// TreeMap中的红黑树节点
+static final class Entry<K,V> implements Map.Entry<K,V> {
+    K key; V value; Entry<K,V> left, right, parent; boolean color = BLACK;
+}
+
+// 插入后修复（简化版）
+private void fixAfterInsertion(Entry<K,V> x) {
+    x.color = RED;  // 新节点为红色
+    while (x != null && x != root && x.parent.color == RED) {
+        if (parentOf(x) == leftOf(parentOf(parentOf(x)))) { // 父节点是左子树
+            Entry<K,V> y = rightOf(parentOf(parentOf(x))); // 叔父节点
+            if (colorOf(y) == RED) { // 情况1：叔父为红
+                setColor(parentOf(x), BLACK);
+                setColor(y, BLACK);
+                setColor(parentOf(parentOf(x)), RED);
+                x = parentOf(parentOf(x));
+            } else { // 叔父为黑
+                if (x == rightOf(parentOf(x))) { // 情况2：x为右子
+                    x = parentOf(x);
+                    rotateLeft(x);
+                }
+                // 情况3：x为左子
+                setColor(parentOf(x), BLACK);
+                setColor(parentOf(parentOf(x)), RED);
+                rotateRight(parentOf(parentOf(x)));
+            }
+        } else { // 父节点是右子树，对称处理
+            // ... 类似
+        }
+    }
+    root.color = BLACK;
+}  // 根节点必须为黑
+```
+### AVL vs 红黑树
+| 对比 | AVL | 红黑树 |
+|------|-----|--------|
+| 平衡度 | 严格平衡 | 近似平衡 |
+| 插入/删除 | 多旋转 | 少旋转 |
+| 查询性能 | 更好 | 略差 |
+| 使用场景 | 查找多 | 插入删除多 |
+| Java实现 | 无 | TreeMap/TreeSet |
+## 9.4 使用场景
+| 场景 | 推荐 | 原因 |
+|------|------|------|
+| 查找为主 | AVL | 查询性能更好 |
+| 插入删除频繁 | 红黑树 | 旋转少，性能更好 |
+| Java标准库 | 红黑树 | TreeMap/TreeSet |
+| 数据库索引 | B+树 | 更适合磁盘 |
+## 9.5 潜在风险
+| 风险 | 说明 | 解决方案 |
+|------|------|----------|
+| 平衡失效 | 多次操作后可能不再平衡 | 使用自平衡树 |
+| 旋转开销 | 旋转操作有性能开销 | 选择合适的树类型 |
+| 递归深度 | 树过高导致栈溢出 | 迭代实现 |
+## 9.6 本章小结
+- BST可能退化为链表，需要平衡
+- AVL树严格平衡，查询性能好但插入删除代价高
+- 红黑树近似平衡，是Java标准库的实现
+- 选择时根据查询/修改频率权衡

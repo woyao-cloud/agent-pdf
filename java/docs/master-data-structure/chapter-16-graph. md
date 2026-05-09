@@ -1,0 +1,60 @@
+# 第16章 图（Graph）
+## 16.1 图的原理
+### 解决的问题
+图（Graph）由**顶点（Vertex）**和**边（Edge）**组成，用于表示实体间的任意关系。解决的问题：- 社交网络关系
+- 地图导航（最短路径）
+- 任务依赖调度
+- 网络路由
+### 图的分类
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| 有向图 | 边有方向 | 任务依赖 |
+| 无向图 | 边无方向 | 社交关系 |
+| 加权图 | 边有权值 | 地图距离 |
+| 无权图 | 边无权值 | 好友关系 |
+## 16.2 图的存储
+### 邻接表
+```java
+// 邻接表 - 适合稀疏图
+class Graph {    Map<Integer, List<Integer>> adj = new HashMap<>();
+    public void addEdge(int u, int v) {        adj.computeIfAbsent(u, k -> new ArrayList<>()).add(v);
+        adj.computeIfAbsent(v, k -> new ArrayList<>()).add(u); // 无向图    }
+}
+```### 邻接矩阵
+```java
+// 邻接矩阵 - 适合稠密图
+class GraphMatrix {    int[][] matrix;    int n;
+    public GraphMatrix(int n) { this.n = n; matrix = new int[n][n]; }
+    public void addEdge(int u, int v) { matrix[u][v] = 1; }  // 无向图需两边    public void addEdge(int u, int v, int w) { matrix[u][v] = w; }  // 加权图
+}```## 16.3 深度优先搜索（DFS）
+```java
+// 递归DFSpublic class DFS {    boolean[] visited;    public void dfs(Graph graph, int start) {        visited = new boolean[graph.n];        dfsRecurse(graph, start);    }
+    private void dfsRecurse(Graph graph, int v) {        visited[v] = true;        System.out.print(v + " ");
+        for (int neighbor : graph.adj.getOrDefault(v, new ArrayList<>())) {            if (!visited[neighbor]) dfsRecurse(graph, neighbor);
+        }    }    // 非递归DFS（使用栈）    public void dfsIterative(Graph graph, int start) {        boolean[] visited = new boolean[graph.n];        Stack<Integer> stack = new Stack<>();        stack.push(start);        while (!stack.isEmpty()) {            int v = stack.pop();            if (visited[v]) continue;            visited[v] = true;            System.out.print(v + " ");            for (int neighbor : graph.adj.getOrDefault(v, new ArrayList<>())) {                if (!visited[neighbor]) stack.push(neighbor);            }        }    }}```## 16.4 广度优先搜索（BFS）
+```java
+// BFS - 使用队列
+public class BFS {    public void bfs(Graph graph, int start) {        boolean[] visited = new boolean[graph.n];
+        Queue<Integer> queue = new LinkedList<>();        visited[start] = true;        queue.offer(start);
+        while (!queue.isEmpty()) {            int v = queue.poll();            System.out.print(v + " ");            for (int neighbor : graph.adj.getOrDefault(v, new ArrayList<>())) {                if (!visited[neighbor]) {                    visited[neighbor] = true;                    queue.offer(neighbor);                }            }        }    }}```## 16.5 最短路径算法
+### Dijkstra算法（单源最短路径）
+```java
+// Dijkstra - 非负权图
+public int[] dijkstra(Graph graph, int start) {    int[] dist = new int[graph.n];    Arrays.fill(dist, Integer.MAX_VALUE);    dist[start] = 0;    PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.dist));    pq.offer(new Node(start, 0));
+    while (!pq.isEmpty()) {        Node cur = pq.poll();        if (cur.dist > dist[cur.v]) continue;        for (int neighbor : graph.adj.getOrDefault(cur.v, new ArrayList<>())) {            int newDist = cur.dist + graph.weight(cur.v, neighbor);            if (newDist < dist[neighbor]) {                dist[neighbor] = newDist;                pq.offer(new Node(neighbor, newDist));            }        }    }    return dist;}
+```### Floyd算法（多源最短路径）
+```java
+// Floyd - 求所有顶点对最短路径
+public int[][] floyd(Graph graph) {    int n = graph.n;    int[][] dist = new int[n][n];    for (int i = 0; i < n; i++) {        Arrays.fill(dist[i], Integer.MAX_VALUE);        dist[i][i] = 0;    }    // 初始化    for (Map.Entry<Integer, List<Integer>> e : graph.adj.entrySet()) {        for (int v : e.getValue()) { dist[e.getKey()][v] = 1; }    }    // DP    for (int k = 0; k < n; k++)        for (int i = 0; i < n; i++)            for (int j = 0; j < n; j++)                if (dist[i][k] != Integer.MAX_VALUE && dist[k][j] != Integer.MAX_VALUE)                    dist[i][j] = Math.min(dist[i][j], dist[i][k] + dist[k][j]);    return dist;}```## 16.6 拓扑排序
+### Kahn算法
+```java
+// 拓扑排序 - Kahn算法
+public List<Integer> topologicalSort(Graph graph) {    int[] inDegree = new int[graph.n];    for (int u = 0; u < graph.n; u++)        for (int v : graph.adj.getOrDefault(u, new ArrayList<>()))            inDegree[v]++;    Queue<Integer> q = new LinkedList<>();    for (int i = 0; i < graph.n; i++)        if (inDegree[i] == 0) q.offer(i);    List<Integer> result = new ArrayList<>();    while (!q.isEmpty()) {        int u = q.poll();        result.add(u);        for (int v : graph.adj.getOrDefault(u, new ArrayList<>())) {            if (--inDegree[v] == 0) q.offer(v);        }    }    return result;  // 有环则结果不包含所有节点}```## 16.7 典型问题
+### 岛屿数量（DFS/BFS）
+```java
+class Island {    public int numIslands(char[][] grid) {        int count = 0;        for (int i = 0; i < grid.length; i++)            for (int j = 0; j < grid[0].length; j++)                if (grid[i][j] == '1') {                    dfs(grid, i, j);                    count++;                }        return count;    }
+    private void dfs(char[][] grid, int i, int j) {        if (i < 0 || i >= grid.length || j < 0 || j >= grid[0].length            || grid[i][j] == '0') return;        grid[i][j] = '0';        dfs(grid, i+1, j); dfs(grid, i-1, j);        dfs(grid, i, j+1); dfs(grid, i, j-1);    }}```## 16.8 本章小结
+- 图是表示复杂关系的数据结构，存储方式有邻接表和邻接矩阵
+- DFS适合路径搜索、连通分量，BFS适合最短路径、层次遍历
+- Dijkstra求单源最短路，Floyd求多源最短路
+- 拓扑排序用于任务依赖排序

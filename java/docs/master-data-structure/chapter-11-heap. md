@@ -1,0 +1,212 @@
+# 第11章 堆与优先级队列
+## 11.1 堆的原理
+### 解决的问题
+堆（Heap）是一种**完全二叉树**，通过**堆序性质**实现快速获取最大/最小值。解决的问题：
+- 动态TopK问题
+- 优先级调度
+- 堆排序
+- 合并有序文件
+### 堆的分类
+| 类型 | 特点 | 根节点 |
+|------|------|--------|
+| 最大堆 | 父节点 ≥ 子节点 | 最大值 |
+| 最小堆 | 父节点 ≤ 子节点 | 最小值 |
+### 堆的存储（数组）
+完全二叉树可以用数组存储：- 父节点：i
+- 左子：2i + 1
+- 右子：2i + 2
+```java
+// 数组表示
+[50, 30, 20, 15, 10, 8, 16]
+       50
+     /    \
+   30      20
+  /  \    /  \
+15   10  8   16
+```## 11.2 手写实现
+```java
+public class MinHeap<E> {
+    private Object[] heap;
+    private int size;
+    private final Comparator<E> comparator;
+
+    public MinHeap(int capacity, Comparator<E> comparator) {
+        this.heap = new Object[capacity];
+        this.comparator = comparator;
+    }
+
+    // 插入 - 上浮
+    public void offer(E e) {
+        heap[size] = e;
+        siftUp(size);
+        size++;
+    }
+
+    // 删除最小 - 下沉
+    @SuppressWarnings("unchecked")
+    public E poll() {
+        E result = (E) heap[0];
+        heap[0] = heap[--size];
+        heap[size] = null;
+        siftDown(0);
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void siftUp(int i) {
+        while (i > 0) {
+            int parent = (i - 1) / 2;
+            if (comparator.compare((E) heap[i], (E) heap[parent]) < 0) {
+                swap(i, parent);
+                i = parent;
+            } else break;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void siftDown(int i) {
+        while (2 * i + 1 < size) {
+            int smallest = 2 * i + 1;
+            int right = smallest + 1;
+            if (right < size && comparator.compare((E) heap[right], (E) heap[smallest]) < 0) {
+                smallest = right;
+            }
+            if (comparator.compare((E) heap[smallest], (E) heap[i]) < 0) {
+                swap(smallest, i);
+                i = smallest;
+            } else break;
+        }
+    }
+
+    private void swap(int i, int j) {
+        Object temp = heap[i];
+        heap[i] = heap[j];
+        heap[j] = temp;
+    }
+}
+```
+## 11.3 JDK源码：PriorityQueue
+```java
+// PriorityQueue（基于最小堆）
+public class PriorityQueue<E> extends AbstractQueue<E> implements Serializable {
+    private static final int DEFAULT_INITIAL_CAPACITY = 11;
+    transient Object[] queue;
+    private final Comparator<? super E> comparator;
+
+    public boolean offer(E e) {
+        if (e == null) throw new NullPointerException();
+        modCount++;
+        int i = size;
+        if (i >= queue.length) grow(i + 1);
+        size = i + 1;
+        if (i == 0) queue[0] = e;
+        else siftUp(i, e);
+        return true;
+    }
+
+    // 上浮
+    private void siftUp(int k, E x) {
+        if (comparator != null) {
+            siftUpUsingComparator(k, x);
+        } else {
+            siftUpComparable(k, x);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void siftUpUsingComparator(int k, E x) {
+        while (k > 0) {
+            int parent = (k - 1) >>> 1;
+            Object e = queue[parent];
+            if (comparator.compare(x, (E) e) >= 0) break;
+            queue[k] = e;
+            k = parent;
+        }
+        queue[k] = x;
+    }
+
+    // 下沉
+    private void siftDown(int k, E x) {
+        if (comparator != null) {
+            siftDownUsingComparator(k, x);
+        } else {
+            siftDownComparable(k, x);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void siftDownUsingComparator(int k, E x) {
+        int half = size >>> 1;
+        while (k < half) {
+            int child = (k << 1) + 1;
+            Object c = queue[child];
+            int right = child + 1;
+            if (right < size && comparator.compare((E) c, (E) queue[right]) > 0) {
+                c = queue[child = right];
+            }
+            if (comparator.compare(x, (E) c) <= 0) break;
+            queue[k] = c;
+            k = child;
+        }
+        queue[k] = x;
+    }
+}
+```## 11.4 使用场景
+| 场景 | 使用方式 | 说明 |
+|------|----------|------|
+| TopK | 小顶堆 | 维护k个最大元素 |
+| 中位数 | 两个堆 | 大顶堆+小顶堆 |
+| 优先级调度 | 优先级队列 | 按优先级出队 |
+| 合并有序流 | 最小堆 | 贪心合并 |
+## 11.5 典型问题
+### TopK问题
+```java
+// 静态TopK - 排序 O(nlogn)
+public List<Integer> topK1(int[] arr, int k) {
+    Arrays.sort(arr);
+    return Arrays.stream(arr).boxed()
+        .skip(arr.length - k).collect(Collectors.toList());
+}
+
+// 动态TopK - 堆 O(nlogk)
+public List<Integer> topK2(int[] arr, int k) {
+    PriorityQueue<Integer> minHeap = new PriorityQueue<>();
+    for (int num : arr) {
+        if (minHeap.size() < k) minHeap.offer(num);
+        else if (num > minHeap.peek()) {
+            minHeap.poll();
+            minHeap.offer(num);
+        }
+    }
+    return new ArrayList<>(minHeap);
+}
+```### 流中中位数
+```java
+class MedianFinder {
+    private PriorityQueue<Integer> maxHeap; // 大顶堆，存较小的一半
+    private PriorityQueue<Integer> minHeap; // 小顶堆，存较大的一半
+
+    public MedianFinder() {
+        maxHeap = new PriorityQueue<>(Collections.reverseOrder());
+        minHeap = new PriorityQueue<>();
+    }
+
+    public void addNum(int num) {
+        maxHeap.offer(num);
+        minHeap.offer(maxHeap.poll());
+        if (maxHeap.size() < minHeap.size()) {
+            maxHeap.offer(minHeap.poll());
+        }
+    }
+
+    public double findMedian() {
+        return maxHeap.size() > minHeap.size()
+            ? maxHeap.peek()
+            : (maxHeap.peek() + minHeap.peek()) / 2.0;
+    }
+}
+```## 11.6 本章小结
+- 堆是完全二叉树，通过数组高效存储
+- 插入删除都是O(log n)，获取最值O(1)
+- PriorityQueue是Java的标准实现
+- 适合TopK、中位数、优先级调度等场景

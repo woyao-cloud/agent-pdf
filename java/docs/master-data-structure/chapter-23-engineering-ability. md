@@ -1,0 +1,110 @@
+# 第23章 工程实践能力
+## 23.1 JDK集合源码阅读方法
+### 为什么要读源码
+1. **学习优秀设计**：源码是最佳实践
+2. **理解底层原理**：解决疑难问题
+3. **提升编码能力**：学习编码风格
+4. **应对面试**：深入理解原理
+### 阅读方法
+```
+第一步：看整体结构
+├── 类继承关系
+├── 核心接口
+└── 主要方法
+
+第二步：看核心实现
+├── 构造函数
+├── 增删改查
+└── 扩容机制
+
+第三步：看边界处理
+├── 空值处理
+├── 并发处理
+└── 异常处理
+```### 源码阅读顺序推荐
+```java
+// 推荐阅读顺序（由简到繁）1. ArrayList       - 数组实现，最简单
+2. LinkedList     - 链表实现，理解指针操作3. HashMap        - 核心，理解哈希和红黑树
+4. ConcurrentHashMap - 并发控制5. ArrayDeque    - 循环数组设计6. PriorityQueue  - 堆实现7. TreeMap        - 红黑树实现```### HashMap源码精读示例
+```java// 核心问题：HashMap 为什么在 JDK8 引入红黑树？//
+// 背景：
+// - 哈希冲突时使用链表，O(n)查找
+// - 当链表过长（>8）时，退化为O(n)//
+// 解决：// - 链表过长时转为红黑树，O(log n)查找// - 小于6个节点时转回链表（避免频繁转换）
+// - 树化条件：链表长度>=8 且 数组容量>=64// - 转换阈值：链表<=6时转回链表public class HashMap<K, V> {    // 树化阈值    static final int TREEIFY_THRESHOLD = 8;    // 链表化阈值    static final int UNTREEIFY_THRESHOLD = 6;    // 最小树化容量    static final int MIN_TREEIFY_CAPACITY = 64;    // 树化    final void treeifyBin(Node<K,V>[] tab, int hash) {        int n, index; Node<K,V> e;        if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY) {            resize();  // 容量小则扩容而非树化        } else if ((e = tab[index = (n - 1) & hash]) != null) {            TreeNode<K,V> hd = null, tl = null;            do {                TreeNode<K,V> p = replacementTreeNode(e, null);                if (tl == null) hd = p;                else { p.prev = tl; tl.next = p; }                tl = p;            } while ((e = e.next) != null);            tab[index] = hd.treeify(tab);        }    }}
+```## 23.2 开源项目中的数据结构
+### Redis中的数据结构
+```c
+// Redis 内部数据结构// 1. 动态字符串 (SDS)// 2. 压缩列表 (ziplist)// 3. 快速列表 (quicklist) - 多个ziplist组成// 4. 字典 (dict) - 哈希表实现// 5. 跳跃表 (skiplist) - 有序集合// 6. 整数集合 (intset) - 整数集合// 7. 压缩列表 (ziplist) - 内存优化```### MySQL中的数据结构
+```sql
+-- MySQL 索引数据结构-- 1. B+树（InnoDB）-- 2. 哈希索引（Memory/NDB）-- 3. R树（空间索引）-- 4. 全文索引（倒排索引）
+--
+-- 为什么选择B+树？-- 1. 磁盘IO友好（多叉树，树高低）-- 2. 范围查询友好（叶子节点链表）-- 3. 查询稳定（O(log n)）```### Guava中的数据结构
+```java
+// Guava 提供的增强数据结构
+// 1. ImmutableList/Map/Set - 不可变集合
+// 2. Multiset - 可计数集合
+// 3. Multimap - 一键多值Map// 4. BiMap - 双向Map
+// 5. Table - 二维Map// 6. RangeSet/RangeMap - 区间Map// 7. Cache - 增强缓存```## 23.3 生产环境问题排查
+### 常见问题与排查
+```java
+// 问题1：HashMap 在 JDK7 并发下可能导致死循环//
+// 原因：头插法 + 并发扩容 = 环形链表//
+// 解决：// - JDK8 改为尾插法// - 使用 ConcurrentHashMap// - 避免在多线程中共享 HashMap// 症状：CPU 100%，程序卡死//
+// 问题2：ArrayList 频繁扩容导致性能下降
+//
+// 解决：// - 预分配容量: new ArrayList<>(10000)// - 合理的初始容量// 症状：GC频繁，性能抖动
+//
+// 问题3：LinkedList 内存碎片//
+// 解决：// - 频繁插入删除优先考虑 LinkedList// - 遍历多时考虑 ArrayList// 症状：内存占用高
+//
+// 问题4：ConcurrentHashMap 弱一致性//
+// 解决：// - 理解弱一致性：迭代可能不反映最新状态// - 需要强一致使用 synchronizedMap```### 排查工具
+```java
+// 1. jstack - 线程堆栈分析
+// jstack <pid> > stack.txt//
+// 2. jmap - 内存分析
+// jmap -heap <pid>    // 堆信息// jmap -histo <pid>   // 对象统计// jmap -dump:format=b,file=heap.hprof <pid>//
+// 3. jconsole/JVisualVM - 图形化监控//
+// 4. arthas - 阿里诊断工具// arthas dashboard// watch com.xxx.Class method params returnObj```## 23.4 技术选型与风险评估
+### 技术选型矩阵
+```java// 数据结构选型评估public class SelectionEvaluation {    public static void main(String[] args) {        // 评估维度        // 1. 性能：时间复杂度、空间复杂度        // 2. 维护：代码复杂度、可读性        // 3. 团队：学习成本、经验        // 4. 生态：框架支持、社区活跃度        // 5. 风险：稳定性、安全性、兼容性    }}```### 选型决策示例
+```java
+// 场景：实现一个 10万QPS 的缓存系统//
+// 考虑因素：// 1. 并发安全 - 必须线程安全// 2. 性能 - 高吞吐// 3. 内存 - 控制内存占用//
+// 方案对比：// | 方案 | 优点 | 缺点 | 适用场景 |// | HashMap | 简单 | 需自行同步 | 单线程 |// | ConcurrentHashMap | 线程安全 | 稍复杂 | 高并发 |// | Guava Cache | 功能丰富 | 依赖外部 | 中等规模 |// | Caffeine | 性能更高 | 较新 | 高性能 |// | Redis | 分布式 | 需要网络 | 分布式 |//
+// 选择：// - 单机：ConcurrentHashMap 或 Caffeine// - 分布式：Redis
+//
+// 风险控制：// - 容量限制，防止OOM// - 淘汰策略// - 监控告警```## 23.5 持续学习建议
+### 保持技术敏感度
+```
+1. 关注源码更新
+   ├── JDK新版本特性
+   ├── 第三方库更新
+   └── 业界实践案例
+
+2. 深入原理
+   ├── 手写实现
+   ├── 源码精读
+   └── 论文阅读
+
+3. 实践出真知
+   ├── 项目实践
+   ├── 问题复盘
+   └── 性能优化
+
+4. 交流分享
+   ├── 技术社区
+   └── 内部分享
+```### 推荐学习资源
+```java
+// 书籍：
+// 1. 《算法导论》- 经典教材// 2. 《数据结构与算法分析》- Java实现
+// 3. 《Java核心技术 卷I》- 基础// 4. 《Effective Java》- 最佳实践//
+// 源码：
+// 1. JDK 源码(java.util包)// 2. Guava 源码// 3. Netty 源码// 4. Redis 源码//
+// 实践：// 1. LeetCode 刷题// 2. 开源项目贡献// 3. 技术博客写作```## 23.6 本章小结
+- JDK源码是学习的最佳资源，推荐由简到繁阅读
+- 开源项目中有丰富的最佳实践可学习
+- 生产问题需要结合工具和原理定位
+- 技术选型要综合评估，评估风险

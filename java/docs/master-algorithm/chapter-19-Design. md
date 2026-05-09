@@ -1,0 +1,30 @@
+# 第19章 算法设计能力
+## 19.1 如何分析问题
+```java
+// 问题分析步骤
+// 1. 理解需求
+//    - 输入是什么，输出是什么
+//    - 约束条件：数据规模、时间限制、空间限制
+//    - 边界情况
+// 2. 初步分析
+//    - 数据特征（有序/无序、范围、分布）
+//    - 规模估计（n大小）
+//    - 类似问题参考
+// 3. 选择策略
+//    - 分治/贪心/DP/回溯/枚举
+// 4. 复杂度分析
+// 5. 代码实现与测试```### 问题分析案例：LRU缓存设计
+```java
+class LRUCache {    private int capacity;    private LinkedHashMap<Integer, Integer> cache;    public LRUCache(int capacity) {        this.capacity = capacity;        this.cache = new LinkedHashMap<>(capacity, 0.75f, true) {            @Override protected boolean removeEldestEntry(Map.Entry eldest) {                return size() > LRUCache.this.capacity; }        };    }    public int get(int key) { return cache.getOrDefault(key, -1); }    public void put(int key, int value) { cache.put(key, value); }}```## 19.2 如何选择算法策略
+```java
+// 算法选择决策树// 1. 需要找所有解？ → 回溯// 2. 最有优解？→ 2.1 有最优子结构？→ 2.1.1 贪心选择性质？→ 贪心//                 → 2.1.2 重叠子问题？→ DP//          → 2.2 近似可接受？→ 启发式// 3. 搜索/遍历？ → 3.1 最短路径？→ BFS/DFS/Dijkstra//          → 3.2 连通分量？→ 并查集// 4. 查找？→ 4.1 有序？→ 二分//       → 4.2 无序？→ 哈希```## 19.3 算法正确性证明
+```java
+// 证明方法：数学归纳法、交换论证法、反证法// 示例：活动选择贪心正确性证明/*
+证明：选择最早结束的活动能获得最优解
+设A={a1,a2,...,ak}是按结束时间排序的活动序列
+最优解O的第一个活动是am（不是a1）
+因为a1.end <= am.end，用a1替换am得到O'
+O'仍然是可行解且活动数不减少
+重复替换，得到包含a1的最优解
+得证。
+*/```## 19.4 本章小结- 问题分析：理解需求→分析特征→选择策略→复杂度分析- 算法选择：根据问题特征选择合适的算法策略- 正确性证明：归纳法、交换论证、反证法

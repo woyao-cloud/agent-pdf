@@ -1,0 +1,22 @@
+# 第21章 算法工程实践
+## 21.1 开源算法库学习
+```java
+// 推荐学习的开源算法库
+// 1. JDK源码：java.util包中的集合、Arrays、Collections
+// 2. Google Guava：丰富的集合工具、缓存、并发
+// 3. Apache Commons：常用工具类
+// 4. FastUtil：高性能Java集合// 5. HPPC：基础类型集合
+// 6. Trove：快速Java集合```### 源码阅读方法
+```java
+// 1. 看整体结构（类图、接口）// 2. 看核心方法实现// 3. 理解边界处理、异常处理// 4. 分析复杂度
+// 示例：HashMap源码分析// - 核心字段：table、size、threshold、loadFactor// - put方法：计算hash、索引定位、链表/红黑树处理、扩容// - get方法：类似put// - 扩容：2倍扩容rehash```## 21.2 生产环境问题排查
+```java
+// 常见问题：// 1. StackOverflowError - 递归深度过大//    解决：改为迭代或增加栈大小 -Xss// 2. OutOfMemoryError - 内存溢出//    解决：优化空间或增加内存// 3. 性能问题 - 复杂度高//    解决：选择更优算法// 4. 线程安全 - 并发问题//    解决：使用并发集合```### 排查工具
+```java
+// 1. jstack - 线程分析// jstack <pid>// 2. jmap - 内存分析// jmap -heap <pid>// 3. VisualVM - 性能监控// 4. async-profiler - 低开销采样```## 21.3 算法选型与风险评估
+```java
+// 算法选型考虑因素
+class AlgorithmSelection {    // 1. 数据规模    void selectByScale(int n) {        if (n < 1000) O(n^2);        else if (n < 100000) O(n log n);        else O(n);    }    // 2. 数据特征    void selectByFeature(int[] arr, boolean sorted) {        if (sorted) binarySearch();  // O(log n)        else linearSearch();  // O(n)    }    // 3. 空间限制    void selectBySpace(int memory) {        if (memory < 1000) O(1)空间;        else 可用额外空间    }    // 4. 实时要求    void selectByLatency(long deadline) {        if (deadline < 1ms) O(1);        else if (deadline < 10ms) O(log n);        else O(n log n);    }}```## 21.4 持续学习路径
+```java
+// 算法学习路线// 入门：数组、链表、栈、队列、排序、查找// 进阶：树、图、动态规划、贪心、回溯// 高级：网络流、字符串算法、近似算法// 实战：LeetCode、竞赛、项目应用
+// 持续学习：// - 每日一题（LeetCode）// - 周赛// - 阅读源码// - 参与开源// - 技术分享```## 21.5 本章小结- 源码学习：HashMap、ConcurrentHashMap、ArrayList- 问题排查：jstack、jmap、VisualVM- 算法选型：规模、特征、空间、时间- 持续学习：实践、源码、分享

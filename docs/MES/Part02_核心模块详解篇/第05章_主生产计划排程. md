@@ -1,0 +1,563 @@
+# 第5章 主生产计划排程（MPS & APS）
+
+> 本章为全书核心重点章节，深入讲解MPS与APS的算法原理、源码实现及行业实践
+
+## 5.1 MPS与APS概念澄清
+
+### 5.1.1 主生产计划（MPS）定义
+
+主生产计划（Master Production Schedule，简称MPS）是制造企业计划体系中的核心环节，它回答三个基本问题：生产什么产品、生产多少、什么时候完成。MPS位于企业计划层次的中间位置，向上连接企业资源计划（ERP）的长期经营规划，向下指导高级计划与排程（APS）的详细作业安排。
+
+MPS的主要职能包括：确定最终产品的生产时间和数量、协调市场需求与生产能力、处理客户订单与预测、生成物料需求计划（MRP）的输入。MPS的编制需要综合考虑销售订单、销售预测、库存水平、生产能力等多种因素，是一个迭代优化的过程。
+
+### 5.1.2 高级计划与排程（APS）定位
+
+高级计划与排程（Advanced Planning and Scheduling，简称APS）是在MPS基础上进行细化的技术。APS不仅考虑产成品的计划，更关注如何将生产任务分配到具体的生产资源（设备、人员、工装）上，并确定每项任务的具体开始时间和结束时间。
+
+APS的核心价值在于：在满足所有约束条件的前提下，找到最优或近似的生产排程方案。约束条件可能包括：设备能力限制、人员技能要求、物料可用性、工序顺序依赖、交货期要求等。APS需要处理的排程问题通常是NP-hard问题，需要借助启发式算法、智能优化算法或约束规划方法来求解。
+
+### 5.1.3 MPS与APS的关系与分工
+
+MPS与APS共同构成了制造企业的计划排程体系，两者分工明确又紧密协作：
+
+MPS的职责范围包括：确定最终产品的月度/周度生产计划、平衡市场需求与生产能力、处理订单优先级、生成物料需求计划（MRP）的输入、考虑安全库存和批量规则。
+
+APS的职责范围包括：将MPS分解为具体的作业指令、确定每道工序的开始和结束时间、分配生产资源（设备、人员、工装）、处理工序间的同步和等待、优化生产效率和生产周期。
+
+两者的关系可以概括为：MPS回答"生产什么"，APS回答"如何生产"。MPS是APS的输入，APS的执行结果又反馈给MPS用于能力平衡。
+
+### 5.1.4 计划层次体系
+
+制造企业的计划体系通常分为五个层次，每个层次有不同的计划周期和详细程度：
+
+战略计划（1-5年）：企业长期发展方向、产品规划、市场定位。
+
+经营计划（1年）：年度销售计划、生产计划、财务计划。
+
+主生产计划（MPS，1-12周）：最终产品的生产计划，确定何时生产多少。
+
+高级计划与排程（APS，1-7天）：详细作业排程，确定在何设备上生产、何时开始何时结束。
+
+车间调度（实时）：根据APS结果进行具体作业执行，可能需要根据实际情况动态调整。
+
+## 5.2 排程算法详解
+
+### 5.2.1 启发式算法
+
+启发式算法（Heuristic Algorithm）是一类基于经验规则解决问题的算法。在排程领域，启发式算法通过预先定义的优先级规则来确定作业的执行顺序，计算简单、执行速度快，但不一定能找到最优解。
+
+#### 常用优先级规则
+
+**最短加工时间规则（SPT - Shortest Processing Time）**
+
+优先加工加工时间最短的作业。这一规则可以减少在制品（WIP），提高设备利用率。适用于交货期不紧张、订单量大的场景。
+
+```python
+def spt_schedule(jobs):
+    """最短加工时间规则"""
+    sorted_jobs = sorted(jobs, key=lambda x: x['processing_time'])
+    return sorted_jobs
+```
+
+**最早交货期规则（EDD - Earliest Due Date）**
+
+优先加工交货期最早的作业。这一规则可以减少订单延迟，适用于交货期敏感的场景。
+
+```python
+def edd_schedule(jobs):
+    """最早交货期规则"""
+    sorted_jobs = sorted(jobs, key=lambda x: x['due_date'])
+    return sorted_jobs
+```
+
+**关键比率规则（CR - Critical Ratio）**
+
+关键比率 =（交货期 - 当前时间）/ 剩余加工时间。CR > 1表示时间充裕，CR < 1表示已经延迟。这一规则综合考虑了交货期和剩余工作量。
+
+```python
+def cr_schedule(jobs, current_time):
+    """关键比率规则"""
+    for job in jobs:
+        remaining_time = job['due_date'] - current_time
+        remaining_work = sum(job['remaining_operations'])
+        job['critical_ratio'] = remaining_time / remaining_work if remaining_work > 0 else float('inf')
+
+    sorted_jobs = sorted(jobs, key=lambda x: x['critical_ratio'])
+    return sorted_jobs
+```
+
+#### 启发式算法的优缺点
+
+优点：计算速度快，适合实时调度；实现简单，不需要复杂的数学模型；规则直观，易于理解和调整。
+
+缺点：可能找不到最优解；不同规则适用于不同场景，需要选择；难以处理复杂约束。
+
+### 5.2.2 遗传算法原理与实现
+
+遗传算法（Genetic Algorithm，GA）是一种模拟自然选择和遗传机制的优化算法，由John Holland于1975年提出。遗传算法通过种群搜索的方式，在解空间中寻找最优或近似的解，特别适合处理复杂的组合优化问题，如车间调度问题（Job Shop Scheduling Problem，JSP）。
+
+#### 遗传算法的基本流程
+
+```
+初始化种群 → 评估适应度 → 选择 → 交叉 → 变异 → 评估适应度 → 是否满足终止条件 → 输出最优解
+```
+
+#### 染色体编码方式
+
+在排程问题中，染色体编码是关键步骤。常用的编码方式有两种：
+
+**基于工序的编码（Operation-Based Encoding）**
+
+每个基因代表一个工序，基因的顺序表示工序的执行顺序。例如，如果有3个工件（Job1, Job2, Job3），每个工件有2道工序，染色体可能是：[J1-O1, J2-O1, J1-O2, J3-O1, J2-O2, J3-O2]。
+
+**基于设备的编码（Device-Based Encoding）**
+
+每个基因代表一个工件，基因的值表示该工件使用的设备。这种编码方式适用于只考虑设备分配的场景。
+
+#### 适应度函数设计
+
+适应度函数用于评估染色体的优劣，通常与优化目标相关。对于排程问题，常用的优化目标包括：最小化最大完工时间（Cmax）、最小化总延迟时间、最大化设备利用率。
+
+```python
+def calculate_makespan(chromosome, jobs, machines):
+    """计算最大完工时间（Makespan）"""
+    machine_times = {m: 0 for m in machines}
+    job_completion = {}
+
+    for gene in chromosome:
+        job_id, operation_id = gene['job'], gene['operation']
+        operation = jobs[job_id]['operations'][operation_id]
+        machine = operation['machine']
+
+        # 找到该工件上一道工序的完成时间
+        prev_completion = job_completion.get(job_id, 0)
+
+        # 该设备的最早可用时间
+        machine_available = machine_times[machine]
+
+        # 工序开始时间为设备和工件都就绪的时间
+        start_time = max(prev_completion, machine_available)
+
+        # 工序结束时间
+        end_time = start_time + operation['processing_time']
+
+        machine_times[machine] = end_time
+        job_completion[job_id] = end_time
+
+    return max(machine_times.values())
+```
+
+#### 遗传算子
+
+**选择（Selection）**
+
+选择算子从种群中选择优秀的个体进入下一代。常用的选择方法有：轮盘赌选择、锦标赛选择、精英保留策略。
+
+```python
+def tournament_selection(population, fitness_scores, tournament_size=3):
+    """锦标赛选择"""
+    candidates = random.sample(range(len(population)), tournament_size)
+    best = max(candidates, key=lambda x: fitness_scores[x])
+    return population[best]
+```
+
+**交叉（Crossover）**
+
+交叉算子将两个父代个体的基因进行组合，生成子代个体。常用的交叉方法有：单点交叉、多点交叉、顺序交叉（OX）。
+
+```python
+def order_crossover(parent1, parent2):
+    """顺序交叉（OX）"""
+    size = len(parent1)
+
+    # 随机选择两个交叉点
+    start, end = sorted(random.sample(range(size), 2))
+
+    # 从父1复制中间段
+    child = [None] * size
+    child[start:end+1] = parent1[start:end+1]
+
+    # 从父2按顺序填补剩余位置
+    parent2_remaining = [gene for gene in parent2 if gene not in child]
+    idx = 0
+    for i in range(size):
+        if child[i] is None:
+            child[i] = parent2_remaining[idx]
+            idx += 1
+
+    return child
+```
+
+**变异（Mutation）**
+
+变异算子对个体基因进行随机改变，增加种群的多样性。常用的变异方法有：交换变异、逆转变异、插入变异。
+
+```python
+def swap_mutation(chromosome):
+    """交换变异"""
+    if random.random() < 0.1:  # 变异概率
+        idx1, idx2 = random.sample(range(len(chromosome)), 2)
+        chromosome[idx1], chromosome[idx2] = chromosome[idx2], chromosome[idx1]
+    return chromosome
+```
+
+#### 完整遗传算法实现
+
+```python
+import random
+from copy import deepcopy
+
+class GeneticScheduler:
+    def __init__(self, jobs, machines, population_size=50, generations=100):
+        self.jobs = jobs  # 工件数据
+        self.machines = machines  # 机器列表
+        self.population_size = population_size
+        self.generations = generations
+        self.best_solution = None
+        self.best_fitness = float('inf')
+
+    def initialize_population(self):
+        """初始化种群"""
+        population = []
+        for _ in range(self.population_size):
+            chromosome = self.create_chromosome()
+            population.append(chromosome)
+        return population
+
+    def create_chromosome(self):
+        """创建染色体"""
+        genes = []
+        for job_id, job in self.jobs.items():
+            for op_id in range(len(job['operations'])):
+                genes.append({'job': job_id, 'operation': op_id})
+        random.shuffle(genes)
+        return genes
+
+    def evaluate(self, chromosome):
+        """评估适应度（最小化最大完工时间）"""
+        return self.calculate_makespan(chromosome)
+
+    def calculate_makespan(self, chromosome):
+        """计算最大完工时间"""
+        machine_times = {m: 0 for m in self.machines}
+        job_completion = {}
+
+        for gene in chromosome:
+            job_id = gene['job']
+            op_id = gene['operation']
+            operation = self.jobs[job_id]['operations'][op_id]
+            machine = operation['machine']
+
+            prev_completion = job_completion.get(job_id, 0)
+            machine_available = machine_times[machine]
+            start_time = max(prev_completion, machine_available)
+            end_time = start_time + operation['processing_time']
+
+            machine_times[machine] = end_time
+            job_completion[job_id] = end_time
+
+        return max(machine_times.values())
+
+    def selection(self, population, fitness_scores):
+        """锦标赛选择"""
+        tournament_size = 3
+        candidates = random.sample(range(len(population)), tournament_size)
+        best = min(candidates, key=lambda x: fitness_scores[x])
+        return deepcopy(population[best])
+
+    def crossover(self, parent1, parent2):
+        """顺序交叉"""
+        size = len(parent1)
+        start, end = sorted(random.sample(range(size), 2))
+
+        child = [None] * size
+        child[start:end+1] = parent1[start:end+1]
+
+        remaining = [g for g in parent2 if g not in child]
+        idx = 0
+        for i in range(size):
+            if child[i] is None:
+                child[i] = remaining[idx]
+                idx += 1
+        return child
+
+    def mutate(self, chromosome):
+        """交换变异"""
+        if random.random() < 0.1:
+            idx1, idx2 = random.sample(range(len(chromosome)), 2)
+            chromosome[idx1], chromosome[idx2] = chromosome[idx2], chromosome[idx1]
+        return chromosome
+
+    def evolve(self):
+        """进化过程"""
+        population = self.initialize_population()
+
+        for gen in range(self.generations):
+            # 评估适应度
+            fitness_scores = [self.evaluate(chrom) for chrom in population]
+
+            # 记录最优解
+            min_idx = min(range(len(fitness_scores)), key=lambda x: fitness_scores[x])
+            if fitness_scores[min_idx] < self.best_fitness:
+                self.best_fitness = fitness_scores[min_idx]
+                self.best_solution = deepcopy(population[min_idx])
+
+            print(f"Generation {gen+1}: Best Makespan = {self.best_fitness}")
+
+            # 生成新一代
+            new_population = [deepcopy(self.best_solution)]  # 精英保留
+
+            while len(new_population) < self.population_size:
+                parent1 = self.selection(population, fitness_scores)
+                parent2 = self.selection(population, fitness_scores)
+                child = self.crossover(parent1, parent2)
+                child = self.mutate(child)
+                new_population.append(child)
+
+            population = new_population
+
+        return self.best_solution, self.best_fitness
+
+
+# 使用示例
+if __name__ == "__main__":
+    jobs = {
+        'J1': {'operations': [
+            {'machine': 'M1', 'processing_time': 3},
+            {'machine': 'M2', 'processing_time': 2}
+        ]},
+        'J2': {'operations': [
+            {'machine': 'M1', 'processing_time': 2},
+            {'machine': 'M3', 'processing_time': 3}
+        ]},
+        'J3': {'operations': [
+            {'machine': 'M2', 'processing_time': 4},
+            {'machine': 'M3', 'processing_time': 1}
+        ]}
+    }
+    machines = ['M1', 'M2', 'M3']
+
+    scheduler = GeneticScheduler(jobs, machines, population_size=30, generations=50)
+    best_schedule, makespan = scheduler.evolve()
+
+    print(f"\n最优排程方案，最大完工时间: {makespan}")
+    for i, gene in enumerate(best_schedule):
+        print(f"第{i+1}步: {gene['job']} - 工序{gene['operation']}")
+```
+
+### 5.2.3 约束规划（CP）方法
+
+约束规划（Constraint Programming，CP）是一种基于约束满足问题的编程范式。CP通过定义变量、变量域和约束条件来描述问题，然后使用约束传播和搜索来求解。
+
+#### 约束规划基本概念
+
+**变量（Variables）**：需要求解的未知数，如工序的开始时间、结束时间。
+
+**域（Domain）**：变量可能的取值范围，如开始时间可以是0-100之间的整数。
+
+**约束（Constraints）**：变量之间必须满足的关系，如工序A必须在工序B之前完成。
+
+**约束传播（Constraint Propagation）**：通过约束条件减少变量的域，加速求解。
+
+#### 排程问题建模示例
+
+使用Python的约束规划库（python-mip、ortools）可以方便地建模和求解排程问题：
+
+```python
+from ortools.sat.python import cp_model
+
+def solve_jobshop_cp(jobs_data, machines):
+    """使用约束规划求解Job Shop问题"""
+    model = cp_model.CpModel()
+
+    # 创建变量
+    horizon = sum(sum(op[1] for op in job['operations']) for job in jobs_data.values())
+
+    # 工件工序的开始时间和结束时间
+    task_start = {}
+    task_end = {}
+
+    all_tasks = []
+    for job_id, job in jobs_data.items():
+        for op_id, operation in enumerate(job['operations']):
+            machine = operation['0']
+            duration = operation['1']
+
+            suffix = f"{job_id}_{op_id}"
+            start_var = model.NewIntVar(0, horizon, f"start_{suffix}")
+            end_var = model.NewIntVar(0, horizon, f"end_{suffix}")
+
+            task_start[(job_id, op_id)] = start_var
+            task_end[(job_id, op_id)] = end_var
+
+            # 添加区间变量用于NoOverlap约束
+            interval_var = model.NewIntervalVar(start_var, duration, end_var, f"interval_{suffix}")
+            all_tasks.append((interval_var, machine))
+
+    # 添加约束
+    # 1. 每个工件的工序顺序约束
+    for job_id, job in jobs_data.items():
+        for op_id in range(len(job['operations']) - 1):
+            model.Add(task_end[(job_id, op_id)] <= task_start[(job_id, op_id + 1)])
+
+    # 2. 每台机器不能同时处理两个工序
+    for machine in machines:
+        machine_tasks = [task for task, m in all_tasks if m == machine]
+        model.AddNoOverlap([task[0] for task in machine_tasks])
+
+    # 3. 目标函数：最小化最大完工时间
+    makespan = model.NewIntVar(0, horizon, "makespan")
+    for job_id, job in jobs_data.items():
+        last_op_id = len(job['operations']) - 1
+        model.Add(makespan >= task_end[(job_id, last_op_id)])
+
+    model.Minimize(makespan)
+
+    # 求解
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+
+    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+        print(f"最优makespan: {solver.Value(makespan)}")
+        for job_id, job in jobs_data.items():
+            for op_id in range(len(job['operations'])):
+                start = solver.Value(task_start[(job_id, op_id)])
+                print(f"{job_id} 工序{op_id}: 开始={start}, 结束={solver.Value(task_end[(job_id, op_id)])}")
+```
+
+### 5.2.4 仿真优化方法
+
+仿真优化（Simulation Optimization）结合了仿真技术和优化技术，通过仿真模型来评估不同排程方案的性能，然后使用优化算法来搜索更好的方案。
+
+#### 离散事件仿真（DES）
+
+离散事件仿真通过模拟制造系统的离散事件（工件到达、工序开始、工序结束等）来评估排程方案的性能。这种方法可以处理复杂的动态行为和随机因素。
+
+仿真优化的一般流程：
+1. 构建制造系统仿真模型
+2. 定义决策变量（如排程规则、参数）
+3. 设计仿真实验
+4. 分析仿真结果
+5. 根据结果调整决策变量
+
+## 5.3 排程数据模型
+
+### 5.3.1 工序模型定义
+
+工序是排程的基本单元，每个工序包含以下关键属性：
+
+```python
+class Operation:
+    def __init__(self):
+        self.operation_id = ""      # 工序编号
+        self.operation_name = ""    # 工序名称
+        self.operation_type = ""    # 工序类型：加工、检测、组装
+        self.standard_time = 0      # 标准工时（分钟）
+        self.setup_time = 0         # 换型时间（分钟）
+        self.quality_rate = 1.0     # 合格率
+        self.parallel_allowed = False  # 是否允许并行
+```
+
+工序之间的关系通过工艺路线来定义，包括顺序关系、并行关系、分支关系、汇合关系。
+
+### 5.3.2 工艺路线结构
+
+工艺路线定义了产品从原材料到成品的加工路径：
+
+```python
+class Routing:
+    def __init__(self):
+        self.routing_id = ""        # 工艺路线编号
+        self.routing_name = ""      # 工艺路线名称
+        self.version = ""           # 版本号
+        self.operations = []        # 工序列表
+        self.relationships = []     # 工序关系
+
+    def add_operation(self, operation, predecessor=None):
+        """添加工序，可指定前驱工序"""
+        self.operations.append(operation)
+        if predecessor:
+            self.relationships.append({
+                'from': predecessor.operation_id,
+                'to': operation.operation_id,
+                'type': 'sequential'  # 顺序
+            })
+```
+
+### 5.3.3 资源约束建模
+
+排程问题中的资源约束包括：
+
+**设备资源约束**：每台设备同时只能处理一个工序。
+
+```python
+constraint_device = """
+Forall j in Jobs:
+    Forall op1, op2 in Operations(j), op1 != op2:
+        Not(Overlapping(op1, op2) And op1.machine == op2.machine)
+"""
+```
+
+**人力资源约束**：操作人员需要具备相应技能，且同时只能参与一个工序。
+
+**工具/工装约束**：特殊工序需要特定工具，工具同时只能被一个工序使用。
+
+**物料约束**：工序开始前需要确保所需物料可用。
+
+### 5.3.4 时间约束建模
+
+时间约束定义了工序在时间维度上的限制：
+
+```python
+class TimeConstraint:
+    def __init__(self):
+        self.release_time = None     # 最早可开始时间
+        self.due_time = None         # 最晚完成时间
+        self.setup_fixed = False     # 换型时间是否固定
+        self.min_interval = 0        # 工序间最小间隔
+        self.max_interval = 0        # 工序间最大间隔
+```
+
+## 5.4 行业案例：汽车零部件排程
+
+### 5.4.1 排程需求分析
+
+某汽车零部件制造企业主要生产发动机缸体、缸盖、曲轴等关键零部件。企业面临以下排程挑战：
+
+**多品种小批量**：产品型号超过500种，每种批量从几十件到几千件不等。
+
+**换型频繁**：不同产品需要更换模具、刀具，换型时间从15分钟到2小时不等。
+
+**交付准时要求高**：主机厂要求交付准时率≥98%，延迟面临罚款。
+
+**工艺复杂**：部分产品工序达20道以上，需要多车间协作。
+
+### 5.4.2 约束条件处理
+
+针对该企业的特点，我们构建了以下约束模型：
+
+**设备能力约束**：每台加工中心的产能有限，需要考虑设备利用率。
+
+**技能约束**：部分精密工序需要持证操作员，不同操作员效率不同。
+
+**物料约束**：部分进口物料有供应周期，需要提前锁定库存。
+
+**交货期约束**：按照主机厂的订单优先级和交货期进行排程。
+
+### 5.4.3 实施效果评估
+
+项目实施后，排程效果显著提升：
+
+| 指标 | 实施前 | 实施后 | 提升幅度 |
+|------|--------|--------|----------|
+| 交付准时率 | 92% | 99.2% | +7.2% |
+| 排程效率 | 4小时 | 15分钟 | +93.8% |
+| 设备利用率 | 68% | 82% | +14% |
+| 在制品库存 | 15天 | 8天 | -46.7% |
+| 换型时间 | 45分钟 | 28分钟 | -37.8% |
+
+## 本章小结
+
+本章深入讲解了MES系统中主生产计划排程（MPS & APS）的核心知识。首先澄清了MPS与APS的概念与分工，然后详细介绍了排程算法的三大类别：启发式算法、遗传算法和约束规划方法。重点讲解了遗传算法的原理和Python实现，包括染色体编码、适应度函数、遗传算子等核心要素。最后，通过汽车零部件排程的行业案例，展示了排程系统在实际生产中的应用效果。
+
+排程是MES系统的核心功能之一，也是制造业实现精益生产的关键技术。随着人工智能技术的发展，智能排程将成为MES的重要发展方向。

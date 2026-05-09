@@ -1,0 +1,29 @@
+# 第19章 面试高频题型
+## 19.1 链表相关面试题
+### 1. 反转链表（高频）
+```java
+// 方法1：迭代
+public ListNode reverseList(ListNode head) {    ListNode prev = null, cur = head;    while (cur != null) {        ListNode next = cur.next;        cur.next = prev;        prev = cur;        cur = next;    }    return prev;}// 方法2：递归public ListNode reverseListRecursive(ListNode head) {    if (head == null || head.next == null) return head;    ListNode newHead = reverseListRecursive(head.next);    head.next.next = head; head.next = null;    return newHead;}```### 2. 链表是否有环
+```java
+public boolean hasCycle(ListNode head) {    ListNode slow = head, fast = head;    while (fast != null && fast.next != null) {        slow = slow.next;        fast = fast.next.next;        if (slow == fast) return true;    }    return false;}// 获取环的入口点public ListNode detectCycle(ListNode head) {    ListNode slow = head, fast = head;    while (fast != null && fast.next != null) {        slow = slow.next; fast = fast.next.next;        if (slow == fast) {            // 找到相遇点，快慢指针各走a步和a+n-b步            // 推导：a = n - b            slow = head;            while (slow != fast) { slow = slow.next; fast = fast.next; }            return slow;        }    }    return null;}```### 3. 合并两个有序链表
+```java
+public ListNode mergeTwoLists(ListNode l1, ListNode l2) {    ListNode dummy = new ListNode(0), cur = dummy;    while (l1 != null && l2 != null) {        if (l1.val <= l2.val) { cur.next = l1; l1 = l1.next; }        else { cur.next = l2; l2 = l2.next; }        cur = cur.next;    }    cur.next = l1 != null ? l1 : l2;    return dummy.next;}```### 4. 删除倒数第N个节点
+```java
+public ListNode removeNthFromEnd(ListNode head, int n) {    ListNode dummy = new ListNode(0, head);    ListNode slow = dummy, fast = head;    for (int i = 0; i < n; i++) fast = fast.next;    while (fast != null) {        slow = slow.next; fast = fast.next;    }    slow.next = slow.next.next;    return dummy.next;}```## 19.2 树相关面试题
+### 1. 二叉树最大深度
+```java
+public int maxDepth(TreeNode root) {    if (root == null) return 0;    return Math.max(maxDepth(root.left), maxDepth(root.right)) + 1;}```### 2. 二叉树镜像
+```java
+public TreeNode mirrorTree(TreeNode root) {    if (root == null) return null;    TreeNode temp = root.left;    root.left = mirrorTree(root.right);    root.right = mirrorTree(temp);    return root;}```### 3. 验证二叉搜索树
+```java
+public boolean isValidBST(TreeNode root) {    return validate(root, null, null);}private boolean validate(TreeNode node, TreeNode min, TreeNode max) {    if (node == null) return true;    if (min != null && node.val <= min.val) return false;    if (max != null && node.val >= max.val) return false;    return validate(node.left, min, node) && validate(node.right, node, max);}```### 4. 二叉树层序遍历
+```java
+public List<List<Integer>> levelOrder(TreeNode root) {    List<List<Integer>> result = new ArrayList<>();    if (root == null) return result;    Queue<TreeNode> q = new LinkedList<>();    q.offer(root);    while (!q.isEmpty()) {        int level = q.size();        List<Integer> list = new ArrayList<>();        for (int i = 0; i < level; i++) {            TreeNode node = q.poll();            list.add(node.val);            if (node.left != null) q.offer(node.left);            if (node.right != null) q.offer(node.right);        }        result.add(list);    }    return result;}```## 19.3 动态规划与数据结构结合
+### 1. 最长递增子序列
+```java
+public int lengthOfLIS(int[] nums) {    int[] dp = new int[nums.length];    int len = 0;    for (int num : nums) {        int i = Arrays.binarySearch(dp, 0, len, num);        if (i < 0) i = -(i + 1);        dp[i] = num;        if (i == len) len++;    }    return len;  // 二分+dp = O(n log n)}```### 2. 股票买卖系列（使用DP）```java// 买卖股票最佳时机（只允许一次交易）public int maxProfit1(int[] prices) {    int minPrice = Integer.MAX_VALUE, maxProfit = 0;    for (int p : prices) {        minPrice = Math.min(minPrice, p);        maxProfit = Math.max(maxProfit, p - minPrice);    }    return maxProfit;}// 买卖股票最佳时机（无限交易）public int maxProfit2(int[] prices) {    int profit = 0;    for (int i = 1; i < prices.length; i++)        if (prices[i] > prices[i-1])            profit += prices[i] - prices[i-1];    return profit;}```## 19.4 系统设计题：设计数据结构
+### LRU缓存
+```java
+class LRUCache {    private int capacity;    private Map<Integer, Integer> cache;    private LinkedHashMap<Integer, Integer> accessOrder;    public LRUCache(int capacity) {        this.capacity = capacity;        this.cache = new LinkedHashMap<>(capacity, 0.75f, true) {            @Override protected boolean removeEldestEntry(Map.Entry eldest) {                return size() > LRUCache.this.capacity;            }        };    }    public int get(int key) { return cache.getOrDefault(key, -1); }    public void put(int key, int value) { cache.put(key, value); }}```### 迷你Twitter```java
+class Twitter {    private Map<Integer, Set<Integer>> follows;    private Map<Integer, List<Tweet>> tweets;    private int time;    public Twitter() {        follows = new HashMap<>(); tweets = new HashMap<>();    }    public void postTweet(int userId, int tweetId) {        tweets.computeIfAbsent(userId, k -> new ArrayList<>()).add(0, new Tweet(++time, tweetId));    }    public List<Integer> getNewsFeed(int userId) {        PriorityQueue<Tweet> pq = new PriorityQueue<>(Comparator.comparingInt(t -> t.time).reversed());        // 合并用户的推文...        return null;  // 简化    }    public void follow(int followerId, int followeeId) {        follows.computeIfAbsent(followerId, k -> new HashSet<>()).add(followeeId);    }}```## 19.5 本章小结- 链表高频题：反转、有环检测、合并、删除倒数N个
+- 树高频题：深度、镜像、验证、层序遍历- 动态规划结合数据结构是难点- 系统设计题考察综合能力

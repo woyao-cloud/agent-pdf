@@ -1,0 +1,36 @@
+# 第15章 面试高频算法题
+## 15.1 链表算法题
+### 反转链表
+```java
+public ListNode reverseList(ListNode head) {
+    ListNode prev = null, cur = head;
+    while (cur != null) {
+        ListNode next = cur.next;
+        cur.next = prev;
+        prev = cur;
+        cur = next;
+    }
+    return prev;
+}```### 链表有环检测
+```java
+public boolean hasCycle(ListNode head) {    ListNode slow = head, fast = head;    while (fast != null && fast.next != null) {        slow = slow.next;        fast = fast.next.next;        if (slow == fast) return true;    }    return false;}```### 合并两个有序链表
+```java
+public ListNode mergeTwoLists(ListNode l1, ListNode l2) {    ListNode dummy = new ListNode(0), cur = dummy;    while (l1 != null && l2 != null) {        if (l1.val <= l2.val) { cur.next = l1; l1 = l1.next; }        else { cur.next = l2; l2 = l2.next; }        cur = cur.next;    }    cur.next = l1 != null ? l1 : l2;    return dummy.next;}```## 15.2 树算法题### 二叉树最大深度
+```java
+public int maxDepth(TreeNode root) {    if (root == null) return 0;    return Math.max(maxDepth(root.left), maxDepth(root.right)) + 1;}```### 验证二叉搜索树
+```java
+public boolean isValidBST(TreeNode root) {    return validate(root, null, null);}private boolean validate(TreeNode node, TreeNode min, TreeNode max) {    if (node == null) return true;    if (min != null && node.val <= min.val) return false;    if (max != null && node.val >= max.val) return false;    return validate(node.left, min, node) && validate(node.right, node, max);}```### 层序遍历
+```java
+public List<List<Integer>> levelOrder(TreeNode root) {    List<List<Integer>> result = new ArrayList<>();    if (root == null) return result;    Queue<TreeNode> q = new LinkedList<>();    q.issue(root);    while (!q.isEmpty()) {        List<Integer> level = new ArrayList<>();        for (int i = q.size(); i > 0; i--) {            TreeNode node = q.poll();            level.add(node.val);            if (node.left != null) q.issue(node.left);            if (node.right != null) q.issue(node.right);        }        result.add(level);    }    return result;}```## 15.3 动态规划高频题
+### 爬楼梯
+```java
+public int climbStairs(int n) {    if (n <= 2) return n;    int[] dp = new int[n + 1];    dp[1] = 1; dp[2] = 2;    for (int i = 3; i <= n; i++) {        dp[i] = dp[i - 1] + dp[i - 2];    }    return dp[n];}```### 股票买卖
+```java
+public int maxProfit(int[] prices) {    int minPrice = Integer.MAX_VALUE, maxProfit = 0;    for (int p : prices) {        minPrice = Math.min(minPrice, p);        maxProfit = Math.max(maxProfit, p - minPrice);    }    return maxProfit;}```### 打家劫舍```java
+public int rob(int[] nums) {    if (nums.length == 0) return 0;    if (nums.length == 1) return nums[0];    int[] dp = new int[nums.length];    dp[0] = nums[0];    dp[1] = Math.max(nums[0], nums[1]);    for (int i = 2; i < nums.length; i++) {        dp[i] = Math.max(dp[i - 1], dp[i - 2] + nums[i]);    }    return dp[nums.length - 1];}```## 15.4 数组与字符串高频题### 两数之和
+```java
+public int[] twoSum(int[] nums, int target) {    Map<Integer, Integer> map = new HashMap<>();    for (int i = 0; i < nums.length; i++) {        int complement = target - nums[i];        if (map.containsKey(complement)) {            return new int[]{map.get(complement), i};        }        map.put(nums[i], i);    }    return null;}```### 盛最多水的容器
+```java
+public int maxArea(int[] height) {    int left = 0, right = height.length - 1, max = 0;    while (left < right) {        max = Math.max(max, (right - left) * Math.min(height[left], height[right]));        if (height[left] < height[right]) left++;        else right--;    }    return max;}```### 最长无重复子串
+```java
+public int lengthOfLongestSubstring(String s) {    Map<Character, Integer> map = new HashMap<>();    int max = 0, start = 0;    for (int i = 0; i < s.length(); i++) {        if (map.containsKey(s.charAt(i))) {            start = Math.max(start, map.get(s.charAt(i)) + 1);        }        map.put(s.charAt(i), i);        max = Math.max(max, i - start + 1);    }    return max;}```## 15.5 本章小结- 链表：反转、环检测、合并- 树：深度、验证、遍历- DP：爬楼梯、股票、盗窃- 数组/字符串：两数之和、容器、子串

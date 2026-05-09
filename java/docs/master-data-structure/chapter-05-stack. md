@@ -1,0 +1,148 @@
+# 第5章 栈（Stack）
+## 5.1 栈的原理与实现
+### 解决的问题
+栈（Stack）是一种**后进先出**（LIFO, Last In First Out）的线性数据结构。解决的问题：- 函数调用栈（递归实现）
+- 表达式求值（括号匹配、运算符优先级）
+- 撤销/回退功能
+- 深度优先搜索
+### 实现原理
+栈只允许在表尾进行插入和删除操作：- **push(e)**：压栈，向栈顶添加元素 - **pop()**：弹栈，移除并返回栈顶元素
+- **peek()**：查看栈顶元素但不移除
+- **isEmpty()**：判断栈是否为空
+- **size()**：获取栈中元素数量
+### 核心操作复杂度
+| 操作 | 时间复杂度 | 空间复杂度 |
+|------|-----------|-----------|
+| push | O(1) | - |
+| pop | O(1) | - |
+| peek | O(1) | - |
+| isEmpty | O(1) | - |
+### 手写实现
+```java
+/** 基于数组的栈实现 */
+public class ArrayStack<E> implements Stack<E> {
+    private Array<E> array;
+
+    public ArrayStack(int capacity) {
+        array = new Array<>(capacity);
+    }
+
+    public ArrayStack() {
+        array = new Array<>();
+    }
+
+    @Override
+    public void push(E e) {
+        array.addLast(e);
+    }
+
+    @Override
+    public E pop() {
+        return array.removeLast();
+    }
+
+    @Override
+    public E peek() {
+        return array.getLast();
+    }
+
+    @Override
+    public int size() {
+        return array.getSize();
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return array.isEmpty();
+    }
+}
+```
+### JDK源码解析
+```java
+// Stack类（继承自Vector，线程安全但效率低）
+public class Stack<E> extends Vector<E> {
+    public Stack() {}
+
+    // 压栈
+    public E push(E item) {
+        addElement(item);
+        return item;
+    }
+
+    // 弹栈
+    public synchronized E pop() {
+        E obj;
+        int len = size();
+        obj = peek();
+        removeElementAt(len - 1);
+        return obj;
+    }
+
+    // 查看栈顶
+    public synchronized E peek() {
+        int len = size();
+        if (len == 0) throw new EmptyStackException();
+        return elementAt(len - 1);
+    }
+}
+
+// 推荐使用Deque接口（性能更好）
+Deque<Integer> stack = new ArrayDeque<>();
+stack.push(1);
+stack.pop();
+```
+## 5.2 典型应用场景
+### 场景1：括号匹配
+```java
+public boolean isValid(String s) {
+    Stack<Character> stack = new Stack<>();
+    for (char c : s.toCharArray()) {
+        if (c == '(') stack.push(')');
+        else if (c == '[') stack.push(']');
+        else if (c == '{') stack.push('}');
+        else if (stack.isEmpty() || stack.pop() != c) {
+            return false;
+        }
+    }
+    return stack.isEmpty();
+}
+```
+### 场景2：表达式求值（后缀表达式）
+```java
+public int evalRPN(String[] tokens) {
+    Stack<Integer> stack = new Stack<>();
+    for (String token : tokens) {
+        switch (token) {
+            case "+": stack.push(stack.pop() + stack.pop()); break;
+            case "-": stack.push(-stack.pop() + stack.pop()); break;
+            case "*": stack.push(stack.pop() * stack.pop()); break;
+            case "/": stack.push(1 / stack.pop() * stack.pop()); break;
+            default: stack.push(Integer.parseInt(token));
+        }
+    }
+    return stack.pop();
+}
+```
+### 场景3：函数调用栈
+```java
+// 递归本质就是栈的调用
+public int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+    // 调用过程：
+    // factorial(5) -> factorial(4) -> ... -> factorial(1)
+    // 然后依次返回：1*1 -> 2*1 -> 3*2 -> 4*6 -> 5*24 = 120
+}
+```
+## 5.3 潜在风险与优化
+| 风险 | 说明 | 解决方案 |
+|------|------|----------|
+| 栈溢出 | 递归深度过大，StackOverflowError | 改用迭代或手动栈 |
+| 线程安全 | Stack继承Vector（有synchronize） | 使用ArrayDeque |
+| 内存占用 | 栈空间有限（默认1MB） | 调优-Xss参数 |
+| 空栈操作 | pop空栈抛EmptyStackException | 先检查isEmpty |
+## 5.4 本章小结
+- 栈是LIFO数据结构，头尾操作均为O(1)
+- 广泛应用于递归、表达式求值、括号匹配等场景
+- 生产环境推荐使用ArrayDeque而非Stack
+- 注意递归深度导致的栈溢出问题

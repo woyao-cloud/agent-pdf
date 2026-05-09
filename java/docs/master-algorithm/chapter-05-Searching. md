@@ -1,0 +1,351 @@
+# 第5章 查找算法
+## 5.1 线性查找与二分查找
+### 解决的问题
+查找算法用于在数据集合中找到目标元素或确定其位置。线性查找适用于无序数据，二分查找适用于有序数据。
+### 线性查找
+```java
+public class LinearSearch {
+    // 基本线性查找 - O(n)
+    public int linearSearch(int[] arr, int target) {
+        for (int i = 0; i < arr.length; i++) {
+            if (arr[i] == target) return i;
+        }
+        return -1;
+    }
+
+    // 有哨兵的线性查找 - 减少比较
+    public int linearSearchWithSentinel(int[] arr, int target) {
+        int i = 0;
+        arr[arr.length - 1] = target;  // 哨兵
+        while (arr[i] != target) i++;
+        return i == arr.length - 1 ? -1 : i;
+    }
+
+    // 递归版本
+    public int linearSearchRecursive(int[] arr, int target, int index) {
+        if (index >= arr.length) return -1;
+        if (arr[index] == target) return index;
+        return linearSearchRecursive(arr, target, index + 1);
+    }
+}
+```### 二分查找（基础）
+```java
+public class BinarySearch {
+    // 标准二分查找 - O(log n)
+    public int binarySearch(int[] arr, int target) {
+        int left = 0, right = arr.length - 1;
+        while (left <= right) {
+            int mid = left + (right - left) / 2;  // 防止溢出
+            if (arr[mid] == target) return mid;
+            else if (arr[mid] < target) left = mid + 1;
+            else right = mid - 1;
+        }
+        return -1;
+    }
+
+    // 递归版本
+    public int binarySearchRecursive(int[] arr, int target, int left, int right) {
+        if (left > right) return -1;
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) return mid;
+        if (arr[mid] < target) return binarySearchRecursive(arr, target, mid + 1, right);
+        return binarySearchRecursive(arr, target, left, mid - 1);
+    }
+
+    // 左边界查找 - 第一个 >= target 的位置
+    public int lowerBound(int[] arr, int target) {
+        int left = 0, right = arr.length;  // right = n
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (arr[mid] < target) left = mid + 1;
+            else right = mid;
+        }
+        return left;
+    }
+
+    // 右边界查找 - 第一个 > target 的位置
+    public int upperBound(int[] arr, int target) {
+        int left = 0, right = arr.length;
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (arr[mid] <= target) left = mid + 1;
+            else right = mid;
+        }
+        return left;
+    }
+}
+```## 5.2 二分查找变体
+### 查找左边界
+```java
+// 查找第一个等于目标的位置
+public int findFirstEqual(int[] arr, int target) {
+    int left = 0, right = arr.length - 1;
+    int result = -1;
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) {
+            result = mid;
+            right = mid - 1;  // 继续向左找
+        } else if (arr[mid] < target) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+    return result;
+}
+
+// 查找最后等于目标的位置
+public int findLastEqual(int[] arr, int target) {
+    int left = 0, right = arr.length - 1;
+    int result = -1;
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) {
+            result = mid;
+            left = mid + 1;  // 继续向右找
+        } else if (arr[mid] < target) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+    return result;
+}
+```### 旋转数组查找
+```java
+// 搜索旋转排序数组（无重复）
+public int searchRotated(int[] arr, int target) {
+    int left = 0, right = arr.length - 1;
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) return mid;
+
+        // 左边有序
+        if (arr[left] <= arr[mid]) {
+            if (target >= arr[left] && target < arr[mid]) {
+                right = mid - 1;
+            } else {
+                left = mid + 1;
+            }
+        } else {  // 右边有序
+            if (target > arr[mid] && target <= arr[right]) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+    }
+    return -1;
+}
+
+// 搜索旋转排序数组（有重复）
+public boolean searchRotatedWithDup(int[] arr, int target) {
+    int left = 0, right = arr.length - 1;
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) return true;
+
+        if (arr[left] == arr[mid] && arr[mid] == arr[right]) {
+            left++; right--;
+        } else if (arr[left] <= arr[mid]) {
+            if (target >= arr[left] && target < arr[mid]) right = mid - 1;
+            else left = mid + 1;
+        } else {
+            if (target > arr[mid] && target <= arr[right]) left = mid + 1;
+            else right = mid - 1;
+        }
+    }
+    return false;
+}
+```
+### 寻找峰值元素
+```java
+// 查找峰值（元素大于相邻元素）
+public int findPeak(int[] arr) {
+    int left = 0, right = arr.length - 1;
+    while (left < right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] < arr[mid + 1]) left = mid + 1;
+        else right = mid;
+    }
+    return left;  // 峰值位置
+}
+
+// 查找多个峰值
+public List<Integer> findAllPeaks(int[] arr) {
+    List<Integer> peaks = new ArrayList<>();
+    for (int i = 0; i < arr.length; i++) {
+        boolean isPeak = true;
+        if (i > 0 && arr[i] <= arr[i - 1]) isPeak = false;
+        if (i < arr.length - 1 && arr[i] <= arr[i + 1]) isPeak = false;
+        if (isPeak) peaks.add(i);
+    }
+    return peaks;
+}
+```
+### 在旋转数组中找最小值
+```java
+public int findMin(int[] arr) {
+    int left = 0, right = arr.length - 1;
+    while (left < right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] > arr[right]) {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+    return arr[left];
+}
+```
+## 5.3 插值查找与斐波那契查找
+### 插值查找
+```java
+// 插值查找 - 适合均匀分布的有序数据
+public int interpolationSearch(int[] arr, int target) {
+    int left = 0, right = arr.length - 1;
+    while (left <= right && target >= arr[left] && target <= arr[right]) {
+        // 插值公式
+        int pos = left + (target - arr[left]) * (right - left) / (arr[right] - arr[left]);
+        if (arr[pos] == target) return pos;
+        if (arr[pos] < target) left = pos + 1;
+        else right = pos - 1;
+    }
+    return -1;
+}
+```
+### 斐波那契查找
+```java
+public class FibonacciSearch {
+    private int[] fib;
+
+    public FibonacciSearch() {
+        fib = new int[20];
+        fib[0] = 0; fib[1] = 1;
+        for (int i = 2; i < fib.length; i++) {
+            fib[i] = fib[i - 1] + fib[i - 2];
+        }
+    }
+
+    public int search(int[] arr, int target) {
+        int n = arr.length;
+        int k = 0;
+        while (fib[k] < n) k++;  // 找到合适的斐波那契数
+
+        // 扩展数组
+        int[] extended = new int[fib[k]];
+        System.arraycopy(arr, 0, extended, 0, n);
+
+        int left = 0, right = fib[k] - 1;
+        while (left <= right) {
+            int mid = left + fib[k - 1] - 1;
+            if (extended[mid] < target) {
+                left = mid + 1;
+                k -= 2;
+            } else if (extended[mid] > target) {
+                right = mid - 1;
+                k -= 1;
+            } else {
+                return Math.min(mid, n - 1);
+            }
+        }
+        return -1;
+    }
+}
+```
+## 5.4 哈希查找
+```java
+// 基于哈希表的查找 - O(1)平均
+public class HashSearch {
+    private static final int SIZE = 1000;
+    private LinkedList<Entry>[] table;
+
+    public HashSearch() {
+        table = new LinkedList[SIZE];
+    }
+
+    public void put(int key, int value) {
+        int idx = hash(key);
+        if (table[idx] == null) table[idx] = new LinkedList<>();
+        for (Entry e : table[idx]) {
+            if (e.key == key) { e.value = value; return; }
+        }
+        table[idx].add(new Entry(key, value));
+    }
+
+    public Integer get(int key) {
+        int idx = hash(key);
+        if (table[idx] != null) {
+            for (Entry e : table[idx]) {
+                if (e.key == key) return e.value;
+            }
+        }
+        return null;
+    }
+
+    private int hash(int key) {
+        return (key & 0x7FFFFFFF) % SIZE;
+    }
+
+    static class Entry { int key, value; Entry(int k, int v) { key = k; value = v; } }
+}
+```
+## 5.5 JDK查找源码解析
+```java
+// Arrays.binarySearch 实现
+public class Arrays {
+    public static int binarySearch(int[] a, int key) {
+        return binarySearch0(a, 0, a.length, key);
+    }
+
+    private static int binarySearch0(int[] a, int fromIndex, int toIndex, int key) {
+        int low = fromIndex;
+        int high = toIndex - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;  // 无符号右移防溢出
+            int midVal = a[mid];
+            if (midVal < key) low = mid + 1;
+            else if (midVal > key) high = mid - 1;
+            else return mid;
+        }
+        return -(low + 1);  // 返回插入点负值
+    }
+
+    // 插入点计算
+    public static int binarySearchInsertionPoint(int[] a, int key) {
+        int low = 0, high = a.length - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            if (key <= a[mid]) high = mid - 1;
+            else low = mid + 1;
+        }
+        return low;
+    }
+}
+```
+## 5.6 查找算法选择策略
+```java
+public class SearchSelector {
+    // 无序数据 → 线性查找
+    public int linear(int[] arr, int target) { /* O(n) */ return -1; }
+
+    // 有序数据 → 二分查找
+    public int binary(int[] arr, int target) { /* O(log n) */ return -1; }
+
+    // 均匀分布 → 插值查找
+    public int interpolation(int[] arr, int target) { /* O(log log n) */ return -1; }
+
+    // 大数据 + 频繁查找 → 哈希查找
+    public int hash(int[] arr, int target) { /* O(1) */ return -1; }
+
+    // 旋转数组 → 改进二分
+    public int rotated(int[] arr, int target) { /* O(log n) */ return -1; }
+}
+```
+## 5.7 本章小结
+- 有序数据优先选择二分查找，O(log n)效率高
+- 掌握各类变体：左边界、右边界、旋转数组
+- 注意溢出问题，使用 (left + right) >>> 1 而非 (left + right) / 2
+- 哈希查找O(1)但需要额外空间
+- 根据数据特征选择合适的查找算法

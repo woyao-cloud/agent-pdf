@@ -1,0 +1,216 @@
+# 第22章 分析设计能力
+## 22.1 如何分析问题
+### 问题分析步骤
+```
+1. 理解需求
+   ├── 输入是什么
+   ├── 输出是什么
+   ├── 约束条件
+   └── 边界情况
+
+2. 初步方案
+   ├── 数据结构选择
+   ├── 算法思路
+   └── 时间空间估算
+
+3. 细节设计
+   ├── 核心逻辑实现
+   ├── 边界处理
+   └── 错误处理
+
+4. 代码实现
+   └── 按设计编码
+```
+
+### 问题分析示例
+```java
+// 问题：实现LRU缓存
+// 步骤1：理解需求
+//   - 支持 get(key) 和 put(key, value)
+//   - 有容量限制，超过容量删除最久未使用项
+//   - O(1) 时间复杂度
+//
+// 步骤2：选择数据结构
+//   - HashMap: O(1) 查找
+//   - 双向链表: 维护访问顺序，头部是最久未使用
+//   - 组合：LinkedHashMap 或 自定义 HashMap + LinkedList
+
+// 步骤3：设计
+//   - get: 从HashMap获取，移动到链表头部
+//   - put: 存到HashMap，若已存在更新
+//   - 超过容量：删除链表尾部元素
+```
+
+## 22.2 数据结构选择决策树
+### 快速选择指南
+
+```java
+// 问题1: 需要按键查找吗？
+if (需要按键查找) {
+    // 问题2: 需要范围查询吗？
+    if (需要范围查询) {
+        // 问题3: 数据会动态变化吗？
+        if (动态变化) return "TreeMap";      // 有序+动态
+        else return "数组+二分";               // 静态有序
+    } else {
+        // 问题4: 需要O(1)还是O(log n)?
+        if (O(1)重要) return "HashMap";
+        else return "TreeMap";
+    }
+} else {
+    // 问题2: 需要保持插入顺序吗？
+    if (需要保持顺序) return "LinkedList/Queue";
+    else if (需要去重) return "HashSet";
+    else return "ArrayList";
+}
+```
+
+### 场景决策表
+
+| 场景 | 推荐 | 备选 |
+|------|------|------|
+| 频繁随机访问 | ArrayList | 数组 |
+| 频繁头部插入 | LinkedList | ArrayList |
+| 频繁尾部操作 | ArrayList | ArrayDeque |
+| 频繁查找 | HashMap/HashSet | TreeMap/TreeSet |
+| 有序遍历 | TreeSet/TreeMap | Stream+sort |
+| LRU缓存 | LinkedHashMap | 自定义 |
+| 优先级队列 | PriorityQueue | |
+| 高并发缓存 | ConcurrentHashMap | |
+
+## 22.3 系统设计中的数据结构
+### 设计缓存系统
+
+```java
+// 需求：设计一个缓存，支持过期、容量限制
+//
+// 数据结构选择：
+// 1. 存储：ConcurrentHashMap - 线程安全，O(1)读写
+// 2. 淘汰顺序：LinkedHashMap - 维护访问顺序
+// 3. 过期：单独的时间戳Map + 定时清理
+
+class Cache<K, V> {
+    private final int maxSize;
+    private final long ttl;
+    private final ConcurrentHashMap<K, V> store;
+    private final ConcurrentHashMap<K, Long> timestamps;
+    private final LinkedHashMap<K, Boolean> accessOrder;
+
+    public V get(K key) {
+        if (isExpired(key)) {
+            remove(key);
+            return null;
+        }
+        accessOrder.remove(key);
+        accessOrder.put(key, true);
+        return store.get(key);
+    }
+
+    public void put(K key, V value) {
+        if (size() >= maxSize) evict();
+        store.put(key, value);
+        timestamps.put(key, System.currentTimeMillis() + ttl);
+        accessOrder.remove(key);
+        accessOrder.put(key, true);
+    }
+
+    private void evict() {
+        K oldest = accessOrder.keySet().iterator().next();
+        remove(oldest);
+    }
+}
+```
+
+### 设计消息队列
+
+```java
+// 需求：实现一个简单的消息队列
+//
+// 数据结构选择：
+// 1. 存储：ArrayDeque - 高效的双端队列
+// 2. 阻塞：ReentrantLock + Condition
+// 3. 持久化：可选，考虑Write-Ahead Log
+
+class MessageQueue<T> {
+    private final ArrayDeque<T> queue = new ArrayDeque<>();
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notEmpty = lock.newCondition();
+    private final Condition notFull = lock.newCondition();
+    private final int capacity;
+
+    public void offer(T item) throws InterruptedException {
+        lock.lock();
+        try {
+            while (queue.size() >= capacity) notFull.await();
+            queue.offer(item);
+            notEmpty.signal();
+        } finally { lock.unlock(); }
+    }
+
+    public T take() throws InterruptedException {
+        lock.lock();
+        try {
+            while (queue.isEmpty()) notEmpty.await();
+            T item = queue.poll();
+            notFull.signal();
+            return item;
+        } finally { lock.unlock(); }
+    }
+}
+```
+
+## 22.4 架构设计原则
+### 常见原则
+
+| 原则 | 说明 | 应用 |
+|------|------|------|
+| 单一职责 | 类/模块只负责一件事 | 分离存储与业务逻辑 |
+| 开闭原则 | 对扩展开放，对修改封闭 | 使用接口+实现 |
+| 依赖倒置 | 依赖抽象而非具体 | 使用接口而非实现类 |
+| 里氏替换 | 子类可以替换父类 | 多态使用 |
+| 接口隔离 | 最小化接口 | 按需定义接口 |
+| 迪米特法则 | 最少知道 | 减少依赖 |
+
+### 分层设计示例
+
+```java
+// 数据访问层（Repository）
+interface UserRepository {
+    Optional<User> findById(Long id);
+    List<User> findAll();
+    void save(User user);
+    void delete(Long id);
+}
+
+// 服务层（Service）
+class UserService {
+    private final UserRepository repository;
+    private final Cache<Long, User> cache;
+
+    public Optional<User> getUser(Long id) {
+        return cache.get(id)
+            .or(() -> repository.findById(id))
+            .tap(user -> cache.put(id, user));
+    }
+}
+
+// 使用层（Controller）
+@RestController
+class UserController {
+    private final UserService userService;
+
+    @GetMapping("/users/{id}")
+    public ResponseEntity<User> getUser(@PathVariable Long id) {
+        return userService.getUser(id)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+}
+```
+
+## 22.5 本章小结
+
+- 问题分析要循序渐进，先理解需求再设计方案
+- 数据结构选择要基于场景特点和复杂度分析
+- 系统设计要遵循常见的设计原则
+- 好的设计是迭代优化的结果

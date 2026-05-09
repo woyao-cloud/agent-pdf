@@ -1,0 +1,25 @@
+# 第20章 性能优化实战
+## 20.1 数据结构选择原则
+### 核心选择决策树
+```
+需要快速查找？├── 是 → 数据是否有序？│   ├── 有序 → TreeMap/O(1)随机访问│   │       ├── 需O(1) → HashMap│   │       └── 需范围 → TreeMap│   └── 无序 → HashMap└── 否 → 需要去重？    ├── 是 → HashSet    └── 否 → 需FIFO？        ├── 是 → Queue/Deque        └── 否 → 需LIFO？            ├── 是 → Stack/Deque            └── 否 → List
+```### 性能对比表
+| 操作 | ArrayList | LinkedList | HashSet | TreeSet | HashMap | TreeMap | |------|-----------|------------|---------|---------|---------|---------| | 随机访问 | O(1) | O(n) | - | - | O(1) | O(log n) | | 头部操作 | O(n) | O(1) | - | - | - | - | | 尾部操作 | O(1)* | O(1) | - | - | - | - | | 查找 | O(n) | O(n) | O(1) | O(log n) | O(1) | O(log n) | | 插入/删除 | O(1)* | O(1) | O(1) | O(log n) | O(1) | O(log n) | * 均摊复杂度
+## 20.2 性能瓶颈分析
+### 常见性能问题
+| 问题 | 原因 | 解决方案 | |------|------|----------| | 数组频繁扩容 | 预分配容量不足 | 预分配或使用容量增长策略 | | 链表遍历多 | 未合理使用索引 | 考虑ArrayList | | 哈希冲突严重 | 哈希函数差或负载因子高 | 优化哈希函数或调整负载因子 | | 递归深度过大 | 树结构过深或递归算法 | 改为迭代或增加栈大小 | | 频繁对象创建 | 循环内new对象 | 对象池或复用 |### 性能分析工具
+```java// 1. 使用JMH进行微基准测试@Benchmark@BenchmarkMode(Mode.Throughput)public void testArrayList() {    List<Integer> list = new ArrayList<>();    for (int i = 0; i < 1000; i++) list.add(i);}// 2. 使用VisualVM分析// 3. 使用JProfiler分析// 4. 使用--XX:+PrintGCDetails 分析GC```## 20.3 缓存优化策略
+### 多级缓存设计
+```java// L1本地缓存 + L2分布式缓存class CacheSystem<K, V> {    private ConcurrentHashMap<K, V> l1Cache = new ConcurrentHashMap<>();    private LoadingCache<K, V> l2Cache;  // Guava Cache    public V get(K key) {        V value = l1Cache.get(key);        if (value == null) {            value = l2Cache.get(key);            l1Cache.put(key, value);        }        return value;    }}```### 缓存淘汰策略
+| 策略 | 原理 | 适用场景 | |------|------|----------| | LRU | 最近最少使用 | 热点数据 | | LFU | 最不经常使用 | 频率统计 | | FIFO | 先进先出 | 批处理 | | TTL | 过期时间 | 临时数据 |## 20.4 内存优化技巧
+### 减少对象占用
+```java
+// 1. 使用基本类型数组int[] arr = new int[1000];  // 比Integer[]省3倍内存// 2. 使用对象池public class ObjectPool<T> {    private Queue<T> pool;    private Supplier<T> factory;    private Consumer<T> reset;    public T acquire() { return pool.poll(); }    public void release(T obj) { reset.accept(obj); pool.offer(obj); }}// 3. 使用延迟初始化private volatile ExpensiveObject obj;public ExpensiveObject get() {    if (obj == null) synchronized(this) {        if (obj == null) obj = new ExpensiveObject();    }    return obj;}```### 合理选择集合类型
+```java// 预知大小用ArrayList// 频繁头插用LinkedList// 只遍历用增强for循环// 高频查询用HashSet
+// 键值对用HashMap// 需要排序用TreeMap// 需要LRU用LinkedHashMap```## 20.5 并发数据结构选择
+### 并发性能对比
+| 数据结构 | 线程安全版本 | 特点 | |----------|-------------|------| | List | CopyOnWriteArrayList | 读多写少 | | Map | ConcurrentHashMap | 高并发 | | Set | ConcurrentHashMap.newKeySet() | 高并发 | | Queue | ConcurrentLinkedQueue | 无界 | | Deque | ConcurrentLinkedDeque | 无界 | | BlockingQueue | ArrayBlockingQueue | 有界阻塞 |### 生产者-消费者示例
+```java// 有限缓冲阻塞队列public void producerConsumer() {    BlockingQueue<Integer> queue = new ArrayBlockingQueue<>(100);    // 生产者    IntStream.range(0, 1000).parallel().forEach(i -> {        try { queue.put(i); } catch (InterruptedException e) {}    });    // 消费者    IntStream.range(0, 1000).parallel().forEach(i -> {        try { queue.take(); } catch (InterruptedException e) {}    });}```## 20.6 典型场景优化案例
+### 大数据处理优化
+```java// 1. 避免频繁 GC，批量处理List<Item> batch = new ArrayList<>(1000);for (Item item : items) {    batch.add(item);    if (batch.size() == 1000) {        processBatch(batch);        batch.clear();    }}// 2. 使用迭代器而非for循环（可边遍历边删除）Iterator<Item> it = list.iterator();while (it.hasNext()) {    if (it.next().shouldRemove()) it.remove();}// 3. 合理使用并行流IntStream.range(0, 1_000_000)    .parallel()    .filter(i -> i % 2 == 0)    .count();```### API设计中的优化
+```java// 1. 接受接口而非具体类public void process(List<Integer> list) { ... }  // 比ArrayList更好// 2. 批量操作优于单条操作// BADfor (int i = 0; i < 1000; i++) dao.insert(item[i]);// GOODdao.batchInsert(items);// 3. 预估集合容量new ArrayList<>(expectedSize);new HashMap<>(expectedSize * 2);```## 20.7 本章小结- 数据结构选择是性能优化的第一步- 理解每种结构的复杂度是优化基础- 善用分析工具定位瓶颈- 并发场景选择合适的并发数据结构

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"dir d:\\\\学习\\\\大模型\\\\pdf\\\\docs\\\\MES\")",
+      "Bash(find \"d:/学习/大模型/ pdf/docs/MES\" -type d 2>/dev/null | head -20)",
+      "Read(//d/学习/大模型/ pdf/docs/**)",
+      "Bash(dir \"d:\\\\学习\\\\大模型\\\\pdf\\\\docs\\\\MES\\\\Part04_风险与优化篇\")"
+    ]
+  }
+}

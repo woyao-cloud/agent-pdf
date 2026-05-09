@@ -1,0 +1,302 @@
+# 第14章 核心功能开发实战
+> 本章通过实际代码示例讲解MES核心功能的开发方法，包括报工接口、排程集成、消息队列应用
+## 14.1 报工接口设计与实现
+### 14.1.1 报工API设计
+```java
+// Spring Boot报工接口
+@RestController
+@RequestMapping("/api/mes/report")
+public class WorkReportController {
+
+    @Autowired
+    private WorkReportService workReportService;
+
+    @PostMapping("/work")
+    public Result<ReportResponse> reportWork(@RequestBody ReportRequest request) {
+        // 1. 参数校验
+        ValidationResult validation = validateRequest(request);
+        if (!validation.isValid()) {
+            return Result.fail(validation.getErrorMsg());
+        }
+
+        // 2. 业务处理
+        ReportResponse response = workReportService.processReport(request);
+
+        return Result.success(response);
+    }
+
+    @PostMapping("/batch")
+    public Result<List<ReportResponse>> batchReport(@RequestBody List<ReportRequest> requests) {
+        List<ReportResponse> responses = new ArrayList<>();
+        for (ReportRequest request : requests) {
+            responses.add(workReportService.processReport(request));
+        }
+        return Result.success(responses);
+    }
+}
+```
+### 14.1.2 参数校验逻辑
+```java
+@Component
+public class ReportValidator {
+
+    public ValidationResult validate(ReportRequest request) {
+        List<String> errors = new ArrayList<>();
+
+        // 必填校验
+        if (StringUtils.isEmpty(request.getWorkOrderId())) {
+            errors.add("工单号不能为空");
+        }
+        if (StringUtils.isEmpty(request.getOperationId())) {
+            errors.add("工序号不能为空");
+        }
+
+        // 数量校验
+        if (request.getInputQty() == null || request.getInputQty() <= 0) {
+            errors.add("投入数量必须大于0");
+        }
+        if (request.getOutputQty() > request.getInputQty()) {
+            errors.add("产出数量不能大于投入数量");
+        }
+
+        return new ValidationResult(errors.isEmpty(), errors);
+    }
+}
+```
+### 14.1.3 事务处理
+```java
+@Service
+@Transactional(rollbackFor = Exception.class)
+public class WorkReportService {
+
+    @Autowired
+    private WorkOrderRepository workOrderRepository;
+
+    @Autowired
+    private MaterialInventoryService inventoryService;
+
+    public ReportResponse processReport(ReportRequest request) {
+        // 1. 锁定工单
+        WorkOrder wo = workOrderRepository.lockById(request.getWorkOrderId());
+
+        // 2. 更新工序状态
+        OperationRecord record = new OperationRecord();
+        record.setWorkOrderId(request.getWorkOrderId());
+        record.setOperationId(request.getOperationId());
+        record.setInputQty(request.getInputQty());
+        record.setOutputQty(request.getOutputQty());
+        record.setQualifiedQty(request.getQualifiedQty());
+        record.setDefectQty(request.getInputQty() - request.getOutputQty());
+
+        // 3. 物料消耗
+        inventoryService.consumeMaterial(wo.getProductId(),
+            request.getInputQty());
+
+        // 4. 更新工单进度
+        wo.setCompletedQty(wo.getCompletedQty() + request.getOutputQty());
+
+        return buildResponse(record);
+    }
+}
+```
+## 14.2 排程引擎集成
+### 14.2.1 排程服务封装
+```python
+# Python排程服务
+from flask import Flask, request, jsonify
+from scheduler.ga_scheduler import GeneticScheduler
+
+app = Flask(__name__)
+
+class SchedulingService:
+    def __init__(self):
+        self.scheduler = None
+
+    def initialize(self, jobs_data, machines):
+        self.scheduler = GeneticScheduler(jobs_data, machines)
+
+    def schedule(self, order_id):
+        if not self.scheduler:
+            return None, "Scheduler not initialized"
+
+        best_solution, makespan = self.scheduler.evolve()
+        return {
+            'order_id': order_id,
+            'schedule': best_solution,
+            'makespan': makespan
+        }, None
+
+scheduling_service = SchedulingService()
+
+@app.route('/api/schedule', methods=['POST'])
+def create_schedule():
+    data = request.json
+    order_id = data['order_id']
+    jobs = data['jobs']
+    machines = data['machines']
+
+    scheduling_service.initialize(jobs, machines)
+    result, error = scheduling_service.schedule(order_id)
+
+    if error:
+        return jsonify({'error': error}), 500
+    return jsonify(result)
+```
+### 14.2.2 异步调用处理
+```python
+# 异步排程调用
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+
+class AsyncScheduler:
+    def __init__(self):
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.result_queue = Queue()
+
+    def submit(self, order_id, jobs, machines):
+        future = self.executor.submit(self._run_scheduler, order_id, jobs, machines)
+        return future
+
+    def _run_scheduler(self, order_id, jobs, machines):
+        service = SchedulingService()
+        service.initialize(jobs, machines)
+        result, error = service.schedule(order_id)
+        return {'order_id': order_id, 'result': result, 'error': error}
+```
+### 14.2.3 结果回写
+```python
+def update_schedule_to_mes(schedule_result):
+    """将排程结果写入MES系统"""
+    mes_api = MesApiClient()
+
+    for idx, task in enumerate(schedule_result['schedule']):
+        operation = {
+            'order_id': schedule_result['order_id'],
+            'operation_seq': idx + 1,
+            'start_time': calculate_start_time(task),
+            'end_time': calculate_end_time(task),
+            'machine_id': task['machine'],
+            'status': 'scheduled'
+        }
+        mes_api.update_operation(operation)
+```
+## 14.3 消息队列应用
+### 14.3.1 生产事件发布
+```python
+# Kafka生产者
+from kafka import KafkaProducer
+import json
+
+class ProductionEventPublisher:
+    def __init__(self, bootstrap_servers):
+        self.producer = KafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+
+    def publish_work_report(self, report_data):
+        """发布报工事件"""
+        event = {
+            'event_type': 'WORK_REPORT',
+            'timestamp': datetime.utcnow().isoformat(),
+            'data': report_data
+        }
+        self.producer.send('mes-production-events', event)
+
+    def publish_order_status_change(self, order_id, old_status, new_status):
+        """发布订单状态变更事件"""
+        event = {
+            'event_type': 'ORDER_STATUS_CHANGE',
+            'timestamp': datetime.utcnow().isoformat(),
+            'data': {
+                'order_id': order_id,
+                'old_status': old_status,
+                'new_status': new_status
+            }
+        }
+        self.producer.send('mes-production-events', event)
+```
+### 14.3.2 消费处理
+```python
+# Kafka消费者
+from kafka import KafkaConsumer
+
+class ProductionEventConsumer:
+    def __init__(self, bootstrap_servers):
+        self.consumer = KafkaConsumer(
+            'mes-production-events',
+            bootstrap_servers=bootstrap_servers,
+            value_deserializer=lambda v: json.loads(v.decode('utf-8')),
+            group_id='mes-consumer-group',
+            auto_offset_reset='latest'
+        )
+
+    def process_events(self):
+        for message in self.consumer:
+            event = message.value
+            event_type = event['event_type']
+
+            if event_type == 'WORK_REPORT':
+                self.handle_work_report(event['data'])
+            elif event_type == 'ORDER_STATUS_CHANGE':
+                self.handle_order_status_change(event['data'])
+
+    def handle_work_report(self, data):
+        # 更新实时看板数据
+        # 触发质量检查
+        # 更新设备状态
+        pass
+```
+### 14.3.3 消息可靠性
+```python
+class ReliableProducer:
+    def __init__(self, bootstrap_servers):
+        self.producer = KafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            acks='all',  # 确认机制
+            retries=3,   # 重试次数
+            retry_backoff_ms=1000  # 重试间隔
+        )
+```
+## 14.4 源码示例
+### 14.4.1 Spring Boot报工接口完整示例
+```java
+// 完整Controller
+@RestController
+@RequestMapping("/api/mes/report")
+@RequiredArgsConstructor
+public class WorkReportController {
+
+    private final WorkReportService workReportService;
+    private final ReportValidator validator;
+
+    @PostMapping("/work")
+    public ResponseEntity<Result<ReportResponse>> reportWork(
+            @Valid @RequestBody ReportRequest request,
+            BindingResult bindingResult) {
+
+        if (bindingResult.hasErrors()) {
+            return ResponseEntity.badRequest()
+                .body(Result.fail(bindingResult.getFieldError().getDefaultMessage()));
+        }
+
+        ValidationResult validation = validator.validate(request);
+        if (!validation.isValid()) {
+            return ResponseEntity.badRequest()
+                .body(Result.fail(String.join(",", validation.getErrors())));
+        }
+
+        try {
+            ReportResponse response = workReportService.processReport(request);
+            return ResponseEntity.ok(Result.success(response));
+        } catch (BusinessException e) {
+            return ResponseEntity.badRequest()
+                .body(Result.fail(e.getMessage()));
+        }
+    }
+}
+```
+## 本章小结
+本章通过实际代码示例讲解了MES核心功能的开发方法。报工接口是MES系统最高频的功能之一，需要保证数据准确性和事务完整性。排程引擎集成需要考虑异步处理和结果回写。消息队列实现了系统间的解耦和事件驱动。读者可通过本章示例快速掌握MES核心功能的开发技巧。

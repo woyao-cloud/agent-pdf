@@ -1,0 +1,403 @@
+# 第3章 数组与字符串
+
+## 3.1 数组的原理与实现
+
+### 解决的问题
+
+**数组（Array）** 是最基础、最常用的数据结构，用于存储固定大小的同类型元素序列。解决的问题：
+- 如何高效存储和访问多个相同类型的元素
+- 如何通过索引快速访问任意位置的元素
+- 如何在连续的内存空间中组织数据
+
+### 实现原理
+
+#### 内存模型
+
+数组在内存中占用**连续的存储空间**，每个元素按索引计算偏移量直接访问：
+
+```
+内存地址:  0x1000  0x1004  0x1008  0x100C  0x1010  ...
+数组索引:    [0]      [1]      [2]      [3]      [4]
+存储值:      10       20       30       40       50
+```
+
+- 假设int占4字节，数组首地址为0x1000
+- 元素arr[3]的地址 = 首地址 + 3 × 4 = 0x100C
+
+#### 核心操作复杂度
+
+| 操作 | 时间复杂度 | 说明 |
+|------|-----------|------|
+| 随机访问 | O(1) | 根据索引直接计算地址 |
+| 查找 | O(n) | 线性遍历 |
+| 插入 | O(n) | 需要移动元素 |
+| 删除 | O(n) | 需要移动元素 |
+| 动态扩容 | O(n) | 申请新数组并复制 |
+
+### 手写实现
+
+```java
+/**
+ * 手写数组实现 - 展示数组底层原理
+ */
+public class Array<E> {
+    private E[] data;
+    private int size;
+
+    @SuppressWarnings("unchecked")
+    public Array(int capacity) {
+        this.data = (E[]) new Object[capacity];
+        this.size = 0;
+    }
+
+    public Array() {
+        this(10);
+    }
+
+    // 获取数组容量
+    public int getCapacity() {
+        return data.length;
+    }
+
+    // 获取元素个数
+    public int getSize() {
+        return size;
+    }
+
+    // 判断是否为空
+    public boolean isEmpty() {
+        return size == 0;
+    }
+
+    // 添加元素到末尾
+    public void add(E e) {
+        if (size == data.length) {
+            resize(2 * data.length);  // 动态扩容
+        }
+        data[size] = e;
+        size++;
+    }
+
+    // 在指定位置插入元素
+    public void add(int index, E e) {
+        if (index < 0 || index > size) {
+            throw new IllegalArgumentException("索引非法");
+        }
+        if (size == data.length) {
+            resize(2 * data.length);
+        }
+        // 将index之后的元素后移
+        for (int i = size; i > index; i--) {
+            data[i] = data[i - 1];
+        }
+        data[index] = e;
+        size++;
+    }
+
+    // 获取指定位置元素
+    public E get(int index) {
+        if (index < 0 || index >= size) {
+            throw new IllegalArgumentException("索引非法");
+        }
+        return data[index];
+    }
+
+    // 设置指定位置元素
+    public void set(int index, E e) {
+        if (index < 0 || index >= size) {
+            throw new IllegalArgumentException("索引非法");
+        }
+        data[index] = e;
+    }
+
+    // 查找元素，返回索引，不存在返回-1
+    public int find(E e) {
+        for (int i = 0; i < size; i++) {
+            if (data[i].equals(e)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // 删除指定位置元素，返回被删除的元素
+    public E remove(int index) {
+        if (index < 0 || index >= size) {
+            throw new IllegalArgumentException("索引非法");
+        }
+        E ret = data[index];
+        // 将index之后的元素前移
+        for (int i = index; i < size - 1; i++) {
+            data[i] = data[i + 1];
+        }
+        size--;
+        data[size] = null;  // 释放引用，帮助GC
+
+        // 缩容，避免空间浪费
+        if (size == data.length / 4 && data.length / 2 != 0) {
+            resize(data.length / 2);
+        }
+        return ret;
+    }
+
+    // 动态扩容/缩容
+    private void resize(int newCapacity) {
+        @SuppressWarnings("unchecked")
+        E[] newData = (E[]) new Object[newCapacity];
+        for (int i = 0; i < size; i++) {
+            newData[i] = data[i];
+        }
+        data = newData;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Array: size = %d, capacity = %d\n", size, data.length));
+        sb.append("[");
+        for (int i = 0; i < size; i++) {
+            sb.append(data[i]);
+            if (i != size - 1) {
+                sb.append(", ");
+            }
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+}
+```
+
+### JDK源码解析：ArrayList
+
+```java
+// ArrayList核心实现（基于JDK 17）
+public class ArrayList<E> extends AbstractList<E>
+        implements List<E>, RandomAccess, Cloneable, java.io.Serializable {
+
+    // 数组存储元素
+    Object[] elementData;
+
+    // 元素个数
+    private int size;
+
+    // 默认容量
+    private static final int DEFAULT_CAPACITY = 10;
+
+    // 空数组实例（共享）
+    private static final Object[] EMPTY_ELEMENTDATA = {};
+
+    // add()方法实现
+    public boolean add(E e) {
+        modCount++;
+        add(e, elementData, size);
+        return true;
+    }
+
+    private void add(E e, Object[] elementData, int s) {
+        // 容量不足时扩容
+        if (s == elementData.length) {
+            elementData = grow();
+        }
+        elementData[s] = e;
+        size = s + 1;
+    }
+
+    // 扩容方法
+    private Object[] grow() {
+        return grow(size + 1);
+    }
+
+    private Object[] grow(int minCapacity) {
+        int oldCapacity = elementData.length;
+        // 新容量 = 旧容量 + 旧容量/2 (1.5倍)
+        int newCapacity = oldCapacity + (oldCapacity >> 1);
+
+        if (newCapacity - minCapacity < 0) {
+            newCapacity = minCapacity;
+        }
+        // MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8
+        if (newCapacity - MAX_ARRAY_SIZE > 0) {
+            newCapacity = hugeCapacity(minCapacity);
+        }
+        // 复制数组
+        return elementData = Arrays.copyOf(elementData, newCapacity);
+    }
+
+    // remove()方法实现
+    public E remove(int index) {
+        Objects.checkIndex(index, size);
+        final Object[] es = elementData;
+        @SuppressWarnings("unchecked")
+        E oldValue = (E) es[index];
+        fastRemove(es, index);
+        return oldValue;
+    }
+
+    private void fastRemove(Object[] es, int index) {
+        modCount++;
+        final int newSize;
+        // 计算新大小并将元素前移
+        if ((newSize = size - 1) > index) {
+            System.arraycopy(es, index + 1, es, index, newSize - index);
+        }
+        es[size = newSize] = null;  // 释放引用
+    }
+}
+```
+
+### 使用场景
+
+| 场景 | 适用性 | 原因 |
+|------|--------|------|
+| 随机访问频繁 | ✅ 最佳 | O(1)时间复杂度 |
+| 遍历操作 | ✅ 最佳 | 缓存命中率高 |
+| 插入/删除频繁 | ❌ 不适合 | O(n)代价高 |
+| 大小固定 | ✅ 最佳 | 无额外开销 |
+| 大小动态变化 | ⚠️ 需配合扩容 | 扩容有性能损耗 |
+
+### 潜在风险与问题
+
+| 风险 | 说明 | 解决方案 |
+|------|------|----------|
+| **数组越界** | 访问超出索引范围会抛ArrayIndexOutOfBoundsException | 使用增强for循环或迭代器 |
+| **数组为null** | 对null调用方法会抛NPE | 使用前检查null或使用Optional |
+| **类型转换异常** | 数组实际类型与预期不符 | 使用泛型数组或Object[]强转前检查 |
+| **动态扩容** | 扩容时需要复制数组，有性能开销 | 预分配合理容量 |
+| **并发修改** | 迭代时修改集合会抛ConcurrentModificationException | 使用迭代器或CopyOnWriteArrayList |
+| **内存连续** | 大数组可能触发OOM或内存碎片 | 分批处理或使用其他结构 |
+
+### 优化策略
+
+```java
+// 1. 预分配容量，避免频繁扩容
+List<String> list = new ArrayList<>(10000);
+
+// 2. 使用原始类型数组，避免装箱拆箱
+int[] arr = new int[10000];  // 比Integer[]更省内存
+
+// 3. 批量操作时使用System.arraycopy
+System.arraycopy(src, 0, dest, 0, length);
+
+// 4. 避免在循环中频繁调用size()
+for (int i = 0, n = list.size(); i < n; i++) {  // 缓存size
+    // 操作
+}
+
+// 5. 对于已知大小的集合，用toArray(T[])而不是toArray()
+String[] arr = list.toArray(new String[0]);  // 避免泛型擦除问题
+```
+
+## 3.2 字符串（String）原理
+
+### 解决的问题
+
+字符串用于处理文本数据，是编程中最常用的数据类型之一。Java中String是不可变的，这带来了安全性、线程安全性和字符串池优化。
+
+### String的内部实现
+
+```java
+// String核心字段（JDK 17）
+public final class String implements java.io.Serializable,
+                               Comparable<String>, CharSequence {
+    // 实际存储字符的数组（JDK 9后使用byte[]）
+    @Stable
+    private final byte[] value;
+
+    // 哈希码（缓存）
+    private int hash;
+
+    // 序列化ID
+    private static final long serialVersionUID = -6849794470754667710L;
+}
+```
+
+### String的创建方式对比
+
+```java
+// 方式1：字面量（字符串池）
+String s1 = "hello";  // 先检查池中是否有"hello"，有则复用
+
+// 方式2：new对象（堆内存）
+String s2 = new String("hello");  // 每次都创建新对象
+
+// 对比
+String s3 = "hello";
+String s4 = "hello";
+System.out.println(s3 == s4);  // true - 同一个引用
+
+String s5 = new String("hello");
+String s6 = new String("hello");
+System.out.println(s5 == s6);  // false - 不同对象
+
+// intern()方法
+String s7 = s5.intern();  // 将s5加入字符串池，返回池中引用
+System.out.println(s3 == s7);  // true
+```
+
+### 字符串操作的时间复杂度
+
+| 操作 | 时间复杂度 | 说明 |
+|------|-----------|------|
+| charAt | O(1) | 直接访问数组 |
+| indexOf | O(n) | 线性扫描 |
+| substring | O(n) | 需要复制数组（JDK 7+需要复制） |
+| concat | O(n) | 创建新数组 |
+| + 拼接 | O(n) | 底层调用concat |
+| format | O(n) | 格式化处理 |
+| split | O(n) | 正则匹配 |
+
+### StringBuilder与StringBuffer
+
+```java
+// StringBuilder - 非线程安全，性能高
+StringBuilder sb = new StringBuilder();
+sb.append("Hello");
+sb.append(" ");
+sb.append("World");
+String result = sb.toString();
+
+// StringBuffer - 线程安全（有synchronized）
+StringBuffer sb2 = new StringBuffer();
+synchronized(sb2) {
+    sb2.append("Hello");
+}
+
+// 性能对比：StringBuilder > StringBuffer > String
+// 适用场景：频繁字符串拼接时使用StringBuilder
+```
+
+### 潜在风险与问题
+
+| 风险 | 说明 | 解决方案 |
+|------|------|----------|
+| **字符串不可变** | 修改会创建新对象，导致内存浪费 | 使用StringBuilder/StringBuffer |
+| **字符串拼接性能差** | 每次+都会创建新String | 优先使用StringBuilder |
+| **intern()滥用** | 过度使用导致字符串池内存膨胀 | 谨慎使用，了解池大小 |
+| **正则表达式性能** | Pattern对象可复用 | 预编译Pattern |
+| **编码问题** | 字节与字符转换 | 明确字符集，使用StandardCharsets |
+| **空字符串"" vs null** | ""有内容，null无引用 | 根据业务区分处理 |
+
+## 3.3 本章小结
+
+本章我们深入学习了：
+
+**数组部分**：
+- 数组的内存模型和索引计算原理
+- 手写Array实现（含动态扩容）
+- ArrayList源码解析（扩容机制、删除操作）
+- 数组的使用场景和性能特点
+- 6大潜在风险及优化策略
+
+**字符串部分**：
+- String的不可变特性和实现原理
+- 字符串池机制和intern()方法
+- StringBuilder vs StringBuffer
+- 字符串操作的时间复杂度分析
+
+**核心要点**：
+1. 数组O(1)随机访问是其最大优势，插入删除是短板
+2. ArrayList动态扩容是摊销O(1)，但需要预判容量
+3. 频繁字符串拼接必须用StringBuilder
+4. 字符串池是Java的优化，但要注意内存使用
+
+**下一章**我们将学习**链表**，看看如何解决数组插入删除性能差的问题。

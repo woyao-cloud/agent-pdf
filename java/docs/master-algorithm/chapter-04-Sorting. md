@@ -1,0 +1,372 @@
+# 第4章 排序算法
+## 4.1 排序算法分类与对比
+### 解决的问题
+排序是将一组数据按特定顺序（升序/降序）排列的过程，是最基础、最常用的算法之一。
+### 排序算法分类
+| 类别 | 算法 | 平均复杂度 | 空间 | 稳定性 |
+|------|------|-----------|------|--------|
+| 交换排序 | 冒泡排序 | O(n²) | O(1) | 稳定 |
+| 交换排序 | 快速排序 | O(n log n) | O(log n) | 不稳定 |
+| 插入排序 | 直接插入 | O(n²) | O(1) | 稳定 |
+| 插入排序 | 希尔排序 | O(n^1.5) | O(1) | 不稳定 |
+| 选择排序 | 简单选择 | O(n²) | O(1) | 不稳定 |
+| 选择排序 | 堆排序 | O(n log n) | O(1) | 不稳定 |
+| 归并排序 | 归并排序 | O(n log n) | O(n) | 稳定 |
+| 线性排序 | 计数排序 | O(n+k) | O(k) | 稳定 |
+| 线性排序 | 桶排序 | O(n+k) | O(n+k) | 稳定 |
+| 线性排序 | 基数排序 | O(nk) | O(n+k) | 稳定 |
+## 4.2 交换排序
+### 冒泡排序
+```java
+public class BubbleSort {
+    // 基础版
+    public void bubbleSort(int[] arr) {
+        for (int i = 0; i < arr.length - 1; i++) {
+            for (int j = 0; j < arr.length - 1 - i; j++) {
+                if (arr[j] > arr[j + 1]) {
+                    swap(arr, j, j + 1);
+                }
+            }
+        }
+    }
+
+    // 优化版：提前终止
+    public void bubbleSortOptimized(int[] arr) {
+        boolean swapped = true;
+        int lastSwap = arr.length - 1;
+        while (swapped) {
+            swapped = false;
+            int newLastSwap = 0;
+            for (int j = 0; j < lastSwap; j++) {
+                if (arr[j] > arr[j + 1]) {
+                    swap(arr, j, j + 1);
+                    swapped = true;
+                    newLastSwap = j;
+                }
+            }
+            lastSwap = newLastSwap;
+            if (!swapped) break;
+        }
+    }
+
+    private void swap(int[] arr, int i, int j) {
+        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+    }
+}
+```
+### 快速排序
+```java
+public class QuickSort {
+    public void quickSort(int[] arr, int low, int high) {
+        if (low >= high) return;
+        int pivot = partition(arr, low, high);
+        quickSort(arr, low, pivot - 1);
+        quickSort(arr, pivot + 1, high);
+    }
+
+    private int partition(int[] arr, int low, int high) {
+        int pivot = arr[high];
+        int i = low - 1;
+        for (int j = low; j < high; j++) {
+            if (arr[j] < pivot) {
+                i++;
+                swap(arr, i, j);
+            }
+        }
+        swap(arr, i + 1, high);
+        return i + 1;
+    }
+
+    private void swap(int[] arr, int i, int j) {
+        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+    }
+
+    // 三数取中优化
+    private int medianOfThree(int[] arr, int low, int high) {
+        int mid = low + (high - low) / 2;
+        if (arr[low] > arr[mid]) swap(arr, low, mid);
+        if (arr[low] > arr[high]) swap(arr, low, high);
+        if (arr[mid] > arr[high]) swap(arr, mid, high);
+        return mid;
+    }
+}
+```
+## 4.3 插入排序
+### 直接插入排序
+```java
+public class InsertionSort {
+    public void insertionSort(int[] arr) {
+        for (int i = 1; i < arr.length; i++) {
+            int key = arr[i];
+            int j = i - 1;
+            while (j >= 0 && arr[j] > key) {
+                arr[j + 1] = arr[j];
+                j--;
+            }
+            arr[j + 1] = key;
+        }
+    }
+
+    // 二分查找优化（减少比较次数）
+    public void binaryInsertionSort(int[] arr) {
+        for (int i = 1; i < arr.length; i++) {
+            int key = arr[i];
+            int pos = binarySearch(arr, key, 0, i - 1);
+            for (int j = i; j > pos; j--) {
+                arr[j] = arr[j - 1];
+            }
+            arr[pos] = key;
+        }
+    }
+
+    private int binarySearch(int[] arr, int key, int left, int right) {
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (key < arr[mid]) right = mid - 1;
+            else left = mid + 1;
+        }
+        return left;
+    }
+}
+```
+### 希尔排序
+```java
+public class ShellSort {
+    public void shellSort(int[] arr) {
+        int n = arr.length;
+        for (int gap = n / 2; gap > 0; gap /= 2) {
+            for (int i = gap; i < n; i++) {
+                int key = arr[i];
+                int j = i;
+                while (j >= gap && arr[j - gap] > key) {
+                    arr[j] = arr[j - gap];
+                    j -= gap;
+                }
+                arr[j] = key;
+            }
+        }
+    }
+
+    // Hibbard增量序列优化
+    public void shellSortHibbard(int[] arr) {
+        int n = arr.length;
+        int k = 1;
+        while ((1 << k) - 1 < n) k++;
+        for (int gap = (1 << --k) - 1; gap > 0; gap = (1 << --k) - 1) {
+            for (int i = gap; i < n; i++) {
+                int key = arr[i];
+                int j = i;
+                while (j >= gap && arr[j - gap] > key) {
+                    arr[j] = arr[j - gap];
+                    j -= gap;
+                }
+                arr[j] = key;
+            }
+        }
+    }
+}
+```
+## 4.4 选择排序
+### 简单选择排序
+```java
+public class SelectionSort {
+    public void selectionSort(int[] arr) {
+        for (int i = 0; i < arr.length - 1; i++) {
+            int minIdx = i;
+            for (int j = i + 1; j < arr.length; j++) {
+                if (arr[j] < arr[minIdx]) minIdx = j;
+            }
+            swap(arr, i, minIdx);
+        }
+    }
+
+    private void swap(int[] arr, int i, int j) {
+        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+    }
+}
+```
+### 堆排序
+```java
+public class HeapSort {
+    public void heapSort(int[] arr) {
+        int n = arr.length;
+        // 构建最大堆
+        for (int i = n / 2 - 1; i >= 0; i--) {
+            heapify(arr, n, i);
+        }
+        // 依次将最大值移到末尾
+        for (int i = n - 1; i > 0; i--) {
+            swap(arr, 0, i);
+            heapify(arr, i, 0);
+        }
+    }
+
+    private void heapify(int[] arr, int n, int i) {
+        int largest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+        if (left < n && arr[left] > arr[largest]) largest = left;
+        if (right < n && arr[right] > arr[largest]) largest = right;
+        if (largest != i) {
+            swap(arr, i, largest);
+            heapify(arr, n, largest);
+        }
+    }
+
+    private void swap(int[] arr, int i, int j) {
+        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+    }
+}
+```
+## 4.5 归并排序与分布式排序
+```java
+public class MergeSort {
+    public void mergeSort(int[] arr, int left, int right) {
+        if (left >= right) return;
+        int mid = left + (right - left) / 2;
+        mergeSort(arr, left, mid);
+        mergeSort(arr, mid + 1, right);
+        merge(arr, left, mid, right);
+    }
+
+    private void merge(int[] arr, int left, int mid, int right) {
+        int[] temp = new int[right - left + 1];
+        int i = left, j = mid + 1, k = 0;
+        while (i <= mid && j <= right) {
+            if (arr[i] <= arr[j]) temp[k++] = arr[i++];
+            else temp[k++] = arr[j++];
+        }
+        while (i <= mid) temp[k++] = arr[i++];
+        while (j <= right) temp[k++] = arr[j++];
+        System.arraycopy(temp, 0, arr, left, temp.length);
+    }
+
+    // 迭代版本（自底向上）
+    public void mergeSortIterative(int[] arr) {
+        int n = arr.length;
+        for (int size = 1; size < n; size *= 2) {
+            for (int left = 0; left < n; left += 2 * size) {
+                int mid = Math.min(left + size - 1, n - 1);
+                int right = Math.min(left + 2 * size - 1, n - 1);
+                if (mid < right) merge(arr, left, mid, right);
+            }
+        }
+    }
+}
+```
+## 4.6 线性排序
+```java
+public class LinearSort {
+    // 计数排序 - 适合整数且范围不大
+    public void countingSort(int[] arr) {
+        int min = arr[0], max = arr[0];
+        for (int v : arr) {
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
+        int[] count = new int[max - min + 1];
+        for (int v : arr) count[v - min]++;
+        int idx = 0;
+        for (int i = 0; i < count.length; i++) {
+            while (count[i]-- > 0) arr[idx++] = i + min;
+        }
+    }
+
+    // 桶排序 - 适合均匀分布数据
+    public void bucketSort(float[] arr) {
+        int n = arr.length;
+        List<Float>[] buckets = new ArrayList[n];
+        for (int i = 0; i < n; i++) buckets[i] = new ArrayList<>();
+        for (float v : arr) {
+            int idx = (int) (v * n);
+            buckets[idx].add(v);
+        }
+        for (List<Float> bucket : buckets) {
+            Collections.sort(bucket);
+        }
+        int idx = 0;
+        for (List<Float> bucket : buckets) {
+            for (float v : bucket) arr[idx++] = v;
+        }
+    }
+
+    // 基数排序 - 按位排序
+    public void radixSort(int[] arr) {
+        int max = arr[0];
+        for (int v : arr) if (v > max) max = v;
+        for (int exp = 1; max / exp > 0; exp *= 10) {
+            countingSortByDigit(arr, exp);
+        }
+    }
+
+    private void countingSortByDigit(int[] arr, int exp) {
+        int n = arr.length;
+        int[] output = new int[n];
+        int[] count = new int[10];
+        for (int v : arr) count[(v / exp) % 10]++;
+        for (int i = 1; i < 10; i++) count[i] += count[i - 1];
+        for (int i = n - 1; i >= 0; i--) {
+            output[--count[(arr[i] / exp) % 10]] = arr[i];
+        }
+        System.arraycopy(output, 0, arr, 0, n);
+    }
+}
+```
+## 4.7 JDK排序源码解析
+```java
+// Arrays.sort - Dual-Pivot Quicksort (JDK 8+)
+public class Arrays {
+    public static void sort(int[] a) {
+        DualPivotQuicksort.sort(a, 0, a.length - 1, null, 0, 0);
+    }
+
+    // 对于Object使用TimSort（归并排序变体）
+    public static void sort(Object[] a) {
+        ComparableTimSort.sort(a, 0, a.length, null, 0, 0);
+    }
+}
+
+// Collections.sort
+public static <T> void sort(List<T> list, Comparator<? super T> c) {
+    list.sort(c);  // 调用List.sort，内部使用归并排序
+}
+```
+## 4.8 排序算法选择策略
+```java
+public class SortSelector {
+    // 数据基本有序 → 插入排序
+    public void sortAlmostSorted(int[] arr) {
+        new InsertionSort().insertionSort(arr);  // O(n)
+    }
+
+    // 数据范围有限 → 计数/桶排序
+    public void sortLimitedRange(int[] arr, int max) {
+        int[] count = new int[max + 1];
+        for (int v : arr) count[v]++;
+        int idx = 0;
+        for (int i = 0; i < count.length; i++) {
+            while (count[i]-- > 0) arr[idx++] = i;
+        }
+    }
+
+    // 通用场景 → JDK内置
+    public void sortGeneral(int[] arr) {
+        Arrays.sort(arr);  // 自动选择最优算法
+    }
+
+    // 内存受限 → 堆排序
+    public void sortInPlace(int[] arr) {
+        new HeapSort().heapSort(arr);  // O(1)额外空间
+    }
+
+    // 需要稳定 → 归并排序
+    public void sortStable(int[] arr) {
+        new MergeSort().mergeSort(arr, 0, arr.length - 1);
+    }
+}
+```
+## 4.9 本章小结
+- 排序算法分比较排序和非比较排序，前者O(n log n)下界
+- 快速排序是通用场景首选，归并排序适合需要稳定性的场景
+- JDK使用Dual-Pivot Quicksort优化，Object使用TimSort
+- 根据数据特征选择合适的排序算法

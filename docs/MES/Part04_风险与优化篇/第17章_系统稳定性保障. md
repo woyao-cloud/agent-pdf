@@ -1,0 +1,960 @@
+# 第17章 系统稳定性保障
+
+MES系统作为制造企业的核心生产管理系统，其稳定性直接关系到生产线的正常运转。一个小时的系统停机可能导致数十万甚至上百万元的生产损失，严重的甚至会造成安全事故。因此，系统稳定性保障是MES运维工作的重中之重。本章从高可用架构设计、性能优化、监控告警、容灾备份四个维度，系统阐述MES系统稳定性保障的完整方法论。
+
+## 17.1 高可用架构设计
+
+高可用架构设计的核心目标是通过架构层面的冗余和容错，确保系统在部分组件故障时仍能持续提供服务。MES系统的高可用设计需要从负载均衡、集群部署、容错机制三个层面综合考虑。
+
+### 17.1.1 负载均衡
+
+负载均衡是实现高可用的基础，它通过将请求分发到多个服务实例，實現系统整体处理能力的横向扩展，同时消除单点故障风险。
+
+**负载均衡策略选择**
+
+常见的负载均衡策略包括轮询、加权轮询、最少连接、IP哈希等。MES系统的业务特点决定了需要根据不同场景选择合适的策略：
+
+轮询策略适用于服务器性能相近、请求处理耗时相对稳定的场景。在MES中，报工查询、基础数据查询等无状态请求适合使用轮询策略。加权轮询适用于服务器性能存在差异的场景，可以给高性能服务器分配更多请求。最少连接策略适用于请求处理耗时差异较大的场景，能够将新请求分配给当前连接数最少的服务器，减少请求排队。在MES中，某些复杂的生产报表查询可能耗时较长，适合使用最少连接策略。IP哈希策略可以确保同一用户的请求始终路由到同一服务器，适用于需要session保持的场景。
+
+```nginx
+# Nginx负载均衡配置示例
+upstream mes_backend {
+    least_conn;  # 最少连接策略
+    server mes-server-01:8080 weight=3;
+    server mes-server-02:8080 weight=2;
+    server mes-server-03:8080 weight=1;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name mes.company.com;
+
+    location / {
+        proxy_pass http://mes_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    location /api/realtime {
+        # 实时数据请求需要更低延迟，使用轮询
+        proxy_pass http://mes_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+}
+```
+
+**健康检查机制**
+
+负载均衡器需要具备健康检查能力，及时发现故障节点并自动剔除。健康检查分为TCP端口检查、HTTP端点检查和应用层检查三个层次：
+
+TCP端口检查是最基础的检查方式，只验证服务端口是否可达。HTTP端点检查更为精准，可以检查应用层的健康状态。应用层检查则可以验证业务逻辑是否正常，例如检查数据库连接是否可用、缓存是否正常等。
+
+```yaml
+# Kubernetes健康检查配置示例
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+在某汽车零部件企业的MES系统中，负载均衡器每5秒对后端服务器执行一次HTTP健康检查。当检测到某台服务器连续3次健康检查失败时，自动将其从服务池中剔除，同时触发告警。该机制使系统的故障切换时间从原来的30秒降低到15秒以内。
+
+### 17.1.2 集群部署
+
+集群部署是高可用架构的核心，通过多台服务器协同工作，实现计算能力的横向扩展和故障容错。MES系统的集群部署需要考虑应用集群、数据库集群、缓存集群三个层面。
+
+**应用服务器集群**
+
+应用服务器集群的部署模式主要有主备模式和集群模式两种。主备模式（Active-Passive）采用一主一备或多备配置，正常情况下只有主服务器处理请求，备服务器处于待命状态。当主服务器故障时，备服务器自动接管服务。主备模式的优点是数据一致性容易保证，缺点是资源利用率较低。集群模式（Active-Active）下所有服务器同时处理请求，资源利用率高，但对数据一致性要求更高。
+
+对于MES系统，建议采用集群模式部署应用服务器。典型的部署架构是3-5台应用服务器组成集群，通过负载均衡器对外提供统一服务。会话状态采用分布式缓存存储，避免session绑定到特定服务器。
+
+```java
+// Spring Session配置示例，实现分布式会话
+@Configuration
+@EnableRedisHttpSession(maxInactiveIntervalInSeconds = 1800)
+public class SessionConfig {
+    @Value("${spring.redis.host}")
+    private String redisHost;
+
+    @Value("${spring.redis.port}")
+    private int redisPort;
+
+    @Bean
+    public RedisConnectionFactory redisConnectionFactory() {
+        RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
+        config.setHostName(redisHost);
+        config.setPort(redisPort);
+        return new LettuceConnectionFactory(config);
+    }
+}
+```
+
+**数据库集群**
+
+数据库是MES系统的核心数据存储，其高可用至关重要。主流的数据库高可用方案包括主从复制、读写分离和分布式数据库。
+
+主从复制是最常用的方案，配置一台主数据库和一台或多台从数据库。主库负责写入操作，从库通过复制同步数据，承担读取请求。MySQL的GTID（Global Transaction ID）模式可以实现自动故障切换，当主库故障时，从库可以自动提升为主库。
+
+```sql
+-- MySQL主从配置示例
+-- 主库配置
+[mysqld]
+server-id=1
+log_bin=mysql-bin
+gtid_mode=ON
+enforce_gtid_consistency=ON
+binlog_format=ROW
+
+-- 从库配置
+[mysqld]
+server-id=2
+log_bin=mysql-bin
+gtid_mode=ON
+enforce_gtid_consistency=ON
+binlog_format=ROW
+relay_log=relay-bin
+read_only=ON
+
+-- 从库配置复制通道
+CHANGE MASTER TO
+    MASTER_HOST='mes-master',
+    MASTER_USER='repl',
+    MASTER_PASSWORD='password',
+    MASTER_AUTO_POSITION=1;
+```
+
+读写分离是提升数据库处理能力的有效方式。MES系统80%以上的请求是读取操作，通过读写分离可以将读取请求分发到从库，减轻主库压力。读写分离需要考虑数据一致性问题，对于需要强一致性的读取操作（如库存扣减后的查询），应路由到主库。
+
+某电子制造企业的MES系统采用一主两从的数据库集群架构，写操作路由到主库，读操作分发到两个从库。系统上线后，数据库的整体处理能力提升了2.5倍，峰值时刻的响应时间从原来的3秒降低到0.8秒。
+
+**缓存集群**
+
+对于MES系统中的会话数据、配置数据、热点业务数据，缓存是提升性能的关键组件。Redis是最常用的缓存解决方案，其集群模式可以保证高可用和数据分片。
+
+Redis集群采用16384个槽位进行数据分片，每个节点负责一部分槽位。集群通过Gossip协议进行节点间通信，能够自动发现新节点、检测故障节点并进行故障转移。典型的Redis集群部署采用6个节点（3主3从），每台主节点配置一个从节点，当主节点故障时从节点自动升级。
+
+```yaml
+# Redis集群配置
+redis:
+  cluster:
+    nodes:
+      - mes-redis-01:6379
+      - mes-redis-02:6379
+      - mes-redis-03:6379
+      - mes-redis-04:6379
+      - mes-redis-05:6379
+      - mes-redis-06:6379
+  timeout: 3000
+  lettuce:
+    pool:
+      max-active: 50
+      max-idle: 10
+      min-idle: 5
+```
+
+### 17.1.3 容错机制
+
+容错机制是指系统在出现故障时能够自动检测、隔离并恢复的能力。完善的容错机制可以将故障影响降到最低，保证业务连续性。
+
+**服务熔断**
+
+服务熔断机制借鉴了电路保险丝的思想，当某个服务调用失败率达到阈值时，熔断器会"熔断"，后续对该服务的调用直接返回降级结果，避免级联故障。熔断器有三种状态：关闭状态（正常调用）、打开状态（直接返回降级）、半开状态（尝试探测恢复）。
+
+```java
+// Spring Cloud Hystrix熔断配置示例
+@HystrixCommand(
+    fallbackMethod = "getProductionOrderFallback",
+    commandProperties = {
+        @HystrixProperty(name = "circuitBreaker.requestVolumeThreshold", value = "20"),
+        @HystrixProperty(name = "circuitBreaker.sleepWindowInMilliseconds", value = "10000"),
+        @HystrixProperty(name = "circuitBreaker.errorThresholdPercentage", value = "50")
+    }
+)
+public ProductionOrder getProductionOrder(String orderId) {
+    return productionOrderService.getById(orderId);
+}
+
+public ProductionOrder getProductionOrderFallback(String orderId) {
+    // 降级处理：返回缓存数据或默认响应
+    return productionOrderCache.get(orderId);
+}
+```
+
+**限流保护**
+
+限流机制可以保护系统不被突发流量冲垮。常见的限流算法包括计数器限流、滑动窗口限流、令牌桶限流和漏桶限流。令牌桶算法允许一定程度的突发流量，适合处理脉冲式的业务场景；漏桶算法则更加平滑，适合处理恒定速率的请求。
+
+```java
+// 令牌桶限流实现示例
+public class TokenBucketRateLimiter {
+    private final double rate;  // 每秒产生的令牌数
+    private final double capacity;  // 桶的容量
+    private double tokens;
+    private long lastRefillTime;
+
+    public TokenBucketRateLimiter(double rate, double capacity) {
+        this.rate = rate;
+        this.capacity = capacity;
+        this.tokens = capacity;
+        this.lastRefillTime = System.currentTimeMillis();
+    }
+
+    public synchronized boolean tryAcquire() {
+        refill();
+        if (tokens >= 1) {
+            tokens -= 1;
+            return true;
+        }
+        return false;
+    }
+
+    private void refill() {
+        long now = System.currentTimeMillis();
+        double newTokens = (now - lastRefillTime) / 1000.0 * rate;
+        tokens = Math.min(capacity, tokens + newTokens);
+        lastRefillTime = now;
+    }
+}
+```
+
+**重试机制**
+
+重试机制可以在临时性故障时自动恢复服务。重试策略需要考虑重试次数、重试间隔、退避策略等因素。对于临时性故障（如网络抖动、短暂的服务不可用），适当的重试可以提高成功率；但过度的重试可能加剧系统负担，甚至造成"雪崩"效应。
+
+推荐使用指数退避（Exponential Backoff）策略：第一次重试等待1秒，第二次等待2秒，第三次等待4秒，以此类推。同时应设置最大重试次数（如3次），避免无限重试。
+
+```java
+// 重试配置示例
+@Retryable(
+    value = {RuntimeException.class},
+    maxAttempts = 3,
+    backoff = @Backoff(delay = 1000, multiplier = 2)
+)
+public ProductionRecord submitRecord(ProductionRecord record) {
+    return restTemplate.postForObject(
+        "http://mes-service/api/records",
+        record,
+        ProductionRecord.class
+    );
+}
+```
+
+**服务降级**
+
+服务降级是在系统压力过大或部分功能故障时的兜底策略。降级的原则是保障核心功能，牺牲非核心功能。例如，当报表服务故障时，可以降级为只提供实时生产数据查询，暂停历史数据分析功能；当短信通知服务故障时，可以降级为发送邮件通知。
+
+```java
+// 服务降级示例
+@Service
+public class AlertService {
+    @Autowired
+    private SmsSender smsSender;
+
+    @Autowired
+    private EmailSender emailSender;
+
+    @HystrixCommand(fallbackMethod = "sendAlertFallback")
+    public void sendAlert(Alert alert) {
+        smsSender.send(alert.getPhone(), alert.getMessage());
+    }
+
+    public void sendAlertFallback(Alert alert) {
+        // 短信发送失败，降级为邮件通知
+        emailSender.send(alert.getEmail(), alert.getMessage());
+        // 记录降级日志
+        log.warn("Alert sent via email due to SMS failure: {}", alert.getId());
+    }
+}
+```
+
+## 17.2 性能优化
+
+性能是用户体验的关键因素，也是系统稳定性的重要组成部分。一个响应缓慢的系统不仅影响用户效率，在极端情况下还可能导致业务积压、数据丢失等问题。MES系统的性能优化需要从数据库、应用、缓存三个层面系统推进。
+
+### 17.2.1 数据库优化
+
+数据库通常是系统性能瓶颈的根源，90%以上的性能问题都与数据库有关。数据库优化包括索引优化、查询优化、表结构优化、分区表等方面。
+
+**索引优化**
+
+索引是提升查询性能的最有效手段。合理的索引设计可以将查询速度提升数个数量级。MES系统中常见的查询场景包括按工单查询、按工序查询、按时间范围查询、按设备查询等，针对这些场景需要创建合适的索引。
+
+```sql
+-- MES核心表索引设计示例
+-- 生产订单表索引
+CREATE INDEX idx_production_order_status ON production_order(status);
+CREATE INDEX idx_production_order_plan_date ON production_order(plan_start_date, plan_end_date);
+CREATE INDEX idx_production_order_product ON production_order(product_code);
+
+-- 生产记录表索引
+CREATE INDEX idx_production_record_order ON production_record(order_id);
+CREATE INDEX idx_production_record_workstation ON production_record(workstation_id);
+CREATE INDEX idx_production_record_operator ON production_record(operator_id);
+CREATE INDEX idx_production_record_time ON production_record(start_time, end_time);
+-- 复合索引，覆盖查询
+CREATE INDEX idx_production_record_covering ON production_record(order_id, workstation_id, start_time)
+    INCLUDE (quantity, status);
+
+-- 质量检验表索引
+CREATE INDEX idx_quality_inspection_order ON quality_inspection(order_id);
+CREATE INDEX idx_quality_inspection_result ON quality_inspection(inspection_result, inspection_time);
+```
+
+索引优化需要注意以下几点：一是避免在索引列上使用函数，否则索引会失效；二是尽量使用覆盖索引，即索引包含查询所需的所有列，可以避免回表查询；三是对于低选择性列（如状态字段），单独建索引效果不佳，可以考虑组合索引；四是索引不是越多越好，过多的索引会影响写入性能。
+
+**查询优化**
+
+除了索引优化，SQL语句本身的优化也很重要。常见的SQL优化手段包括：
+
+避免SELECT *，只查询需要的字段；使用EXPLAIN分析执行计划，确保查询走索引扫描而非全表扫描；避免在WHERE子句中对索引列进行函数运算；使用LIMIT分页，避免一次性加载大量数据；对于复杂查询，考虑拆分为多个简单查询或使用物化视图。
+
+```sql
+-- 低效查询示例
+SELECT * FROM production_record
+WHERE DATE_FORMAT(start_time, '%Y-%m-%d') = '2024-01-01';
+
+-- 优化后查询
+SELECT * FROM production_record
+WHERE start_time >= '2024-01-01 00:00:00'
+  AND start_time < '2024-01-02 00:00:00';
+
+-- 分页查询优化
+-- 低效：OFFSET过大时性能急剧下降
+SELECT * FROM production_record ORDER BY id LIMIT 1000000, 20;
+
+-- 优化：使用游标分页
+SELECT * FROM production_record
+WHERE id > 1000000
+ORDER BY id
+LIMIT 20;
+```
+
+**表结构优化**
+
+对于数据量大的表，可以考虑分表策略。水平分表将数据按某个维度（如时间、区域）分散到多个表中，适合数据量大但查询维度明确的场景；垂直分表将表的不同字段拆分到多个表中，适合宽表场景。
+
+对于MES系统，生产记录表、质量数据表等数据增长快速的表，建议按月份或按年份进行分表。某企业的MES系统将生产记录表按月分表后，单表数据量从原来的2000万行降低到100万行，查询性能提升了5倍以上。
+
+```java
+// 分表路由策略示例
+public class ProductionRecordShardingStrategy implements ShardingStrategy<String> {
+    @Override
+    public String doSharding(Collection<String> availableTargetNames, PreciseShardingValue<String> shardingValue) {
+        // 按年月分表，如 production_record_202401
+        String orderId = shardingValue.getValue();
+        LocalDateTime dateTime = getOrderDateTime(orderId);
+        String suffix = DateTimeFormatter.ofPattern("yyyyMM").format(dateTime);
+        String tableName = "production_record_" + suffix;
+
+        for (String targetName : availableTargetNames) {
+            if (targetName.equals(tableName)) {
+                return targetName;
+            }
+        }
+        return "production_record_" + DateTimeFormatter.ofPattern("yyyyMM").format(LocalDateTime.now());
+    }
+}
+```
+
+### 17.2.2 应用优化
+
+应用层优化包括代码优化、连接池配置、异步处理等方面。良好的应用优化可以显著提升系统响应速度和吞吐量。
+
+**代码优化**
+
+代码层面的优化首先要避免常见的性能反模式。N+1查询是常见的性能问题，指在循环中逐条查询数据库。解决方法是使用批量查询或JOIN查询。
+
+```java
+// N+1查询问题
+// 低效代码
+List<ProductionOrder> orders = productionOrderService.getActiveOrders();
+for (ProductionOrder order : orders) {
+    List<ProductionRecord> records = productionRecordService.getByOrderId(order.getId());
+    // 处理记录
+}
+
+// 优化后：使用批量查询
+List<ProductionOrder> orders = productionOrderService.getActiveOrders();
+List<String> orderIds = orders.stream().map(ProductionOrder::getId).collect(Collectors.toList());
+Map<String, List<ProductionRecord>> recordsMap = productionRecordService.getByOrderIds(orderIds);
+for (ProductionOrder order : orders) {
+    List<ProductionRecord> records = recordsMap.get(order.getId());
+    // 处理记录
+}
+```
+
+其他常见的代码优化手段包括：使用StringBuilder代替字符串拼接、避免在循环中创建对象、使用缓存避免重复计算、合理使用并行流处理等。
+
+**连接池优化**
+
+数据库连接是稀缺资源，连接池的合理配置对性能至关重要。连接池配置需要考虑最小连接数、最大连接数、连接超时时间、连接有效性检测等因素。
+
+```yaml
+# HikariCP连接池配置
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+      pool-name: MesHikariPool
+```
+
+最小连接数建议设置为正常负载所需的数量，避免连接频繁创建销毁；最大连接数需要根据数据库服务器的处理能力和应用服务器数量来确定，通常每个应用服务器配置10-20个连接；连接超时时间设置过短可能导致频繁超时，设置过长则会影响故障恢复速度。
+
+**异步处理**
+
+对于非实时性要求的操作，应采用异步处理方式，避免阻塞主流程。常见的异步处理方式包括消息队列、异步任务线程池等。
+
+```java
+// 异步任务示例
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+    @Bean(name = "taskExecutor")
+    public Executor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("mes-async-");
+        executor.initialize();
+        return executor;
+    }
+}
+
+@Service
+public class ReportService {
+    @Async("taskExecutor")
+    public Future<Report> generateReportAsync(ReportRequest request) {
+        // 异步生成报表
+        Report report = doGenerateReport(request);
+        return new AsyncResult<>(report);
+    }
+}
+```
+
+### 17.2.3 缓存策略
+
+缓存是提升系统性能的核心手段之一。合理的缓存策略可以将数据库访问减少80%以上，显著提升系统响应速度。
+
+**缓存层次设计**
+
+MES系统应建立多级缓存体系：本地缓存（一级缓存）存储变化频率低的数据，如配置数据、基础字典数据；分布式缓存（二级缓存）存储会话数据、热点业务数据；数据库作为最终数据存储。
+
+```java
+// 多级缓存配置示例
+@Configuration
+public class CacheConfig {
+    @Bean
+    public CacheManager cacheManager() {
+        // 本地缓存：Caffeine
+        CaffeineCacheManager caffeineCacheManager = new CaffeineCacheManager();
+        caffeineCacheManager.setCaffeine(Caffeine.newBuilder()
+            .maximumSize(1000)
+            .expireAfterWrite(10, TimeUnit.MINUTES));
+
+        // 分布式缓存：Redis
+        RedisCacheManager redisCacheManager = RedisCacheManager.builder(redisConnectionFactory())
+            .cacheDefaults(RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofHours(1)))
+            .transactionAware()
+            .build();
+
+        // 组合缓存管理器
+        return new CompositeCacheManager(caffeineCacheManager, redisCacheManager);
+    }
+}
+```
+
+**缓存策略选择**
+
+不同的数据应采用不同的缓存策略：
+
+对于配置数据、字典数据等几乎不变的数据，采用永久缓存或长TTL缓存；对于用户会话数据，采用与会话生命周期一致的TTL；对于生产订单、工序数据等频繁变化的数据，采用旁路缓存模式（Cache-Aside），即读取时优先查缓存，缓存未命中时查数据库并更新缓存，写入时先更新数据库再删除缓存。
+
+```java
+// 旁路缓存模式示例
+@Service
+public class ProductionOrderService {
+    @Autowired
+    private RedisTemplate<String, ProductionOrder> redisTemplate;
+
+    @Autowired
+    private ProductionOrderMapper orderMapper;
+
+    private static final String CACHE_KEY_PREFIX = "mes:order:";
+
+    public ProductionOrder getById(String orderId) {
+        String cacheKey = CACHE_KEY_PREFIX + orderId;
+
+        // 先查缓存
+        ProductionOrder order = redisTemplate.opsForValue().get(cacheKey);
+        if (order != null) {
+            return order;
+        }
+
+        // 缓存未命中，查数据库
+        order = orderMapper.selectById(orderId);
+        if (order != null) {
+            // 写入缓存
+            redisTemplate.opsForValue().set(cacheKey, order, 1, TimeUnit.HOURS);
+        }
+        return order;
+    }
+
+    @Transactional
+    public void updateOrder(ProductionOrder order) {
+        // 先更新数据库
+        orderMapper.updateById(order);
+
+        // 删除缓存
+        String cacheKey = CACHE_KEY_PREFIX + order.getId();
+        redisTemplate.delete(cacheKey);
+    }
+}
+```
+
+**缓存失效处理**
+
+缓存失效的处理策略直接影响数据一致性。常见的策略包括：更新时删除缓存（延迟双删）、设置TTL过期、主动推送失效消息等。对于强一致性要求的数据，应在写入后短暂时间内（如500ms）再次删除缓存，避免并发导致的脏数据。
+
+## 17.3 监控与告警
+
+有效的监控和告警系统是保障系统稳定性的"千里眼"和"警报器"。通过全面的监控，可以及时发现系统隐患；通过合理的告警，可以快速响应故障。
+
+### 17.3.1 监控指标体系
+
+MES系统的监控指标应覆盖基础设施、应用服务、业务功能三个层面，形成完整的监控视图。
+
+**基础设施监控**
+
+基础设施监控包括服务器资源监控和网络监控。服务器资源监控包括CPU使用率、内存使用率、磁盘使用率和IO、网络流量等指标。网络监控包括网络延迟、丢包率、连接数等指标。
+
+| 指标 | 告警阈值（ Warning） | 告警阈值（ Critical） | 采集频率 |
+|------|---------------------|---------------------|----------|
+| CPU使用率 | > 70% | > 90% | 10秒 |
+| 内存使用率 | > 75% | > 90% | 10秒 |
+| 磁盘使用率 | > 80% | > 95% | 1分钟 |
+| 磁盘IO等待 | > 20% | > 50% | 10秒 |
+| 网络延迟 | > 100ms | > 500ms | 30秒 |
+| TCP连接数 | > 8000 | > 10000 | 30秒 |
+
+**应用服务监控**
+
+应用服务监控包括应用性能监控和JVM监控。应用性能监控（APM）关注响应时间、吞吐量、错误率等指标。JVM监控关注堆内存使用量、GC频率和时长、线程数等指标。
+
+```yaml
+# Prometheus监控指标配置
+- job_name: 'mes-application'
+  metrics_path: '/actuator/prometheus'
+  static_configs:
+    - targets: ['mes-server-01:8080', 'mes-server-02:8080', 'mes-server-03:8080']
+
+  # 自定义业务指标
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: 'mes_(.*)'
+      action: keep
+```
+
+**业务功能监控**
+
+业务功能监控是最贴近用户需求的监控，关注业务操作的成功率、响应时间等。MES系统的核心业务指标包括：报工成功率、订单创建成功率、条码扫描成功率、数据同步延迟等。
+
+```java
+// 业务指标埋点示例
+@Service
+public class ProductionRecordService {
+    private final MeterRegistry meterRegistry;
+
+    public void submitRecord(ProductionRecord record) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+
+        try {
+            // 业务处理
+            doSubmit(record);
+            // 记录成功指标
+            meterRegistry.counter("mes_production_record_submit_total", "status", "success").increment();
+        } catch (Exception e) {
+            // 记录失败指标
+            meterRegistry.counter("mes_production_record_submit_total", "status", "failure").increment();
+            throw e;
+        } finally {
+            sample.stop(meterRegistry.timer("mes_production_record_submit_duration"));
+        }
+    }
+}
+```
+
+### 17.3.2 告警规则设计
+
+告警规则的设计需要平衡"及时发现"和"避免打扰"两个目标。告警过于敏感会导致告警疲劳，告警过于迟钝可能错过故障。
+
+**告警级别定义**
+
+告警通常分为P1-P4四个级别，级别越高越紧急：
+
+P1（Critical）指系统完全不可用或核心功能严重受损，需要立即处理，通常要求5分钟内响应；P2（High）指系统性能明显下降或非核心功能不可用，需要在15分钟内处理；P3（Medium）指系统存在潜在风险或性能轻微下降，需要在1小时内处理；P4（Low）指系统存在优化空间或需要关注的事项，可以择机处理。
+
+**告警规则示例**
+
+```yaml
+# Prometheus告警规则示例
+groups:
+  - name: mes-alerts
+    rules:
+      # 系统不可用告警
+      - alert: MESServiceDown
+        expr: up{job="mes-application"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MES服务不可用"
+          description: "MES应用服务已停止超过1分钟"
+
+      # 响应时间过长告警
+      - alert: MESResponseTimeHigh
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket{job="mes-application"}[5m])) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MES响应时间过长"
+          description: "95分位响应时间超过3秒"
+
+      # 错误率过高告警
+      - alert: MESErrorRateHigh
+        expr: rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MES错误率过高"
+          description: "5xx错误率超过5%"
+
+      # 数据库连接池告警
+      - alert: DatabaseConnectionPoolExhausted
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据库连接池即将耗尽"
+          description: "活跃连接数超过最大连接的90%"
+
+      # 报工业务异常告警
+      - alert: ProductionReportFailureRateHigh
+        expr: rate(mes_production_record_submit_total{status="failure"}[5m]) / rate(mes_production_record_submit_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "报工失败率过高"
+          description: "报工操作失败率超过10%"
+```
+
+**告警抑制与聚合**
+
+为避免告警风暴，应配置告警抑制和聚合规则。同一个故障可能触发多个相关告警，应只发送最严重的一个。同一时间段内的多个同类告警应聚合为一条，避免重复打扰。
+
+```yaml
+# 告警抑制配置示例
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'mes-on-call'
+  routes:
+    # 严重告警优先处理
+    - match:
+        severity: critical
+      receiver: 'mes-emergency'
+      continue: true
+
+    # 服务级别告警
+    - match:
+        severity: warning
+        team: 'mes-team'
+      receiver: 'mes-team-channel'
+```
+
+### 17.3.3 故障排查方法
+
+当故障发生时，快速准确的排查是恢复服务的关键。故障排查应遵循"先定位、后解决"的原则。
+
+**故障排查流程**
+
+标准化的故障排查流程包括以下步骤：
+
+第一步是收集信息。了解故障现象、发生时间、影响范围、是否有相关变更等基础信息。第二步是初步判断。根据监控指标和日志，初步判断故障类型（是系统级故障还是应用级故障，是硬件问题还是软件问题）。第三步是深入分析。结合日志、堆栈、数据库查询等手段，定位故障根因。第四步是制定方案。根据根因制定修复方案，评估修复风险。第五步是实施修复。执行修复操作，如有必要先在测试环境验证。第六步是验证恢复。确认系统恢复正常，并持续观察一段时间。第七步是总结复盘。记录故障过程，分析根本原因，制定预防措施。
+
+**常见故障排查命令**
+
+```bash
+# 系统资源排查
+top -bn1 | head -20  # 查看CPU和内存占用
+df -h  # 查看磁盘使用情况
+iostat -x 1 5  # 查看IO等待情况
+netstat -an | grep ESTABLISHED | wc -l  # 查看活跃连接数
+
+# Java应用排查
+jps -l  # 查看Java进程
+jstack <pid>  # 查看线程堆栈
+jmap -heap <pid>  # 查看JVM堆内存使用
+jstat -gc <pid> 1000  # 查看GC情况
+
+# 数据库排查
+SHOW PROCESSLIST;  # 查看活跃连接
+EXPLAIN <query>;  # 查看查询执行计划
+SHOW STATUS LIKE 'Threads%';  # 查看数据库连接状态
+```
+
+**日志分析技巧**
+
+日志是故障排查最重要的信息源。MES系统应建立统一的日志收集和分析平台，如ELK（Elasticsearch、Logstash、Kibana）栈。日志分析的关键技巧包括：
+
+一是按时间范围过滤，缩小排查范围；二是按关键字搜索，定位关键事件；三是关联分析，将多个相关日志进行关联；四是异常模式识别，使用正则表达式匹配异常模式。
+
+```bash
+# 日志分析示例
+# 查找最近1小时内ERROR级别的日志
+grep "ERROR" /var/log/mes/application.log | grep -E "$(date -d '1 hour ago' '+%Y-%m-%d %H')"
+
+# 查找特定订单相关的所有操作
+grep "orderId=PO2024010001" /var/log/mes/application.log
+
+# 统计接口调用次数
+grep "POST /api/production/record" /var/log/mes/access.log | wc -l
+```
+
+## 17.4 容灾与备份
+
+容灾与备份是系统稳定性的最后一道防线。当灾难性故障发生时，完善的容灾和备份机制可以最大程度减少数据丢失，快速恢复业务。
+
+### 17.4.1 备份策略设计
+
+备份策略的核心是确定备份范围、备份频率、保留周期，并确保备份的可恢复性。
+
+**备份类型选择**
+
+常见的备份类型包括全量备份、增量备份和差异备份。全量备份是备份所有数据，恢复简单但耗时较长；增量备份只备份自上次备份以来变化的数据，备份速度快但恢复时需要依次恢复所有增量；差异备份只备份自上次全量备份以来变化的数据，是全量和增量的折中。
+
+对于MES系统，建议采用"全量+增量"的组合策略：每周进行一次全量备份，每天进行增量备份，实时进行日志备份。
+
+```bash
+# 数据库备份脚本示例
+#!/bin/bash
+
+# 配置参数
+BACKUP_DIR="/backup/mes"
+DATE=$(date +%Y%m%d)
+MYSQL_USER="backup"
+MYSQL_PASSWORD="password"
+MYSQL_HOST="localhost"
+DATABASE="mes_db"
+
+# 创建备份目录
+mkdir -p $BACKUP_DIR/$DATE
+
+# 全量备份（每周日）
+if [ $(date +%w) -eq 0 ]; then
+    mysqldump -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASSWORD \
+        --single-transaction --routines --triggers --events \
+        --master-data=2 \
+        $DATABASE | gzip > $BACKUP_DIR/$DATE/full_$DATABASE.sql.gz
+    echo "Full backup completed: $DATE"
+else
+    # 增量备份
+    mysqldump -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASSWORD \
+        --single-transaction --routines --triggers --events \
+        --delete-source-master-logs \
+        $DATABASE | gzip > $BACKUP_DIR/$DATE/incremental_$DATABASE.sql.gz
+    echo "Incremental backup completed: $DATE"
+fi
+
+# 清理7天前的备份
+find $BACKUP_DIR -mtime +7 -delete
+```
+
+**备份验证**
+
+备份的价值在于恢复，务必定期进行恢复测试。建议每月进行一次完整的恢复演练，验证备份的可用性。恢复演练应包括：备份文件完整性验证、数据恢复时间测试、恢复后数据一致性验证。
+
+```bash
+# 备份验证脚本示例
+#!/bin/bash
+
+# 恢复测试
+BACKUP_FILE=$1
+TEST_DB="mes_test"
+
+# 创建测试数据库
+mysql -u root -e "DROP DATABASE IF EXISTS $TEST_DB; CREATE DATABASE $TEST_DB;"
+
+# 恢复备份
+gunzip < $BACKUP_FILE | mysql -u root $TEST_DB
+
+# 验证数据
+RECORD_COUNT=$(mysql -u root -N -e "SELECT COUNT(*) FROM $TEST_DB.production_record")
+if [ $RECORD_COUNT -gt 0 ]; then
+    echo "Backup restore test passed: $RECORD_COUNT records"
+else
+    echo "Backup restore test FAILED: no records found"
+    exit 1
+fi
+```
+
+### 17.4.2 灾难恢复方案
+
+灾难恢复方案（DRP）应明确RTO（恢复时间目标）和RPO（恢复点目标），并制定详细的恢复步骤。
+
+**RTO与RPO定义**
+
+RTO是指业务可以忍受的最大停机时间，RPO是指可以忍受的最大数据丢失量。不同业务系统的RTO和RPO要求不同。对于MES系统，建议RTO不超过4小时，RPO不超过1小时。这意味着系统故障后应在4小时内恢复服务，丢失的数据应控制在1小时以内。
+
+**灾难恢复架构**
+
+灾难恢复架构通常采用主备模式或多活模式。主备模式是指在主数据中心部署生产环境，在灾备数据中心部署备份环境，平时灾备环境处于待机状态，当主数据中心故障时切换到灾备环境。多活模式是指两个数据中心同时运行，各自承担一部分流量，当某个数据中心故障时，另一个数据中心承担全部负载。
+
+对于MES系统，建议采用主备模式，灾备中心与主中心保持30分钟数据同步。灾备中心应部署在不同的地理位置（建议距离100公里以上），避免区域性灾难同时影响两个中心。
+
+```yaml
+# 数据同步配置示例
+# 主数据中心配置
+replication:
+  mode: async
+  source: mes-primary-db.internal
+  target: mes-dr-db.internal
+  delay_warning_threshold: 600  # 延迟超过10分钟告警
+  delay критический_threshold: 1800  # 延迟超过30分钟告警
+
+# 应用双中心部署
+deployments:
+  primary:
+    region: cn-east-1
+    instances: 3
+  disaster_recovery:
+    region: cn-north-1
+    instances: 3
+    replica: true
+```
+
+**恢复流程**
+
+灾难恢复流程应形成标准化的文档，包含以下内容：
+
+一是故障判定。明确什么情况下触发灾难恢复，如主数据中心不可达超过30分钟、数据丢失超过1小时等。二是通知机制。明确灾难恢复的触发流程和通知对象，包括技术团队、管理层、业务部门等。三是切换步骤。详细记录从主中心切换到灾备中心的操作步骤，包括DNS切换、数据库切换、应用启动等。四是回切步骤。详细记录主中心恢复后从灾备中心切回主中心的操作步骤。五是验证清单。列出恢复后需要验证的关键项目，确保业务功能正常。
+
+```markdown
+# MES系统灾难恢复检查清单
+
+## 1. 基础设施验证
+- [ ] 灾备中心网络连通性正常
+- [ ] 灾备中心数据库服务正常运行
+- [ ] 灾备中心应用服务正常运行
+- [ ] 负载均衡器配置正确
+
+## 2. 数据验证
+- [ ] 数据库同步延迟小于10分钟
+- [ ] 最新生产订单数据完整
+- [ ] 今日报工数据完整
+- [ ] 库存数据与主中心一致
+
+## 3. 业务验证
+- [ ] 报工功能正常
+- [ ] 订单查询功能正常
+- [ ] 质量管理功能正常
+- [ ] 报表功能正常
+- [ ] 移动端功能正常
+
+## 4. 通知与确认
+- [ ] 通知相关部门业务恢复
+- [ ] 确认各产线可正常作业
+- [ ] 安排人员持续观察
+```
+
+### 17.4.3 业务连续性保障
+
+除了技术层面的容灾备份，还应建立业务连续性管理（BCM）体系，确保在各种突发情况下业务能够持续运营。
+
+**业务影响分析**
+
+业务影响分析（BIA）是BCM的基础，识别关键业务流程，评估中断影响，确定恢复优先级。对于MES系统，关键业务流程包括：生产报工、质量检验、物料消耗、设备数据采集等。应识别每个流程的中断影响和可忍受时间。
+
+| 业务功能 | 中断影响 | RTO | RPO | 恢复优先级 |
+|----------|----------|-----|-----|------------|
+| 生产报工 | 产线停工、数据丢失 | 30分钟 | 5分钟 | P0 |
+| 质量检验 | 产品无法入库、的质量风险 | 1小时 | 15分钟 | P1 |
+| 物料消耗 | 库存不准确、缺料风险 | 2小时 | 1小时 | P2 |
+| 设备数据采集 | OEE计算不准确 | 4小时 | 2小时 | P3 |
+
+**应急预案**
+
+针对不同类型的故障场景，应制定详细的应急预案。应急预案应包含：故障场景描述、触发条件、响应流程、恢复步骤、资源需求、责任人等。
+
+```yaml
+# 应急预案示例：数据库故障
+name: "数据库故障应急预案"
+trigger: "主数据库不可用超过5分钟"
+stages:
+  - name: "故障确认"
+    steps:
+      - "确认数据库服务状态"
+      - "检查网络连通性"
+      - "评估故障影响范围"
+    responsible: "运维工程师"
+
+  - name: "切换到备用数据库"
+    steps:
+      - "停止应用服务"
+      - "激活备用数据库"
+      - "修改数据库连接配置"
+      - "启动应用服务"
+    responsible: "DBA"
+
+  - name: "业务验证"
+    steps:
+      - "验证报工功能"
+      - "验证查询功能"
+      - "通知产线恢复使用"
+    responsible: "运维工程师"
+
+  - name: "故障修复"
+    steps:
+      - "分析故障根因"
+      - "修复主数据库"
+      - "同步数据"
+      - "计划回切时间"
+    responsible: "DBA"
+```
+
+**定期演练**
+
+应急预案的有效性需要通过定期演练来验证。建议每季度进行一次桌面演练，每年进行一次实际切换演练。演练后应进行复盘总结，发现问题并持续改进。
+
+---
+
+系统稳定性保障是一项系统工程，需要从架构设计、性能优化、监控告警、容灾备份四个层面综合考虑。本章介绍的方法论和最佳实践可以帮助企业建立完善的MES系统稳定性保障体系，确保系统在各种情况下都能稳定运行，为生产管理提供可靠支撑。

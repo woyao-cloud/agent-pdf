@@ -1,0 +1,31 @@
+# 第21章 代码实现能力
+## 21.1 手写数据结构的艺术
+### 为什么需要手写？
+1. **深入理解原理**：只看源码无法真正理解
+2. **应对面试**：手写是标配考察点
+3. **优化能力**：理解原理才能优化
+4. **解决问题**：面对新问题能设计合适结构
+### 手写步骤
+```
+1. 定义核心接口/抽象类
+2. 实现基本操作（增删改查）
+3. 处理边界情况（空、满、异常）
+4. 优化性能（空间、时间）
+5. 添加泛型支持
+6. 完善注释和文档
+```### 手写示例：手写LinkedList
+```java
+public class LinkedList<E> {    // 内部节点类    private static class Node<E> {        E data;        Node<E> next;        Node<E> prev;        Node(E data) { this.data = data; }    }    private Node<E> first, last;    private int size;    // 添加到尾部    public void addLast(E e) {        Node<E> newNode = new Node<>(e);        if (last == null) {            first = last = newNode;        } else {            last.next = newNode;            newNode.prev = last;            last = newNode;        }        size++;    }    // 删除指定节点    void unlink(Node<E> x) {        Node<E> p = x.prev, n = x.next;        if (p == null) { first = n; } else { p.next = n; x.prev = null; }        if (n == null) { last = p; } else { n.prev = p; x.next = null; }        size--;    }    // 获取第index个节点    private Node<E> node(int index) {        if (index < size / 2) {            Node<E> x = first;            for (int i = 0; i < index; i++) x = x.next;            return x;        } else {            Node<E> x = last;            for (int i = size - 1; i > index; i--) x = x.prev;            return x;        }    }}```## 21.2 代码质量与可读性
+### 核心原则
+| 原则 | 说明 | 示例 | |------|------|------| | 单一职责 | 一个类/方法只做一件事 | 分离增删改查逻辑 | | 命名清晰 | 见名知意 | add() vs addLast() | | 异常处理 | 明确错误信息 | 抛具体异常而非RuntimeException | | 防御性编程 | 检查输入 | 参数非空校验 |### 好的代码示例
+```java
+// 清晰的接口设计public interface Stack<E> {    void push(E e);    E pop();    E peek();    int size();    boolean isEmpty();}// 完善的异常处理public E remove(int index) {    if (index < 0 || index >= size)        throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);    // 删除逻辑}// 防御性复制public List<E> getCopy() {    return new ArrayList<>(this.elements);  // 返回副本}```## 21.3 测试驱动开发
+### TDD流程
+```// Red → Green → Refactor
+// 1. 写一个失败的测试（Red）@Testpublic void testAdd() {    ArrayStack<Integer> stack = new ArrayStack<>();    stack.push(1);    stack.push(2);    assertEquals(2, stack.size());    assertEquals(2, stack.peek());}// 2. 写最简单的代码使其通过（Green）public void push(E e) {    array[size++] = e;}// 3. 重构代码（Refactor）```### 测试覆盖
+```java// 测试边界条件@Testpublic void testEdgeCases() {    // 空栈    assertTrue(stack.isEmpty());    stack.pop(); // 应抛异常    // 单元素    stack.push(1); assertEquals(1, stack.peek());    stack.pop(); assertTrue(stack.isEmpty());    // 满栈    for (int i = 0; i < 100; i++) stack.push(i);    stack.push(101); // 应抛异常或扩容}```## 21.4 重构与设计模式
+### 常见重构技巧
+| 重构 | 说明 | 场景 | |------|------|------| | 提取方法 | 长方法拆小 | >30行方法 | | 提取类 | 职责分离 | 类过大 | | 引入参数对象 | 参数过多 | >5个参数 | | 策略模式 | 算法可替换 | 多算法实现 |### 设计模式应用
+```java
+// 迭代器模式 - 统一遍历public interface Iterator<E> {    boolean hasNext();    E next();    void remove();}// 策略模式 - 不同比较器public interface Comparator<T> {    int compare(T o1, T o2);}// 装饰器模式 - 增强功能public class BufferedInputStream extends InputStream {    private InputStream in;    private byte[] buffer;    // 增强缓冲功能}```## 21.5 本章小结
+- 手写数据结构是工程师的核心能力- 代码质量重在可读性和可维护性- TDD是保证代码正确性的有效方法- 设计模式是解决重复问题的经验总结

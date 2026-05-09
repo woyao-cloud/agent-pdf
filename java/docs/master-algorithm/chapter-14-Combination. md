@@ -1,0 +1,105 @@
+# 第14章 组合优化
+## 14.1 贪心策略的组合优化
+```java
+// 旅行商问题（TSP）- 贪心近似
+public class TSP {
+    public int solveGreedy(int[][] dist) {
+        int n = dist.length;
+        boolean[] visited = new boolean[n];
+        visited[0] = true;
+        int sum = 0, curr = 0;
+        for (int i = 1; i < n; i++) {
+            int next = -1, minDist = Integer.MAX_VALUE;
+            for (int j = 0; j < n; j++) {
+                if (!visited[j] && dist[curr][j] < minDist) {
+                    minDist = dist[curr][j];
+                    next = j;
+                }
+            }
+            visited[next] = true;
+            sum += minDist;
+            curr = next;
+        }
+        sum += dist[curr][0];
+        return sum;
+    }
+}
+```
+## 14.2 近似算法
+```java
+// 集合覆盖 - 贪心近似算法
+public class SetCover {
+    public Set<Integer> greedyCover(Set<Set<Integer>> sets, Set<Integer> universe) {
+        Set<Integer> result = new HashSet<>();
+        Set<Integer> covered = new HashSet<>();
+        while (!covered.containsAll(universe)) {
+            Set<Integer> best = null;
+            int maxNew = 0;
+            for (Set<Integer> s : sets) {
+                Set<Integer> newCover = new HashSet<>(s);
+                newCover.removeAll(covered);
+                if (newCover.size() > maxNew) {
+                    maxNew = newCover.size();
+                    best = s;
+                }
+            }
+            if (best == null) break;
+            result.add(best.hashCode());
+            covered.addAll(best);
+        }
+        return result;
+    }
+}
+```
+## 14.3 启发式算法
+```java
+// 模拟退火 - 旅行商问题
+public class SimulatedAnnealingTSP {
+    private static final double INITIAL_TEMP = 10000;
+    private static final double COOLING_RATE = 0.999;
+    private static final double MIN_TEMP = 1;
+
+    public int[] solve(int[][] dist) {
+        int n = dist.length;
+        int[] current = new int[n];
+        for (int i = 0; i < n; i++) current[i] = i;
+        int[] best = current.clone();
+        double temp = INITIAL_TEMP;
+
+        while (temp > MIN_TEMP) {
+            int[] next = generateNeighbor(current);
+            double currentCost = cost(current, dist);
+            double nextCost = cost(next, dist);
+            double delta = nextCost - currentCost;
+
+            if (delta < 0 || Math.random() < Math.exp(-delta / temp)) {
+                current = next;
+                if (nextCost < cost(best, dist)) best = current.clone();
+            }
+            temp *= COOLING_RATE;
+        }
+        return best;
+    }
+
+    private int[] generateNeighbor(int[] path) {
+        int[] next = path.clone();
+        int i = (int) (Math.random() * path.length);
+        int j = (int) (Math.random() * path.length);
+        int temp = next[i]; next[i] = next[j]; next[j] = temp;
+        return next;
+    }
+
+    private double cost(int[] path, int[][] dist) {
+        double sum = 0;
+        for (int i = 0; i < path.length - 1; i++) {
+            sum += dist[path[i]][path[i + 1]];
+        }
+        return sum + dist[path[path.length - 1]][path[0]];
+    }
+}
+```
+## 14.4 本章小结
+- 组合优化通常是NP难问题
+- 贪心可得到近似解
+- 模拟退火、遗传算法等可跳出局部最优
+- 实际应用中根据精度要求选择合适方法

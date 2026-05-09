@@ -1,0 +1,30 @@
+# 第17章 排序算法
+## 17.1 排序算法对比
+| 算法 | 平均复杂度 | 最坏复杂度 | 空间 | 稳定性 | 特点 |
+|------|-----------|-----------|------|--------|------|
+| 冒泡排序 | O(n²) | O(n²) | O(1) | 稳定 | 简单，效率低 |
+| 选择排序 | O(n²) | O(n²) | O(1) | 不稳定 | 不稳定 |
+| 插入排序 | O(n²) | O(n²) | O(1) | 稳定 | 对少量数据高效 |
+| 归并排序 | O(n log n) | O(n log n) | O(n) | 稳定 | 分治法 |
+| 快速排序 | O(n log n) | O(n²) | O(log n) | 不稳定 | 最常用 |
+| 堆排序 | O(n log n) | O(n log n) | O(1) | 不稳定 | 原地排序 |
+| 希尔排序 | O(n^(3/2)) | O(n²) | O(1) | 不稳定 | 插入排序改进 |
+| 计数排序 | O(n+k) | O(n+k) | O(k) | 稳定 | 整数特定 |
+| 桶排序 | O(n+k) | O(n²) | O(n+k) | 稳定 | 均匀分布 |
+| 基数排序 | O(nk) | O(nk) | O(n+k) | 稳定 | 按位排序 |
+## 17.2 手写各类排序
+### 快速排序
+```java
+public void quickSort(int[] arr, int low, int high) {    if (low >= high) return;    int pivot = partition(arr, low, high);    quickSort(arr, low, pivot - 1);    quickSort(arr, pivot + 1, high);}private int partition(int[] arr, int low, int high) {    int pivot = arr[high];    int i = low - 1;    for (int j = low; j < high; j++) {        if (arr[j] < pivot) {            i++; swap(arr, i, j);        }    }    swap(arr, i + 1, high);    return i + 1;}private void swap(int[] arr, int i, int j) {    int t = arr[i]; arr[i] = arr[j]; arr[j] = t;}```### 归并排序```javapublic void mergeSort(int[] arr, int left, int right) {    if (left >= right) return;    int mid = left + (right - left) / 2;    mergeSort(arr, left, mid);    mergeSort(arr, mid + 1, right);    merge(arr, left, mid, right);}private void merge(int[] arr, int left, int mid, int right) {    int[] temp = new int[right - left + 1];    int i = left, j = mid + 1, k = 0;    while (i <= mid && j <= right) {        if (arr[i] <= arr[j]) temp[k++] = arr[i++];        else temp[k++] = arr[j++];    }    while (i <= mid) temp[k++] = arr[i++];    while (j <= right) temp[k++] = arr[j++];    System.arraycopy(temp, 0, arr, left, temp.length);}```### 堆排序```java
+public void heapSort(int[] arr) {    int n = arr.length;    // 构建最大堆    for (int i = n / 2 - 1; i >= 0; i--) heapify(arr, n, i);    // 依次将最大值移到末尾    for (int i = n - 1; i > 0; i--) {        swap(arr, 0, i);        heapify(arr, i, 0);    }}private void heapify(int[] arr, int n, int i) {    int largest = i, l = 2*i+1, r = 2*i+2;    if (l < n && arr[l] > arr[largest]) largest = l;    if (r < n && arr[r] > arr[largest]) largest = r;    if (largest != i) {        swap(arr, i, largest);        heapify(arr, n, largest);    }}```## 17.3 JDK源码解析
+### Arrays.sort
+```java
+// Dual-Pivot Quicksort（双轴快速排序）JDK 8+public class Arrays {    public static void sort(int[] a) {        DualPivotQuicksort.sort(a, 0, a.length - 1, null, 0, 0);    }    // Dual-Pivot Quicksort    static void sort(int[] a, int left, int right, int[] work, int workBase, int workLen) {        // 1. 小数组用插入排序        if (right - left < 286) {            for (int i = left + 1; i <= right; i++) {                int ai = a[i]; int j = i;                while (j > left && a[j-1] > ai) a[j--] = a[j-1];                a[j] = ai;            }            return;        }        // 2. 双轴快速排序        int third = (left + right) >>> 1;        // 选三个轴...        // ...    }}```### Collections.sort
+```java
+// Collections.sort 底层使用归并排序（对于List）public static <T> void sort(List<T> list, Comparator<? super T> c) {    list. sort(c);  // 调用List.sort}// List.sort 默认使用归并排序（TimSort）default void sort(Comparator<? super E> c) {    Object[] a = this.toArray();    Arrays.sort(a, (Comparator) c);    ListIterator<E> i = this.listIterator();    for (Object e : a) { i.next(); i.set((E) e); }}```## 17.4 排序算法选择策略
+```java
+// 根据数据特点选择排序算法public class SortSelector {    // 数据基本有序 → 插入排序
+    public void sortAlmostSorted(int[] arr) { new InsertionSort().sort(arr); }    // 数据范围有限 → 计数排序/桶排序    public void sortLimitedRange(int[] arr, int max) {        int[] count = new int[max + 1];        for (int v : arr) count[v]++;        int idx = 0;        for (int i = 0; i < count.length; i++)            while (count[i]-- > 0) arr[idx++] = i;    }    // 通用场景 → 快速排序或归并排序    public void sortGeneral(int[] arr) {        Arrays.sort(arr);  // JDK优化    }    // 内存受限 → 堆排序    public void sortInPlace(int[] arr) { new HeapSort().sort(arr); }}```## 17.5 使用场景
+| 场景 | 推荐算法 | 原因 | |------|----------|------| | 少量数据 | 插入排序 | O(n)对n<10高效 | | 基本有序 | 插入排序 | O(n) | | 一般情况 | 快速排序 | 平均O(n log n) | | 需稳定 | 归并排序 | 稳定 | | 内存受限 | 堆排序 | O(1)额外空间 | | 整数范围小 | 计数排序 | O(n) | | 分布式排序 | 外部排序 | 大数据处理 |## 17.6 本章小结- 快速排序是通用场景首选，归并排序适合需要稳定性的场景
+- JDK使用双轴快速排序（Dual-Pivot Quicksort）优化
+- 根据数据特点选择合适的排序算法

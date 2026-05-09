@@ -1,0 +1,22 @@
+# 第8章 贪心算法
+## 8.1 贪心算法基本思想
+### 解决的问题
+贪心算法在每一步选择中都采取当前状态下最优的选择，期望通过局部最优达到全局最优。适用于具有"贪心选择性质"的问题。
+### 贪心 vs 动态规划
+| 对比 | 贪心 | 动态规划 | |------|------|----------| | 选择方式 | 局部最优 | 全局最优 | | 子问题 | 单次选择 | 多次选择 | | 最优性 | 不一定 | 一定 | | 复杂度 | 通常更低 | 较高 |
+## 8.2 经典贪心问题
+### 活动选择
+```java
+public class ActivitySelection {
+    public int maxActivities(int[] start, int[] end) {        int[][] activities = new int[start.length][2];
+        for (int i = 0; i < start.length; i++) {            activities[i] = new int[]{start[i], end[i]};        }
+        Arrays.sort(activities, Comparator.comparingInt(a -> a[1]));        int count = 1, lastEnd = activities[0][1];        for (int i = 1; i < activities.length; i++) {            if (activities[i][0] >= lastEnd) {                count++;                lastEnd = activities[i][1];            }        }        return count;    }}```### Huffman编码
+```java
+public class HuffmanCoding {    public Map<Character, String> encode(Map<Character, Integer> freq) {        PriorityQueue<HuffmanNode> pq = new PriorityQueue<>(            Comparator.comparingInt(n -> n.freq));        for (char c : freq.keySet()) {            pq.offer(new HuffmanNode(c, freq.get(c)));        }        while (pq.size() > 1) {            HuffmanNode left = pq.poll();            HuffmanNode right = pq.poll();            pq.offer(new HuffmanNode(left.freq + right.freq, left, right));        }        return buildCodes(pq.poll(), "");    }    private Map<Character, String> buildCodes(HuffmanNode node, String code) {        Map<Character, String> codes = new HashMap<>();        if (node.isLeaf()) codes.put(node.ch, code);        else {            codes.putAll(buildCodes(node.left, code + "0"));            codes.putAll(buildCodes(node.right, code + "1"));        }        return codes;    }    static class HuffmanNode {        char ch; int freq; HuffmanNode left, right;        HuffmanNode(char ch, int freq) { this.ch = ch; this.freq = freq; }        HuffmanNode(int freq, HuffmanNode left, HuffmanNode right) {            this.freq = freq; this.left = left; this.right = right;        }        boolean isLeaf() { return left == null && right == null; }    }}```### 钱币找零
+```java
+public class CoinChange {    // 贪心（需特定货币系统）    public int coinChangeGreedy(int[] coins, int amount) {        int count = 0;        for (int i = coins.length - 1; i >= 0; i--) {            count += amount / coins[i];            amount %= coins[i];        }        return amount == 0 ? count : -1;    }    // 动态规划（通用）    public int coinChangeDP(int[] coins, int amount) {        int[] dp = new int[amount + 1];        Arrays.fill(dp, amount + 1);        dp[0] = 0;        for (int i = 1; i <= amount; i++) {            for (int c : coins) {                if (c <= i) dp[i] = Math.min(dp[i], dp[i - c] + 1);            }        }        return dp[amount] > amount ? -1 : dp[amount];    }}```### 区间调度
+```java
+// 多个区间选择最多不重叠
+public class IntervalScheduling {    public int maxNonOverlapping(int[][] intervals) {        Arrays.sort(intervals, Comparator.comparingInt(a -> a[1]));        int count = 0, end = Integer.MIN_VALUE;        for (int[] iv : intervals) {            if (iv[0] >= end) { count++; end = iv[1]; }        }        return count;    }    // 合并重叠区间    public int[][] merge(int[][] intervals) {        if (intervals.length == 0) return new int[0][0];        Arrays.sort(intervals, Comparator.comparingInt(a -> a[0]));        List<int[]> result = new ArrayList<>();        int[] cur = intervals[0];        for (int i = 1; i < intervals.length; i++) {            if (intervals[i][0] <= cur[1]) cur[1] = Math.max(cur[1], intervals[i][1]);            else { result.add(cur); cur = intervals[i]; }        }        result.add(cur);        return result.toArray(new int[0][0]);    }}```## 8.3 贪心算法正确性证明
+```java
+// 证明贪心选择性质：交换论证法// 活动选择：选择最早结束的活动不会导致更差结果// 假设存在最优解O不包含最早结束的活动A，用A替换O中第一个活动// 替换后仍是可行解，且不增加活动数量// 因此A可以加入最优解```## 8.4 本章小结- 贪心算法选择当前最优，期望达到全局最优- 需要证明贪心选择性质才能保证正确性- 经典应用：活动选择、Huffman编码、区间调度- 不适合的问题：背包（分数背包可用）、最长路径（可能局部最优非全局）

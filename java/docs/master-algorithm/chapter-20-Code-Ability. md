@@ -1,0 +1,77 @@
+# 第20章 代码实现能力
+## 20.1 手写算法实现
+```java
+// 手写算法要点：
+// 1. 边界条件处理
+// 2. 正确性验证
+// 3. 复杂度分析
+// 4. 代码可读性
+public class ArrayList<e> {
+    private Object[] data;
+    private int size;
+    public ArrayList(int capacity) { data = new Object[capacity]; }
+    public void add(e e) {
+        if (size == data.length) resize(2 * data.length);
+        data[size++] = e;
+    }
+    public e get(int index) { return (e) data[index]; }
+    private void resize(int newCap) { /*...*/ }
+}
+```
+## 20.2 代码优化技巧
+```java
+// 1. 避免重复计算 - 记忆化
+int fib(int n, int[] memo) {
+    if (memo[n] != 0) return memo[n];
+    if (n <= 1) return n;
+    return memo[n] = fib(n-1, memo) + fib(n-2, memo);
+}
+
+// 2. 空间换时间
+int[] dp = new int[n+1]; // 预计算
+
+// 3. 减少对象创建
+StringBuilder sb = new StringBuilder(); // 优于字符串拼接
+
+// 4. 循环优化
+for (int i = 0, n = list.size(); i < n; i++) { // 缓存size
+    //
+}
+```
+## 20.3 测试驱动开发
+```java
+// TDD流程
+// 1. 写测试（失败）
+@Test
+public void testFib() { assertEquals(1, fib(1)); }
+
+// 2. 写实现（通过）
+int fib(int n) { return n; }
+
+// 3. 重构
+int fib(int n) { return n <= 1 ? n : fib(n-1) + fib(n-2); }
+
+// 测试覆盖
+@Test
+public void testEdge() { assertEquals(0, fib(0)); }
+@Test(expected = Exception.class)
+public void testNegative() { fib(-1); }
+```
+## 20.4 代码可读性与维护
+```java
+// 好的代码示例
+public int findFirstGreaterThan(int[] arr, int target) {
+    if (arr == null || arr.length == 0) return -1;
+    for (int i = 0; i < arr.length; i++) {
+        if (arr[i] > target) return i;
+    }
+    return -1;
+}
+
+// 避免：magic numbers、过长方法、嵌套过深
+```
+## 20.5 本章小结
+- 手写算法需注意边界、条件、复杂度
+- 优化：避免重复计算、减少创建、优化循环
+- TDD：先测试后实现再重构
+- 可读性：命名清晰、方法简短、避免magic numbers

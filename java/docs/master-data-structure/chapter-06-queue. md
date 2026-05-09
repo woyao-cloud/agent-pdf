@@ -1,0 +1,174 @@
+# 第6章 队列（Queue）
+## 6.1 队列的原理与实现
+### 解决的问题
+队列（Queue）是一种**先进先出**（FIFO, First In First Out）的线性数据结构。解决的问题：
+- 任务调度与异步处理
+- 生产者-消费者模式
+- 广度优先搜索（BFS）
+- 限流与缓冲
+### 实现原理
+队列只允许在表尾插入，在表头删除：
+- **offer(e)**：入队，向队尾添加元素
+- **poll()**：出队，移除并返回队头元素
+- **peek()**：查看队头元素但不移除
+- **isEmpty()**：判断队列是否为空
+### 队列类型
+| 类型 | 特点 | Java实现 |
+|------|------|----------|
+| 普通队列 | FIFO | Queue |
+| 双端队列 | 头尾均可操作 | Deque |
+| 阻塞队列 | 支持阻塞操作 | BlockingQueue |
+| 优先级队列 | 按优先级出队 | PriorityQueue |
+| 循环队列 | 数组实现，高效利用空间 | ArrayDeque |
+### 手写实现
+```java
+/** 基于数组的循环队列实现 */
+public class ArrayQueue<E> {
+    private Object[] data;
+    private int front;   // 队头指针
+    private int rear;    // 队尾指针
+    private int size;    // 元素个数
+    private int capacity;
+
+    public ArrayQueue(int capacity) {
+        this.capacity = capacity + 1;  // 多一个空间区分空满
+        this.data = new Object[this.capacity];
+        this.front = this.rear = 0;
+    }
+
+    public boolean offer(E e) {
+        if (size == capacity) return false;
+        data[rear] = e;
+        rear = (rear + 1) % capacity;
+        size++;
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    public E poll() {
+        if (size == 0) return null;
+        E e = (E) data[front];
+        front = (front + 1) % capacity;
+        size--;
+        return e;
+    }
+
+    @SuppressWarnings("unchecked")
+    public E peek() {
+        if (size == 0) return null;
+        return (E) data[front];
+    }
+
+    public int size() { return size; }
+    public boolean isEmpty() { return size == 0; }
+}
+```
+### JDK源码解析
+```java
+// ArrayDeque - 双端队列，基于循环数组实现
+public class ArrayDeque<E> extends AbstractCollection<E> implements Deque<E> {
+    private transient Object[] elements;
+    private transient int head;   // 队头索引
+    private transient int tail;   // 队尾索引
+
+    public ArrayDeque() {
+        elements = new Object[16];
+    }
+
+    // 头部添加 - O(1)
+    public void addFirst(E e) {
+        if (e == null) throw new NullPointerException();
+        elements[head = (head - 1) & (elements.length - 1)] = e;
+        if (head == tail) doubleCapacity();
+    }
+
+    // 尾部添加 - O(1)
+    public void addLast(E e) {
+        if (e == null) throw new NullPointerException();
+        elements[tail] = e;
+        if ((tail = (tail + 1) & (elements.length - 1)) == head)
+            doubleCapacity();
+    }
+}
+```
+## 6.2 阻塞队列
+### 阻塞队列核心方法
+| 方法 | 抛出异常 | 返回false/null | 阻塞等待 | 超时退出 |
+|------|----------|----------------|---------|----------|
+| 添加 | add(e) | offer(e) | put(e) | offer(e, time) |
+| 移除 | remove() | poll() | take() | poll(time) |
+| 查看 | element() | peek() | N/A | peek() |
+### 典型阻塞队列实现
+```java
+// ArrayBlockingQueue - 有界阻塞队列
+BlockingQueue<String> queue = new ArrayBlockingQueue<>(100);
+
+// LinkedBlockingQueue - 无界阻塞队列
+BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+
+// 生产者-消费者示例
+public class ProducerConsumer {
+    public static void main(String[] args) {
+        BlockingQueue<Integer> queue = new LinkedBlockingQueue<>(10);
+
+        // 生产者
+        new Thread(() -> {
+            for (int i = 0; i < 100; i++) {
+                try { queue.put(i); } catch (InterruptedException e) {}
+            }
+        }).start();
+
+        // 消费者
+        new Thread(() -> {
+            while (true) {
+                try { System.out.println(queue.take()); } catch (InterruptedException e) {}
+            }
+        }).start();
+    }
+}
+```
+## 6.3 使用场景
+| 场景 | 队列类型 | 原因 |
+|------|----------|------|
+| 任务调度 | PriorityQueue | 按优先级 |
+| 线程池 | BlockingQueue | 生产者-消费者 |
+| 限流 | ArrayBlockingQueue | 有界队列 |
+| 异步消息 | LinkedBlockingQueue | 高吞吐 |
+| 缓存 | SynchronousQueue | 直接传递 |
+## 6.4 潜在风险
+| 风险 | 说明 | 解决方案 |
+|------|------|----------|
+| 队列满 | 阻塞队列满时put阻塞 | 设置超时或选择无界队列 |
+| 内存溢出 | 无界队列可能无限增长 | 使用有界队列 |
+| 公平性 | 非公平锁可能饥饿 | 使用公平锁 |
+| 线程安全 | 非线程安全需同步 | 使用阻塞队列 |
+## 6.5 典型问题：LRU缓存
+```java
+class LRUCache {
+    private int capacity;
+    private LinkedHashMap<Integer, Integer> cache;
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+        this.cache = new LinkedHashMap<>(capacity, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry eldest) {
+                return size() > LRUCache.this.capacity;
+            }
+        };
+    }
+
+    public int get(int key) {
+        return cache.getOrDefault(key, -1);
+    }
+
+    public void put(int key, int value) {
+        cache.put(key, value);
+    }
+}
+```
+## 6.6 本章小结
+- 队列是FIFO数据结构，头尾操作均为O(1)
+- ArrayDeque是性能最优的Deque实现
+- 阻塞队列用于生产者-消费者场景
+- 队列满/空时注意选择合适的处理策略

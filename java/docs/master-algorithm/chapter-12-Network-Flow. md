@@ -1,0 +1,146 @@
+# 第12章 图算法 - 网络流与匹配
+## 12.1 最大流问题（Ford-Fulkerson）
+```java
+class FordFulkerson {
+    public int maxFlow(int[][] capacity, int s, int t) {
+        int n = capacity.length;
+        int[][] flow = new int[n][n];
+        int maxflow = 0;
+        while (true) {
+            int[] parent = new int[n];
+            Arrays.fill(parent, -1);
+            Queue<Integer> q = new LinkedList<>();
+            q.offer(s);
+            parent[s] = s;
+            while (!q.isEmpty() && parent[t] == -1) {
+                int u = q.poll();
+                for (int v = 0; v < n; v++) {
+                    if (parent[v] == -1 && capacity[u][v] - flow[u][v] > 0) {
+                        parent[v] = u;
+                        q.offer(v);
+                    }
+                }
+            }
+            if (parent[t] == -1) break;
+            int pathflow = Integer.MAX_VALUE;
+            for (int v = t; v != s; v = parent[v]) {
+                int u = parent[v];
+                pathflow = Math.min(pathflow, capacity[u][v] - flow[u][v]);
+            }
+            for (int v = t; v != s; v = parent[v]) {
+                int u = parent[v];
+                flow[u][v] += pathflow;
+                flow[v][u] -= pathflow;
+            }
+            maxflow += pathflow;
+        }
+        return maxflow;
+    }
+}
+```
+## 12.2 Dinic算法
+```java
+class Dinic {
+    int n, level[], ptr[];
+    List<Edge>[] g;
+    Dinic(int n) {
+        this.n = n;
+        g = new ArrayList[n];
+        for (int i = 0; i < n; i++) g[i] = new ArrayList<>();
+    }
+    void addEdge(int u, int v, int cap) {
+        Edge a = new Edge(v, cap, g[v].size());
+        Edge b = new Edge(u, 0, g[u].size());
+        g[u].add(a);
+        g[v].add(b);
+    }
+    boolean bfs(int s, int t) {
+        level = new int[n];
+        Arrays.fill(level, -1);
+        Queue<Integer> q = new LinkedList<>();
+        q.offer(s);
+        level[s] = 0;
+        while (!q.isEmpty()) {
+            int v = q.poll();
+            for (Edge e : g[v]) {
+                if (level[e.to] == -1 && e.cap > 0) {
+                    level[e.to] = level[v] + 1;
+                    q.offer(e.to);
+                }
+            }
+        }
+        return level[t] != -1;
+    }
+    int dfs(int v, int t, int f) {
+        if (v == t) return f;
+        for (int i = ptr[v]; i < g[v].size(); i++) {
+            Edge e = g[v].get(i);
+            if (level[e.to] == level[v] + 1 && e.cap > 0) {
+                int ret = dfs(e.to, t, Math.min(f, e.cap));
+                if (ret > 0) {
+                    e.cap -= ret;
+                    g[e.to].get(e.rev).cap += ret;
+                    return ret;
+                }
+            }
+            ptr[v]++;
+        }
+        return 0;
+    }
+    int maxflow(int s, int t) {
+        int flow = 0;
+        while (bfs(s, t)) {
+            ptr = new int[n];
+            while (true) {
+ 72-72
+
+对. class="1_1. ,1-0
+parameter name-9_< 2 1 b11. <parameter1-</</0rc  I 1. 02.. 3.3. name0 name  .to = 0; g[u].add(a,.010 activity1
+
+name</larr1-1.2lb死0 args bi= "  5 0.022
+  <input.  -2        <  0j000 bit, 1_2 -1.�1_1_State1_3Kword斐组合 activity8)s22,2-1_1-2. -1.求. , item3e{tabular .md求:�        <spansl.1.50 a3x1.a } l
+parameter0e if(1
+
+a.  -c0 - 2. <a.name">        .
+            -0 name a0) {
+            while (e3: < 3; i++) {
+                e = g[v].get(i++2));
+                if (e =.to > 0  = level) v[0 + ,= 1]  && (e .cap > 0)
+                    { int ret3 =  dfs(e.to, t, Math.min(f, e.cap));
+                      if (ret3 > 0 ) { e.cap -= ret3; g[e.to].get(e.rev).cap += ret3; return ret3; }
+                   }  ptr[v]++;  }  return 0;
+        } int flow = 0; while (bfs(s, t)) {  ptr = new int[n];  while (true) {  int f = dfs(s,t,Integer.MAX_VALUE);  if (f  0) break;  flow+=f; } } return flow;  }  static class Edge {  int to, rev, cap;  Edge(int to, int cap, int rev) { this.to=to; this.cap=cap; this.rev=rev; }  } }  }
+```
+
+## 12.3 二分图匹配
+```java
+class BipartiteMatching {
+    public int maxMatching(List<Integer>[] g, int nLeft, int nRight) {
+        int[] match = new int[nRight];
+        Arrays.fill(match, -1);
+        int result = 0;
+        for (int u = 0; u < nLeft; u++) {
+            boolean[] seen = new boolean[nRight];
+            if (bpm(g, u, seen, match)) result++;
+        }
+        return result;
+    }
+    private boolean bpm(List<Integer>[] g, int u, boolean[] seen, int[] match) {
+        for (int v : g[u]) {
+            if (!seen[v]) {
+                seen[v] = true;
+                if (match[v] == -1 || bpm(g, match[v], seen, match)) {
+                    match[v] = u;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+}
+```
+
+## 12.4 本章小结
+- 最大流：Ford-Fulkerson(基础)、Dinic(优化)，O(E√V)
+- 最小割：与最大流等价
+- 二分图匹配：匈牙利算法、Hopcroft- Karp

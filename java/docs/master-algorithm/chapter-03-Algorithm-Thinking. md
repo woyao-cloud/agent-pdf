@@ -1,0 +1,554 @@
+# 第3章 算法思维模式
+## 3.1 分治法（Divide and Conquer）
+### 解决的问题
+分治法将一个复杂问题分解为若干个规模较小的相同子问题，分别求解后合并结果。适用于可以分解为相互独立子问题的大规模问题。
+### 实现原理
+分治法的核心步骤：
+1. **分解**：将问题分解为若干个规模较小的子问题
+2. **求解**：递归地解决子问题（子问题足够小时直接求解）
+3. **合并**：将子问题的解合并为原问题的解
+### 代码实现
+```java
+// 归并排序 - 分治法典型应用
+public class MergeSort {
+    public void mergeSort(int[] arr, int left, int right) {
+        if (left >= right) return;  // 终止条件
+        int mid = left + (right - left) / 2;
+        mergeSort(arr, left, mid);      // 分解：左半部分
+        mergeSort(arr, mid + 1, right); // 分解：右半部分
+        merge(arr, left, mid, right);   // 合并
+    }
+
+    private void merge(int[] arr, int left, int mid, int right) {
+        int[] temp = new int[right - left + 1];
+        int i = left, j = mid + 1, k = 0;
+        while (i <= mid && j <= right) {
+            if (arr[i] <= arr[j]) temp[k++] = arr[i++];
+            else temp[k++] = arr[j++];
+        }
+        while (i <= mid) temp[k++] = arr[i++];
+        while (j <= right) temp[k++] = arr[j++];
+        System.arraycopy(temp, 0, arr, left, temp.length);
+    }
+}
+
+// 快速排序 - 分治法
+public class QuickSort {
+    public void quickSort(int[] arr, int low, int high) {
+        if (low >= high) return;
+        int pivot = partition(arr, low, high);
+        quickSort(arr, low, pivot - 1);
+        quickSort(arr, pivot + 1, high);
+    }
+
+    private int partition(int[] arr, int low, int high) {
+        int pivot = arr[high];
+        int i = low - 1;
+        for (int j = low; j < high; j++) {
+            if (arr[j] < pivot) {
+                i++;
+                swap(arr, i, j);
+            }
+        }
+        swap(arr, i + 1, high);
+        return i + 1;
+    }
+
+    private void swap(int[] arr, int i, int j) {
+        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+    }
+}
+
+// 二分查找 - 分治法
+public class BinarySearch {
+    public int binarySearch(int[] arr, int target, int left, int right) {
+        if (left > right) return -1;
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) return mid;
+        else if (arr[mid] < target)
+            return binarySearch(arr, target, mid + 1, right);
+        else
+            return binarySearch(arr, target, left, mid - 1);
+    }
+}
+```
+### 使用场景
+| 场景 | 示例 | 复杂度 |
+|------|------|--------|
+| 排序 | 归并排序、快速排序 | O(n log n) |
+| 查找 | 二分查找 | O(log n) |
+| 大整数乘法 | Karatsuba算法 | O(n^log₂3) |
+| 矩阵乘法 | Strassen算法 | O(n^2.807) |
+### 潜在风险与优化
+| 风险 | 说明 | 解决 |
+|------|------|------|
+| 递归深度过大 | 数据量大时栈溢出 | 改为迭代实现 |
+| 子问题不独立 | 分治效率降低 | 考虑动态规划 |
+| 合并成本高 | 抵消分解收益 | 优化合并逻辑 |
+## 3.2 贪心算法（Greedy）
+### 解决的问题
+贪心算法在每一步选择中都采取当前状态下最优的选择，期望通过局部最优达到全局最优。适用于具有"贪心选择性质"的问题。
+### 贪心选择性质
+一个问题具有贪心选择性质，意味着全局最优可以通过一系列局部最优选择得到。
+### 代码实现
+```java
+// 活动选择问题
+public class ActivitySelection {
+    public int maxActivities(int[] start, int[] end) {
+        int n = start.length;
+        int[][] activities = new int[n][2];
+        for (int i = 0; i < n; i++) {
+            activities[i][0] = start[i];
+            activities[i][1] = end[i];
+        }
+        // 按结束时间排序
+        Arrays.sort(activities, Comparator.comparingInt(a -> a[1]));
+        int count = 1;
+        int lastEnd = activities[0][1];
+        for (int i = 1; i < n; i++) {
+            if (activities[i][0] >= lastEnd) {
+                count++;
+                lastEnd = activities[i][1];
+            }
+        }
+        return count;
+    }
+}
+
+// Huffman编码 - 贪心算法
+public class HuffmanCoding {
+    public Map<Character, String> encode(Map<Character, Integer> freq) {
+        PriorityQueue<HTreeNode> pq = new PriorityQueue<>(
+            Comparator.comparingInt(n -> n.freq));
+        for (char c : freq.keySet()) {
+            pq.offer(new HTreeNode(c, freq.get(c)));
+        }
+        while (pq.size() > 1) {
+            HTreeNode left = pq.poll();
+            HTreeNode right = pq.poll();
+            pq.offer(new HTreeNode(left.freq + right.freq, left, right));
+        }
+        HTreeNode root = pq.poll();
+        return buildCodes(root, "");
+    }
+
+    private Map<Character, String> buildCodes(HTreeNode node, String code) {
+        Map<Character, String> codes = new HashMap<>();
+        if (node.isLeaf()) {
+            codes.put(node.ch, code);
+        } else {
+            codes.putAll(buildCodes(node.left, code + "0"));
+            codes.putAll(buildCodes(node.right, code + "1"));
+        }
+        return codes;
+    }
+
+    static class HTreeNode {
+        char ch;
+        int freq;
+        HTreeNode left, right;
+        HTreeNode(char ch, int freq) { this.ch = ch; this.freq = freq; }
+        HTreeNode(int freq, HTreeNode left, HTreeNode right) {
+            this.freq = freq; this.left = left; this.right = right;
+        }
+        boolean isLeaf() { return left == null && right == null; }
+    }
+}
+```
+### 使用场景
+| 场景 | 示例 | 说明 |
+|------|------|------|
+| 活动选择 | 会议室安排 | 选择结束时间最早 |
+| 钱币找零 | 贪心解最优 | 货币系统满足条件 |
+| Huffman编码 | 数据压缩 | 最优前缀码 |
+| 最小生成树 | Prim、Kruskal | 选最小边 |
+| 最短路径 | Dijkstra | 选最近顶点 |
+### 贪心 vs 动态规划
+```java
+// 背包问题对比
+// 0-1背包：必须用动态规划，贪心不正确
+// 分数背包：可以用贪心，选择价值/重量比最高的
+
+// 斐波那契对比
+// 爬楼梯：可以用贪心（每次走1或2步，走2步更多）- DP更准确
+// 货币找零（美元）：贪心最优
+// 货币找零（其他）：不一定最优
+```
+### 潜在风险
+| 风险 | 说明 | 解决 |
+|------|------|------|
+| 局部最优非全局 | 贪心失效 | 验证或改用DP |
+| 不具备贪心性质 | 选择错误 | 证明或枚举 |
+## 3.3 动态规划（Dynamic Programming）
+### 解决的问题
+动态规划通过将问题分解为相互重叠的子问题，记录子问题的解避免重复计算，适用于具有"最优子结构"和"重叠子问题"的问题。
+### 核心概念
+1. **最优子结构**：问题的最优解包含子问题的最优解
+2. **重叠子问题**：子问题会被多次求解
+### 代码实现
+```java
+// 斐波那契数列 - 记忆化搜索
+public class FibonacciDP {
+    // 方法1：自顶向下 + 记忆化
+    public int fibMemo(int n) {
+        int[] memo = new int[n + 1];
+        return fib(n, memo);
+    }
+    private int fib(int n, int[] memo) {
+        if (n <= 1) return n;
+        if (memo[n] != 0) return memo[n];
+        memo[n] = fib(n - 1, memo) + fib(n - 2, memo);
+        return memo[n];
+    }
+
+    // 方法2：自底向上
+    public int fibBottomUp(int n) {
+        if (n <= 1) return n;
+        int[] dp = new int[n + 1];
+        dp[0] = 0; dp[1] = 1;
+        for (int i = 2; i <= n; i++) {
+            dp[i] = dp[i - 1] + dp[i - 2];
+        }
+        return dp[n];
+    }
+
+    // 方法3：空间优化
+    public int fibOptimized(int n) {
+        if (n <= 1) return n;
+        int prev2 = 0, prev1 = 1;
+        for (int i = 2; i <= n; i++) {
+            int curr = prev1 + prev2;
+            prev2 = prev1;
+            prev1 = curr;
+        }
+        return prev1;
+    }
+}
+
+// 经典0-1背包问题
+public class Knapsack {
+    public int knapsack(int[] weights, int[] values, int capacity) {
+        int n = weights.length;
+        int[][] dp = new int[n + 1][capacity + 1];
+        for (int i = 1; i <= n; i++) {
+            for (int w = 0; w <= capacity; w++) {
+                if (weights[i - 1] <= w) {
+                    dp[i][w] = Math.max(
+                        dp[i - 1][w],
+                        dp[i - 1][w - weights[i - 1]] + values[i - 1]
+                    );
+                } else {
+                    dp[i][w] = dp[i - 1][w];
+                }
+            }
+        }
+        return dp[n][capacity];
+    }
+
+    // 空间优化版本
+    public int knapsackOptimized(int[] weights, int[] values, int capacity) {
+        int[] dp = new int[capacity + 1];
+        for (int i = 0; i < weights.length; i++) {
+            for (int w = capacity; w >= weights[i]; w--) {
+                dp[w] = Math.max(dp[w], dp[w - weights[i]] + values[i]);
+            }
+        }
+        return dp[capacity];
+    }
+}
+
+// 最长公共子序列
+public class LCS {
+    public int longestCommonSubsequence(String s1, String s2) {
+        int m = s1.length(), n = s2.length();
+        int[][] dp = new int[m + 1][n + 1];
+        for (int i = 1; i <= m; i++) {
+            for (int j = 1; j <= n; j++) {
+                if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
+                    dp[i][j] = dp[i - 1][j - 1] + 1;
+                } else {
+                    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                }
+            }
+        }
+        return dp[m][n];
+    }
+}
+```
+### 使用场景
+| 问题类型 | 示例 | 状态定义 |
+|----------|------|----------|
+| 斐波那契 | 爬楼梯 | dp[i] = dp[i-1] + dp[i-2] |
+| 背包 | 0-1背包 | dp[i][w] = 最大价值 |
+| 序列 | LCS、LIS | dp[i][j] = 最优解 |
+| 区间 | 矩阵链乘 | dp[i][j] = 最优 |
+### 潜在风险
+| 风险 | 说明 | 解决 |
+|------|------|------|
+| 状态定义错误 | DP失效 | 仔细分析问题 |
+| 空间爆炸 | O(n²)或更高 | 状态压缩 |
+| 初始化错误 | 结果错误 | 检查边界 |
+## 3.4 回溯算法（Backtracking）
+### 解决的问题
+回溯算法通过尝试分步解决问题，当发现当前选择不能达到有效解时，就退回到上一步重新选择。适用于需要枚举所有可能解的问题。
+### 核心思想
+```java
+// 回溯算法模板
+void backtrack(路径, 选择列表) {
+    if (满足结束条件) {
+        添加路径到结果集;
+        return;
+    }
+    for (选择 in 选择列表) {
+        做出选择;
+        backtrack(路径, 新的选择列表);
+        撤销选择;  // 回溯
+    }
+}
+```
+### 代码实现
+```java
+// 全排列
+public class Permutations {
+    public List<List<Integer>> permute(int[] nums) {
+        List<List<Integer>> result = new ArrayList<>();
+        List<Integer> path = new ArrayList<>();
+        boolean[] used = new boolean[nums.length];
+        backtrack(nums, path, used, result);
+        return result;
+    }
+
+    private void backtrack(int[] nums, List<Integer> path, boolean[] used,
+                          List<List<Integer>> result) {
+        if (path.size() == nums.length) {
+            result.add(new ArrayList<>(path));
+            return;
+        }
+        for (int i = 0; i < nums.length; i++) {
+            if (!used[i]) {
+                used[i] = true;
+                path.add(nums[i]);
+                backtrack(nums, path, used, result);
+                path.remove(path.size() - 1);
+                used[i] = false;
+            }
+        }
+    }
+}
+
+// N皇后问题
+public class NQueens {
+    public List<List<String>> solveNQueens(int n) {
+        List<List<String>> result = new ArrayList<>();
+        int[] queens = new int[n];  // queens[i] = 第i行的皇后列位置
+        solveNQueens(0, queens, result, new boolean[n], new boolean[2 * n], new boolean[2 * n]);
+        return result;
+    }
+
+    private void solveNQueens(int row, int[] queens, List<List<String>> result,
+                             boolean[] cols, boolean[] diag1, boolean[] diag2) {
+        if (row == queens.length) {
+            result.add(buildBoard(queens));
+            return;
+        }
+        for (int col = 0; col < queens.length; col++) {
+            int d1 = col - row + queens.length;
+            int d2 = col + row;
+            if (cols[col] || diag1[d1] || diag2[d2]) continue;
+            queens[row] = col;
+            cols[col] = diag1[d1] = diag2[d2] = true;
+            solveNQueens(row + 1, queens, result, cols, diag1, diag2);
+            cols[col] = diag1[d1] = diag2[d2] = false;
+        }
+    }
+
+    private List<String> buildBoard(int[] queens) {
+        List<String> board = new ArrayList<>();
+        for (int i = 0; i < queens.length; i++) {
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < queens.length; j++) {
+                sb.append(j == queens[i] ? 'Q' : '.');
+            }
+            board.add(sb.toString());
+        }
+        return board;
+    }
+}
+
+// 子集问题
+public class Subsets {
+    public List<List<Integer>> subsets(int[] nums) {
+        List<List<Integer>> result = new ArrayList<>();
+        backtrack(0, nums, new ArrayList<>(), result);
+        return result;
+    }
+
+    private void backtrack(int start, int[] nums, List<Integer> path, List<List<Integer>> result) {
+        result.add(new ArrayList<>(path));
+        for (int i = start; i < nums.length; i++) {
+            path.add(nums[i]);
+            backtrack(i + 1, nums, path, result);
+            path.remove(path.size() - 1);
+        }
+    }
+}
+```
+### 使用场景
+| 场景 | 问题 | 复杂度 |
+|------|------|--------|
+| 排列 | 全排列 | O(n!×n) |
+| 组合 | 子集、组合求和 | O(2^n×n) |
+| 搜索 | N皇后、数独 | 指数级 |
+### 潜在风险
+| 风险 | 说明 | 解决 |
+|------|------|------|
+| 指数级复杂度 | 效率低 | 剪枝优化 |
+| 内存爆炸 | 存储所有解 | 按需生成 |
+| 栈溢出 | 递归深度大 | 迭代实现 |
+## 3.5 分支限界法（Branch and Bound）
+### 解决的问题
+分支限界法类似回溯法，但使用广度优先搜索（队列）或最佳优先搜索（优先队列），通过界函数剪枝加速搜索。
+### 与回溯法的区别
+| 对比 | 回溯法 | 分支限界 |
+|------|--------|----------|
+| 搜索方式 | 深度优先 | 广度优先/最佳优先 |
+| 目标 | 找一个解/所有解 | 找最优解 |
+| 剪枝 | 条件判断 | 界函数 + 优先级 |
+### 代码实现
+```java
+// 0-1背包 - 分支限界法（最佳优先）
+public class KnapsackBB {
+    public int knapsack(int[] weights, int[] values, int capacity) {
+        PriorityQueue<Node> pq = new PriorityQueue<>(
+            Comparator.comparingInt(n -> -n.upperBound));
+        pq.offer(new Node(-1, 0, 0, bound(weights, values, capacity, 0, 0)));
+        int maxProfit = 0;
+        while (!pq.isEmpty()) {
+            Node node = pq.poll();
+            int i = node.level;
+            if (i == weights.length - 1) {
+                maxProfit = Math.max(maxProfit, node.profit);
+                continue;
+            }
+            // 分支1：不选第i+1个物品
+            Node left = new Node(i + 1, node.weight, node.profit,
+                bound(weights, values, capacity, i + 1, node.profit));
+            if (left.upperBound > maxProfit && left.weight <= capacity) {
+                pq.offer(left);
+            }
+            // 分支2：选第i+1个物品
+            if (node.weight + weights[i + 1] <= capacity) {
+                Node right = new Node(i + 1, node.weight + weights[i + 1],
+                    node.profit + values[i + 1],
+                    bound(weights, values, capacity, i + 1, node.profit + values[i + 1]));
+                if (right.upperBound > maxProfit) {
+                    pq.offer(right);
+                }
+            }
+        }
+        return maxProfit;
+    }
+
+    private int bound(int[] w, int[] v, int capacity, int level, int profit) {
+        int n = w.length;
+        if (level >= n || w[level] > capacity) return profit;
+        while (level < n && w[level] <= capacity - (level > 0 ? w[level - 1] : 0)) {
+            capacity -= w[level];
+            profit += v[level];
+            level++;
+        }
+        if (level < n) profit += v[level] * (capacity / (float) w[level]);
+        return profit;
+    }
+
+    static class Node {
+        int level, weight, profit, upperBound;
+        Node(int level, int weight, int profit, int upperBound) {
+            this.level = level; this.weight = weight;
+            this.profit = profit; this.upperBound = upperBound;
+        }
+    }
+}
+```
+## 3.6 枚举与启发式算法
+### 枚举法
+```java
+// 暴力枚举 - 子集和
+public class SubsetSum {
+    public List<List<Integer>> findSubsets(int[] nums, int target) {
+        List<List<Integer>> result = new ArrayList<>();
+        int n = nums.length;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            List<Integer> subset = new ArrayList<>();
+            int sum = 0;
+            for (int i = 0; i < n; i++) {
+                if ((mask & (1 << i)) != 0) {
+                    sum += nums[i];
+                    subset.add(nums[i]);
+                }
+            }
+            if (sum == target) result.add(subset);
+        }
+        return result;
+    }
+}
+```
+### 启发式算法
+```java
+// 模拟退火 - TSP问题（简化）
+public class SimulatedAnnealing {
+    private static final double INITIAL_TEMP = 10000;
+    private static final double COOLING_RATE = 0.999;
+
+    public int[] solve(int[] cities) {
+        int[] current = cities.clone();
+        double temp = INITIAL_TEMP;
+        int[] best = current.clone();
+        double bestCost = cost(current);
+
+        while (temp > 1) {
+            int[] next = generateNeighbor(current);
+            double currentCost = cost(current);
+            double nextCost = cost(next);
+            double delta = nextCost - currentCost;
+
+            if (delta < 0 || Math.random() < Math.exp(-delta / temp)) {
+                current = next;
+                if (nextCost < bestCost) {
+                    best = next.clone();
+                    bestCost = nextCost;
+                }
+            }
+            temp *= COOLING_RATE;
+        }
+        return best;
+    }
+
+    private int[] generateNeighbor(int[] path) {
+        int[] copy = path.clone();
+        int i = (int) (Math.random() * path.length);
+        int j = (int) (Math.random() * path.length);
+        int temp = copy[i]; copy[i] = copy[j]; copy[j] = temp;
+        return copy;
+    }
+
+    private double cost(int[] path) {
+        double sum = 0;
+        for (int i = 0; i < path.length - 1; i++) {
+            sum += distance(path[i], path[i + 1]);
+        }
+        return sum;
+    }
+
+    private double distance(int a, int b) { return Math.abs(a - b); }
+}
+```
+## 3.7 本章小结
+本章介绍了六种核心算法思维模式：
+- **分治法**：分解→解决→合并，适合独立子问题
+- **贪心算法**：局部最优→全局最优，需证明正确性
+- **动态规划**：记录子问题解，适合重叠子问题
+- **回溯算法**：尝试→回退→剪枝，适合枚举问题
+- **分支限界**：广度优先+剪枝，适合找最优解
+- **枚举与启发式**：暴力搜索或近似解
+选择合适的算法思维模式是解决算法的第一步，需要根据问题特征决定。

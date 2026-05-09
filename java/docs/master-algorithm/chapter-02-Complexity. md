@@ -1,0 +1,341 @@
+# 第2章 复杂度分析
+## 2.1 时间复杂度深度解析
+### 解决的问题
+时间复杂度是定量描述算法运行时间的函数，表示算法执行时间与输入规模增长的关系。它帮助我们在不实际运行的情况下预估算法性能，是选择和设计算法的基础。
+
+### 大O表示法详解
+大O表示法（Big O Notation）描述算法执行时间的上界，即最坏情况下的时间复杂度。
+
+#### 常见时间复杂度等级
+| 复杂度 | 名称 | 增长曲线 | 典型场景 |
+|--------|------|----------|----------|
+| O(1) | 常数时间 | 水平线 | 数组访问、哈希查找 |
+| O(log n) | 对数时间 | 缓慢增长 | 二分查找、平衡树 |
+| O(n) | 线性时间 | 直线 | 遍历、线性搜索 |
+| O(n log n) | 线性对数时间 | 轻微弯曲 | 归并排序、快速排序 |
+| O(n²) | 平方时间 | 抛物线 | 冒泡排序、双层循环 |
+| O(2ⁿ) | 指数时间 | 急剧增长 | 递归斐波那契 |
+| O(n!) | 阶乘时间 | 极快增长 | 全排列 |
+
+#### 时间复杂度对比可视化
+```
+n=10:
+O(1)        ████████████ 1次
+O(log n)    ████████████ 3次
+O(n)        ████████████ 10次
+O(n log n)  ████████████ 30次
+O(n²)       ████████████ 100次
+O(2ⁿ)       ████████████ 1024次
+O(n!)       ████████████ 3628800次
+
+n=100:
+O(1)        █ 1次
+O(log n)    █ 7次
+O(n)        █ 100次
+O(n log n)  █ 664次
+O(n²)       █ 10000次
+O(2ⁿ)       █ 1.27×10³⁰次（天文数字）
+```
+
+### 时间复杂度计算规则
+```java
+// 规则1：加法法则 - 并列代码取最大
+// T(n) = T1(n) + T2(n) = O(max(f(n), g(n)))
+void rule1(int n) {
+    // O(n²)
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {}
+    }
+    // O(n)
+    for (int i = 0; i < n; i++) {}
+    // 总复杂度: O(n²) + O(n) = O(n²)
+}
+
+// 规则2：乘法法则 - 嵌套代码取乘积
+// T(n) = T1(n) × T2(n) = O(f(n) × g(n))
+void rule2(int n) {
+    // 外层O(n) × 内层O(n) = O(n²)
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {}
+    }
+}
+
+// 规则3：忽略常数 - 只保留最高阶项
+// T(n) = 2n + 3 = O(n)
+void rule3(int n) {
+    for (int i = 0; i < 2 * n; i++) {}  // O(n)
+}
+
+// 规则4：忽略低阶项
+// T(n) = n² + n = O(n²)
+void rule4(int n) {
+    // O(n²)
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {}
+    }
+    // O(n)
+    for (int i = 0; i < n; i++) {}
+}
+```
+
+### 常见代码的复杂度分析
+```java
+// O(1) - 常数时间
+public int getFirst(int[] arr) { return arr[0]; }
+
+// O(n) - 线性时间
+public int sum(int[] arr) {
+    int sum = 0;
+    for (int num : arr) { sum += num; }
+    return sum;
+}
+
+// O(log n) - 对数时间（二分查找）
+public int binarySearch(int[] arr, int target) {
+    int left = 0, right = arr.length - 1;
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (arr[mid] == target) return mid;
+        else if (arr[mid] < target) left = mid + 1;
+        else right = mid - 1;
+    }
+    return -1;
+}
+
+// O(n log n) - 归并排序
+public void mergeSort(int[] arr, int left, int right) {
+    if (left < right) {
+        int mid = left + (right - left) / 2;
+        mergeSort(arr, left, mid);      // T(n/2)
+        mergeSort(arr, mid + 1, right); // T(n/2)
+        merge(arr, left, mid, right);   // O(n)
+    }
+    // T(n) = 2T(n/2) + O(n) = O(n log n)
+}
+
+// O(2ⁿ) - 指数时间（未优化的递归斐波那契）
+public int fib(int n) {
+    if (n <= 1) return n;
+    return fib(n - 1) + fib(n - 2);  // 2^T(n-1)
+}
+
+// O(√n) - 平方根时间（判断质数）
+public boolean isPrime(int n) {
+    for (int i = 2; i * i <= n; i++) {
+        if (n % i == 0) return false;
+    }
+    return n > 1;
+}
+```
+
+## 2.2 空间复杂度分析
+### 解决的问题
+空间复杂度表示算法所需内存空间与输入规模的关系，帮助评估算法的内存消耗。
+
+### 常见空间复杂度
+| 复杂度 | 名称 | 示例 |
+|--------|------|------|
+| O(1) | 常数空间 | 几个变量、递归调用栈 |
+| O(n) | 线性空间 | 数组、集合存储 |
+| O(n²) | 平方空间 | 二维数组 |
+| O(log n) | 对数空间 | 递归调用栈（折半查找） |
+
+### 空间复杂度分析示例
+```java
+// O(1) - 只使用常数个变量
+public int sum(int[] arr) {
+    int sum = 0;  // 1个变量
+    for (int num : arr) { sum += num; }
+    return sum;
+}
+
+// O(n) - 创建新数组
+public int[] copy(int[] arr) {
+    int[] copy = new int[arr.length];
+    System.arraycopy(arr, 0, copy, 0, arr.length);
+    return copy;
+}
+
+// O(n) - 递归调用栈
+public int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);  // 递归深度n，空间O(n)
+}
+
+// O(log n) - 递归调用栈（二分查找递归版）
+public int binarySearch(int[] arr, int target, int left, int right) {
+    if (left > right) return -1;
+    int mid = left + (right - left) / 2;
+    if (arr[mid] == target) return mid;
+    else if (arr[mid] < target) return binarySearch(arr, target, mid + 1, right);
+    else return binarySearch(arr, target, left, mid - 1);
+    // 递归深度log₂n，空间O(log n)
+}
+
+// 原地算法 vs 非原地算法
+public void reverseInPlace(int[] arr) {  // O(1)空间
+    int left = 0, right = arr.length - 1;
+    while (left < right) {
+        int temp = arr[left];
+        arr[left++] = arr[right];
+        arr[right--] = temp;
+    }
+}
+
+public int[] reverseOutOfPlace(int[] arr) {  // O(n)空间
+    int[] result = new int[arr.length];
+    for (int i = 0; i < arr.length; i++) {
+        result[i] = arr[arr.length - 1 - i];
+    }
+    return result;
+}
+```
+
+## 2.3 递归算法复杂度分析
+### 主定理（Master Theorem）
+递归算法的复杂度分析需要解递归方程，主定理是标准方法：
+
+对于递归方程：`T(n) = aT(n/b) + f(n)`
+- a：子问题数量
+- b：子问题规模缩减比例
+- f(n)：分解和合并的时间
+
+| 条件 | 结果 | 含义 |
+|------|------|------|
+| f(n) = O(n^log_b(a)-ε) | T(n) = Θ(n^log_b(a)) | 子问题工作远多于合并 |
+| f(n) = Θ(n^log_b(a)) | T(n) = Θ(n^log_b(a) log n) | 平衡情况 |
+| f(n) = Ω(n^log_b(a)+ε) | T(n) = Θ(f(n)) | 合并工作远多于子问题 |
+
+### 递归树分析
+以归并排序为例：`T(n) = 2T(n/2) + O(n)`
+
+```
+递归树：
+T(n)
+├── T(n/2) + T(n/2) + O(n)
+│   ├── T(n/4) + T(n/4) + O(n/2) × 2
+│   └── T(n/4) + T(n/4) + O(n/2) × 2
+│       └── ...
+└── ...
+
+层数: log₂n
+每层总工作量: O(n)
+总时间: O(n log n)
+```
+
+### 常见递归算法复杂度
+```java
+// T(n) = 2T(n/1) + O(1) = O(2ⁿ) - 指数级
+public int fibNaive(int n) {
+    if (n <= 1) return n;
+    return fibNaive(n - 1) + fibNaive(n - 2);
+}
+
+// T(n) = T(n-1) + O(1) = O(n) - 线性
+public int sumRec(int n) {
+    if (n <= 0) return 0;
+    return n + sumRec(n - 1);
+}
+
+// T(n) = T(n/2) + O(1) = O(log n) - 对数
+public int binarySearchRec(int[] arr, int target, int left, int right) {
+    if (left > right) return -1;
+    int mid = left + (right - left) / 2;
+    if (arr[mid] == target) return mid;
+    if (arr[mid] < target) return binarySearchRec(arr, target, mid + 1, right);
+    else return binarySearchRec(arr, target, left, mid - 1);
+}
+
+// T(n) = 2T(n/2) + O(1) = O(n) - 线性
+public int countNodes(TreeNode root) {
+    if (root == null) return 0;
+    return 1 + countNodes(root.left) + countNodes(root.right);
+}
+```
+
+## 2.4 摊销分析与实际应用
+### 解决的问题
+摊销分析计算一系列操作的整体成本除以操作数量，得出平均每次操作的成本。适用于分析某些操作代价高但整体效率不错的数据结构。
+
+### 摊销分析 vs 平均复杂度
+| 概念 | 含义 | 例子 |
+|------|------|------|
+| 摊销复杂度 | n次操作的最坏情况平均 | 动态数组add()为O(1) |
+| 平均复杂度 | 随机输入的期望复杂度 | 哈希查找期望O(1) |
+
+### 经典案例：动态数组扩容
+```java
+public class DynamicArray<E> {
+    private Object[] elementData;
+    private int size;
+
+    public void add(E e) {
+        if (size == elementData.length) {
+            grow();  // 扩容操作
+        }
+        elementData[size++] = e;
+    }
+
+    private void grow() {
+        int newCapacity = elementData.length * 2;
+        elementData = Arrays.copyOf(elementData, newCapacity);
+    }
+}
+```
+
+**摊销分析**：
+- 添加n个元素
+- 扩容次数：1, 2, 4, 8, ..., 2^k < n
+- 总复制次数：1 + 2 + 4 + ... + 2^k ≈ 2n
+- 摊销成本：O(2n/n) = O(1)
+
+### 摊销复杂度分析示例
+```java
+// 栈的Push操作（摊销O(1)）
+class Stack<E> {
+    private Object[] elements = new Object[10];
+    private int size = 0;
+
+    public void push(E e) {
+        if (size == elements.length) {
+            elements = Arrays.copyOf(elements, elements.length * 2);
+        }
+        elements[size++] = e;
+    }
+    // 每次push摊销O(1)，偶尔扩容O(n)
+}
+```
+
+## 2.5 复杂度选择建议
+### 数据规模与复杂度选择
+| 数据规模 | 推荐复杂度 |
+|----------|------------|
+| n < 100 | O(n²)也可以接受 |
+| n < 1000 | 优先O(n log n) |
+| n < 10000 | 必须O(n log n)或更好 |
+| n >= 10000 | 考虑O(n)或O(log n) |
+| n >= 10000000 | 必须O(n)或O(log n)，可能需要分布式 |
+
+### 实际选择原则
+```
+实时系统 → 优先选择最坏情况复杂度
+吞吐量优先 → 优先选择平均情况复杂度
+内存受限 → 优先选择空间复杂度优的
+数据已排序 → 考虑O(log n)的二分查找
+```
+
+## 2.6 本章小结
+本章介绍了：
+- **时间复杂度**：大O表示法、常见复杂度等级、计算规则
+- **空间复杂度**：原地vs非原地算法、递归调用栈
+- **递归算法分析**：主定理、递归树分析
+- **摊销分析**：聚合分析、会计方法
+- **实战技巧**：复杂度选择建议
+
+核心要点：
+1. 分析复杂度时先找核心操作，确定循环/递归模式
+2. 关注最坏情况，但也要考虑平均和摊销情况
+3. 空间复杂度容易被忽视，要注意递归调用栈
+4. 实际选择时考虑数据规模、实时性要求、内存限制
+
+**下一章**我们将学习**算法思维模式**，掌握分治、贪心、动态规划等核心算法思想。

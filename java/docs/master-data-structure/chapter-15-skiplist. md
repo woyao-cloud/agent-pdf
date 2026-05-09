@@ -1,0 +1,81 @@
+# 第15章 跳表（Skip List）
+## 15.1 跳表原理
+### 解决的问题
+跳表是一种**多层链表**结构，通过"跳跃"指针实现近似O(log n)的查找，媲美平衡树的性能但实现更简单。解决的问题：- 有序数据的高效查找、插入、删除
+- 替代平衡树（如Redis的Sorted Set）
+- 并发友好的有序数据结构
+### 跳表结构
+```
+第3层:  Head → [1] ──────────────────────────────────→ [10] ───────────→ null
+第2层:  Head → [1] ──────→ [4] ──────────────→ [7] ──────→ [10] ──────→ null
+第1层:  Head → [1] → [2] → [4] → [5] → [7] → [8] → [9] → [10] → null
+```### 核心思想
+- 底层是普通有序链表（每元素都跨一层）
+- 上层是"快速通道"（跳跃查找）
+- 插入时随机决定层数（抛硬币）
+## 15.2 手写实现
+```java
+public class SkipList<K extends Comparable<K>, V> {
+    private static final int MAX_LEVEL = 16;
+    private Node<K, V> head = new Node<>(null, null, MAX_LEVEL);
+    private int level;  // 当前最大层数
+
+    private static class Node<K, V> {
+        K key; V value; Node<K, V>[] next;
+        Node(K key, V value, int level) {
+            this.key = key; this.value = value;
+            this.next = new Node[level];
+        }
+    }
+
+    // 查找 - O(log n)
+    public V get(K key) {
+        Node<K, V> cur = head;
+        for (int i = level; i >= 0; i--) {
+            while (cur.next[i] != null &&
+                   cur.next[i].key.compareTo(key) < 0) {
+                cur = cur.next[i];
+            }
+        }
+        cur = cur.next[0];
+        if (cur != null && cur.key.equals(key)) return cur.value;
+        return null;
+    }
+
+    // 插入 - O(log n)
+    public void put(K key, V value) {
+        Node<K, V>[] update = new Node[MAX_LEVEL + 1];
+        Node<K, V> cur = head;
+        for (int i = level; i >= 0; i--) {
+            while (cur.next[i] != null &&
+                   cur.next[i].key.compareTo(key) < 0) {
+                cur = cur.next[i];
+            }
+            update[i] = cur;
+        }
+        cur = cur.next[0];
+        if (cur != null && cur.key.equals(key)) {
+            cur.value = value; return;  // 覆盖
+        }
+        int newLevel = randomLevel();
+        if (newLevel > level) { level = newLevel; update[level] = head; }
+        Node<K, V> newNode = new Node<>(key, value, newLevel);
+        for (int i = newLevel; i >= 0; i--) {
+            newNode.next[i] = update[i].next[i];
+            update[i].next[i] = newNode;
+        }
+    }
+
+    // 随机层数（抛硬币）
+    private int randomLevel() {
+        int level = 0;
+        while (Math.random() < 0.5 && level < MAX_LEVEL) level++;
+        return level;
+    }
+}```## 15.3 JDK源码：ConcurrentSkipListMap
+```java
+// ConcurrentSkipListMap内部实现（基于JDK 17）public class ConcurrentSkipListMap<K,V> extends AbstractMap<K,V> implements ConcurrentNavigableMap<K,V> {    // 索引节点    static class Index<K,V> extends Node<K,V> {        Index<K,V> right, down;    }    // 基础节点    static class Node<K,V> {        final K key; V val; Node<K,V> next;        Node(K key, V val, Node<K,V> next) { ... }    }    // 查找操作（头节点向下遍历）    final Node<K,V> findNode(Comparable<? super K> key) {        for (Node<K,V> b, n, gd; ; ) {            if ((n = b = head.node) == null) return null;            // 从最高层向右向下遍历            while ((n = n.right) != null) {                Object x; if ((x = n.key) == null || n.key == null) break;                int c = key.compareTo((K) x);                if (c == 0) return n;                if (c < 0) break;                b = n;            }            if ((gd = b.down) != null) b = gd; else return b.node;        }    }}```## 15.4 使用场景
+| 场景 | 推荐 | 原因 | |------|------|------| | 有序Map | ConcurrentSkipListMap | 线程安全、有序 | | 排行榜 | SkipList | 高效范围查询 | | 缓存淘汰 | LFU/LRU结合 | 排序+淘汰 | | Redis Sorted Set | Redis zset | 高性能 |## 15.5 对比分析
+| 对比 | 跳表 | 平衡树 | |------|------|--------| | 实现复杂度 | 简单 | 复杂 | | 查找性能 | O(log n) | O(log n) | | 插入删除 | O(log n) | O(log n) | | 空间复杂度 | O(n log n) | O(n) | | 并发友好 | 是 | 否 | | Redis使用 | ✅ | ❌ |## 15.6 本章小结- 跳表通过多层索引实现近似O(log n)的查找性能
+- 实现比平衡树简单，是Redis/ConcurrentSkipListMap的核心
+- 空间换时间，适合有序且需要并发安全的场景
