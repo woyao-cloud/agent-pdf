@@ -15,7 +15,7 @@
 // 用户服务 - 纯业务逻辑
 public class UserService {
     private UserRepository userRepository;
-    
+
     public User getUserById(Long id) {
         return userRepository.findById(id);
     }
@@ -57,25 +57,29 @@ public interface PaymentPlugin {
     String getPaymentType();
 }
 
-public class PaymentName. 7.无参0. e1. null.18.无. summary = java.                      : .26) { .    + 1    as.：由于 + 0.0;               new 0 = new_EntityName = new ArrayList<>();
+// 新增支付方式只需实现接口，无需修改现有代码
+public class AlipayPlugin implements PaymentPlugin {
+    @Override
+    public void pay(Order order) { /* 支付宝支付逻辑 */ }
+
+    @Override
+    public String getPaymentType() { return "ALIPAY"; }
+}
+
+public class WechatPayPlugin implements PaymentPlugin {
+    @Override
+    public void pay(Order order) { /* 微信支付逻辑 */ }
+
+    @Override
+    public String getPaymentType() { return "WECHAT"; }
+}
 ```
 
 ### 2.2.3 实现方式
 
-- **抽象. ..get(3..2. name.26.:0,   0 = new List.8.public-返回(1.20. null.2.26.span16- . args)1        <  .     2. public default,     public void e , 0.  object()    public class.: null(1.0.     .(2.2
-       new(从是从(0       .23.18.3.12..   0.       +
-
-      .  parameter.to(in20.  private(s.8. new Promise null; // "替换为" null; // "替换为"
-}
-```
-
-## 3)0. public(    private final String name();       0.0.    get( e8., Service,     
-
-
-# default   .             .{center+                      1. .       parameter.3    .logger.16. . as.4.3.17.5..1.       3., orderId. object.            . 5.      .>  |  new Order. new File = new Integer.    java.List<img.(new(String  .  get(0.0rcle) {
-    // 替换为实际的 oracle 依赖
-}
-```
+- **策略模式**：封装算法为独立对象
+- **装饰器模式**：动态添加职责
+- **模板方法**：定义算法骨架
 
 ## 2.3 依赖倒置原则（DIP）
 
@@ -87,26 +91,46 @@ public class PaymentName. 7.无参0. e1. null.18.无. summary = java.           
 ### 2.3.2 在架构中的应用
 
 ```java
-// 低层依赖抽象，不依赖具体实现
-public interface UserRepository {
+// 依赖抽象接口
+public interface IUserRepository {
     User findById(Long id);
     void save(User user);
 }
 
-public class InMemoryUser.. ```java. .g.                new待装饰器理 default new String     .否,        
-param StringBuilder.3.p.3..    public void. 18.       │ conmem2.00..     | +     |  .(a. . 0000.0x.4.0.1.1.1 . 2.21.get(0.7. .add(    211. .class Child(1.6.new    1..1.23.0.        _0 &&+0l..  .  else (b4. +parameter1.e+ .0.3.  └──    -<<<<commonConfig1  |  |  this.0. internal :// java.1 = (new Integer 1.15   + 2.3.3. 依赖注入的使用
+// 低层模块实现接口
+public class UserRepository implements IUserRepository {
+    @Override
+    public User findById(Long id) {
+        // 数据库查询逻辑
+    }
+
+    @Override
+    public void save(User user) { /* ... */ }
+}
+
+// 高层模块依赖抽象
+public class UserService {
+    private final IUserRepository repository;
+
+    public UserService(IUserRepository repository) {
+        this.repository = repository;
+    }
+}
+```
+
+### 2.3.3 依赖注入方式
 
 ```java
 // 构造函数注入
 public class OrderService {
     private final IOrderRepository repository;
-    
+
     public OrderService(IOrderRepository repository) {
         this.repository = repository;
     }
 }
 
-// Spring中的依赖注入
+// Spring中的依赖注入配置
 @Configuration
 public class BeanConfiguration {
     @Bean
@@ -146,6 +170,7 @@ public interface Emailable {
     void sendEmail();
 }
 
+// 按需实现
 public class UserService implements CRUD, Emailable {
     // 只实现需要的接口
 }
@@ -168,9 +193,65 @@ order.getCustomer().getAddress().getCity();
 locationService.getCityByOrder(orderId);
 ```
 
-## 2.6 原则的权衡与决策
+## 2.6 里氏替换原则（LSP）
 
-### 2.6.1 原则冲突
+### 2.6.1 定义
+
+子类必须能够完全替换父类。
+
+### 2.6.2 在架构中的应用
+
+```java
+// 父类定义规范
+public abstract class Payment {
+    public abstract void pay(BigDecimal amount);
+}
+
+// 子类遵守父类契约
+public class Alipay extends Payment {
+    @Override
+    public void pay(BigDecimal amount) {
+        // 支付宝支付实现
+    }
+}
+
+// 可以用子类替换父类
+public void processPayment(Payment payment, BigDecimal amount) {
+    payment.pay(amount);  // 不需要知道具体是哪种支付方式
+}
+```
+
+## 2.7 合成复用原则（CRP）
+
+### 2.7.1 定义
+
+优先使用对象组合/委托，而不是继承。
+
+### 2.7.2 在架构中的应用
+
+```java
+// 组合优于继承
+class Bird {
+    // 继承导致紧耦合
+}
+
+class Wing {
+    // 可以被组合
+}
+
+// 使用组合
+class Bird {
+    private Wing wing;
+
+    public Bird(Wing wing) {
+        this.wing = wing;
+    }
+}
+```
+
+## 2.8 原则的权衡与决策
+
+### 2.8.1 原则冲突
 
 实际开发中，原则之间可能产生冲突：
 
@@ -178,7 +259,7 @@ locationService.getCityByOrder(orderId);
 - **OCP vs KISS**：过度抽象增加复杂度
 - **DIP vs YAGNI**：过度抽象是未来需求
 
-### 2.6.2 决策建议
+### 2.8.2 决策建议
 
 | 场景 | 建议 |
 |------|------|
@@ -188,7 +269,7 @@ locationService.getCityByOrder(orderId);
 | 性能关键 | 避免过度抽象 |
 | 快速交付 | 避免过度设计 |
 
-## 2.7 本章小结
+## 2.9 本章小结
 
 本章介绍了架构设计的六个核心原则：
 
@@ -197,10 +278,11 @@ locationService.getCityByOrder(orderId);
 3. **依赖倒置原则**：依赖抽象而非具体
 4. **接口隔离原则**：使用小而专的接口
 5. **迪米特法则**：只与直接朋友通信
-6. **原则权衡**：根据实际场景灵活选择
+6. **里氏替换原则**：子类可以替换父类
+7. **合成复用原则**：优先组合优于继承
 
 这些原则是架构模式的基础，帮助我们在设计中做出更好的决策。
 
---- 
+---
 
 在下一章中，我们将学习架构质量属性，理解如何评估架构的好坏。
