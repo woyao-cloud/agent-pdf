@@ -279,6 +279,7 @@ Total allocated: ~128MB
 jcmd 12345 GC.heap_dump /tmp/heap-leak.hprof
 ```
 
+java -Xmx128m -cp target com.jvmbook.ch07.HeapLeakDemo -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath="D:\tmp\"
 也可以在启动参数中添加`-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/`，JVM在OOM时会自动生成堆转储。
 
 **步骤三：使用MAT分析堆转储**
