@@ -10,6 +10,7 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>ch01-environment</module>
         <module>ch02-jfr</module>
         <module>ch03-async-profiler</module>
         <module>ch04-arthas</module>
