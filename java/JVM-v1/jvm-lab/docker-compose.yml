@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  jvm-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jvm-lab:latest
+    container_name: jvm-lab
+    volumes:
+      - ./cases:/workspace/cases
+      - ./scripts:/workspace/scripts
+      - ~/.m2:/root/.m2
+    ports:
+      - "8080:8080"
+      - "5005:5005"
+    environment:
+      - JAVA_OPTS=
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    stdin_open: true
+    tty: true
