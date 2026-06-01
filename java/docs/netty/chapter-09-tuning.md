@@ -1,329 +1,386 @@
 # 第9章 内核参数与 Netty 参数深度调优
 
+## 本章导读
+
+"为什么我的 Netty 服务在测试环境一切正常，上线后客户端经常连接超时？"——这个问题的答案，90% 的情况不是 Netty 的 Bug，而是**操作系统内核参数没调**。
+
+想象一个场景：你的 Netty 网关在双 11 零点迎来流量高峰，一秒内涌入 10 万个新连接。服务端 `ServerSocketChannel` 的 `accept()` 方法逐个接受这些连接，但处理速度只有每秒 2 万个——剩下的 8 万个连接在哪里？它们在 TCP 的**全连接队列** 里排队。但如果排队的长度超过了你设置的值（默认 128），队列满了，多余的新连接**直接被拒绝**。客户端收到 "Connection Refused"——即使你的 Netty 应用本身完全不忙，它根本没机会处理这些连接。
+
+这就是内核参数调优的意义——**你不告诉操作系统"我能接受多少连接"，操作系统就给你一个最保守（最小）的值**。Netty 运行在操作系统之上，它的高性能必须依赖操作系统的正确配置。这一章将操作系统参数和 Netty 参数作为一个整体来讲解。
+
+---
+
 ## 9.1 Linux 操作系统内核调优
 
-### TCP 队列与连接 backlog
+### TCP 连接队列与 backlog——拒绝连接的隐形门
+
+每当一个 TCP 连接建立，操作系统内核会在内部经过两个队列：
 
 ```
-TCP 连接建立的三个阶段：
+TCP 连接建立的全流程（三次握手 + accept）：
 
-  客户端                         服务端
-    │                             │
-    │ ── SYN ──────────────────►  │  半连接队列（SYN Queue）
-    │                             │  tcp_max_syn_backlog
-    │ ◄── SYN+ACK ─────────────── │
-    │                             │
-    │ ── ACK ──────────────────►  │  全连接队列（Accept Queue）
-    │                             │  listen(fd, backlog)
-    │                             │  somaxconn
-    │                             │
-    │ accept() 返回新 socket      │
-    │ 应用层开始处理               │
+  客户端                                服务端内核
+    │                                     │
+    │ 1. 发送 SYN                        │
+    │ ──────────────────────────────►     │
+    │                                     │ 进入半连接队列（SYN Queue）
+    │                                     │ 由 tcp_max_syn_backlog 控制大小
+    │                                     │
+    │ 2. 回复 SYN+ACK                    │
+    │ ◄──────────────────────────────     │
+    │                                     │
+    │ 3. 回复 ACK（完成三次握手）          │
+    │ ──────────────────────────────►     │
+    │                                     │ 从半连接队列移到全连接队列（Accept Queue）
+    │                                     │ 由 min(SO_BACKLOG, somaxconn) 控制大小
+    │                                     │
+    │                                 4. 应用程序调 accept() 取出连接
+    │                                    Netty 的 NioEventLoop 在这里取
 ```
+
+**全连接队列满了的后果**：
+```bash
+# 内核的行为由 tcp_abort_on_overflow 控制
+net.ipv4.tcp_abort_on_overflow = 0  # 默认：丢弃 ACK，客户端重试
+net.ipv4.tcp_abort_on_overflow = 1  # 直接发 RST，客户端收到 Connection Refused
+```
+
+```
+实际案例：
+  SO_BACKLOG = 128（Netty 默认）
+  somaxconn = 128（大部分 Linux 默认值）
+  全连接队列最大长度 = 128
+
+  Netty accept() 的处理速度 = 2000/s（因为有其他操作）
+  客户端连接到达速度 = 5000/s
+
+  1 秒后：全连接队列 128 满
+  第 2 秒开始：所有到达的 ACK 被丢弃
+  客户端：收不到响应，重试 SYN
+  服务端：的的确确不忙，但就是接不入新连接！
+
+  解决：将 SO_BACKLOG 设为 1024，将 somaxconn 设为 1024
+  全连接队列最大长度 = 1024
+  即使 accept() 偶尔慢一下，1024 的缓冲区足够应付
+```
+
+**如何验证全连接队列是否溢出**：
 
 ```bash
-# 全连接队列大小配置
-net.core.somaxconn = 1024         # 系统级最大 backlog
-# redis.conf / Netty ServerBootstrap 中设置
-.option(ChannelOption.SO_BACKLOG, 1024)  # 应用级 backlog
+# 用 ss 命令查看全连接队列溢出情况
+ss -lnt | grep 8080
+# 输出: LISTEN 0 128 0.0.0.0:8080
+#              ↑
+#          当前队列中的连接数/最大队列长度
+#          如果第一个数字长期接近第二个，说明队列不够大
 
-# 如果 somaxconn < backlog，实际以 somaxconn 为准
-# 检查全连接队列是否溢出：
-ss -lnt  # 看 Send-Q 是否等于 backlog 设置值
-# 如果 Recv-Q 经常不为 0，说明连接队列溢出了
+# 查看溢出次数的统计
+nstat -az TcpExtListenOverflows
+# 如果这个数字在增长，说明队列溢出了
+# 解决方案：增大 SO_BACKLOG + somaxconn
 ```
+
+### TIME_WAIT 与端口耗尽
+
+TIME_WAIT 是 TCP 协议中一个常被误解的状态。它出现在**主动关闭连接的一方**，持续 2MSL（约 60 秒）：
+
+```
+TIME_WAIT 的产生
+  主动关闭方                               被动关闭方
+    │                                       │
+    │── FIN ──────────────────────────────► │
+    │                                       │
+    │◄── ACK ───────────────────────────────│
+    │                                       │（进入 CLOSE_WAIT）
+    │◄── FIN ───────────────────────────────│
+    │                                       │
+    │── ACK ──────────────────────────────► │
+    │                                       │
+    │ 进入 TIME_WAIT（等待 60 秒）            │
+    │ 目的：确保最后的 ACK 到达对端           │
+    │       如果 ACK 丢失，对端会重发 FIN      │
+```
+
+**Netty 什么时候会碰到 TIME_WAIT？** 如果 Netty 作为**客户端**频繁创建短连接（比如每次请求都创建一个新的连接），那 Netty 客户端就是主动关闭方，会产生大量 TIME_WAIT。60 秒内的连接数不能超过可用端口数（默认 28232）。
 
 ```bash
-# 半连接队列
-net.ipv4.tcp_max_syn_backlog = 1024   # SYN 队列大小
+# 查看 TIME_WAIT 数量
+ss -tan | grep TIME_WAIT | wc -l
 
-# SYN Flood 防护
-net.ipv4.tcp_syncookies = 1           # 启用 SYN Cookie（默认开启）
+# 如果这个数字持续 > 20000，说明端口可能不够用了
+# 查看可用端口范围
+cat /proc/sys/net/ipv4/ip_local_port_range
+# 输出: 32768 60999  ← 共 28232 个可用端口
+
+# 优化 1：增大端口范围
+net.ipv4.ip_local_port_range = 1024 65535
+
+# 优化 2：允许复用 TIME_WAIT 的连接（客户端生效）
+net.ipv4.tcp_tw_reuse = 1
+
+# ⚠️ 注意：tcp_tw_recycle 在 Linux 4.12+ 已移除
+# 这个参数在 NAT 环境下会导致严重问题（同一个 NAT IP 的不同客户端
+# 的时间戳不一致，导致连接被丢弃），所以 Linux 直接移除了它
 ```
 
-### TIME_WAIT 优化
+### 文件描述符限制——连接数的硬上限
 
-```
-TIME_WAIT 的危害：
-  主动关闭连接的一方，会进入 TIME_WAIT 状态，持续 2MSL（约 60 秒）
-  高并发短连接场景下，大量 TIME_WAIT 会耗尽可用端口
-
-  # 查看 TIME_WAIT 数量
-  ss -tan | grep TIME_WAIT | wc -l
-```
+每个 TCP 连接对应一个文件描述符（fd）。如果操作系统的文件描述符限制不够大，你的 Netty 连接数就上不去——这是**硬限制**，不是优化能解决的。
 
 ```bash
-# TIME_WAIT 优化（在 Netty 服务端同样适用）
-# 服务端通常不需要优化（TIME_WAIT 在主动关闭方）
-# 如果 Netty 客户端大量创建短连接：
-
-net.ipv4.tcp_tw_reuse = 1             # 复用 TIME_WAIT 连接（客户端生效）
-net.ipv4.tcp_fin_timeout = 15          # FIN_WAIT2 超时（默认 60 秒）
-
-# 注意：tcp_tw_recycle 在 Linux 4.10+ 已移除，不要使用
-```
-
-### 文件描述符限制
-
-```bash
-# 查看当前限制
+# 查看当前进程的文件描述符限制
 ulimit -n
+# 输出: 1024  ← 默认值，只够 1024 个连接！
 
-# 修改（临时）
+# 临时修改
 ulimit -n 1000000
 
-# 修改（永久 /etc/security/limits.conf）
-# 每个进程的文件描述符限制
+# 永久修改（/etc/security/limits.conf）
+# 添加：
 * soft nofile 1000000
 * hard nofile 1000000
 
-# 系统级文件描述符限制
-fs.file-max = 1000000
+# 系统级限制也要改
+fs.file-max = 1000000    # /etc/sysctl.conf
 
-# 检查当前使用量
+# 验证：查看当前进程已使用的 fd 数
+ls /proc/<pid>/fd | wc -l
+
+# 查看系统级 fd 使用情况
 cat /proc/sys/fs/file-nr
-# 输出: 1024  0    1000000
-#      已用  已释放  总量
-```
-
-### Swap 与内存
-
-```bash
-# Redis 需要关闭 Swap（内存数据库用 Swap 会性能崩溃）
-# Netty 同样建议尽量减少 Swap
-vm.swappiness = 1                    # 尽量不使用 Swap
-
-# 内存超分配（fork() 需要，NIO 也会用到）
-vm.overcommit_memory = 1             # 允许超分配
+# 输出: 1024  0  1000000
+#      已用  已释放  总量（接近总量时说明不够了）
 ```
 
 ### 完整内核优化脚本
 
 ```bash
 #!/bin/bash
-# sysctl-optimize.sh —— Netty 部署内核优化
+# netty-sysctl.sh —— Netty 部署标准内核参数优化
 
-cat >> /etc/sysctl.conf <<EOF
+cat >> /etc/sysctl.conf <<'EOF'
 
-# ===== Netty 优化 =====
-# TCP 连接队列
-net.core.somaxconn = 1024
-net.ipv4.tcp_max_syn_backlog = 1024
+# ===== 连接队列（最重要的调整） =====
+net.core.somaxconn = 1024             # 全连接队列最大长度
+net.ipv4.tcp_max_syn_backlog = 1024   # 半连接队列最大长度
 
-# TIME_WAIT 优化
+# ===== TIME_WAIT 优化 =====
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 15
 
-# TCP Keepalive
-net.ipv4.tcp_keepalive_time = 120    # 空闲 120 秒后开始探测
-net.ipv4.tcp_keepalive_intvl = 30   # 每 30 秒发一次探测
-net.ipv4.tcp_keepalive_probes = 3   # 3 次探测失败后断开
+# ===== TCP Keepalive =====
+net.ipv4.tcp_keepalive_time = 120     # 空闲 120 秒后开始探测
+net.ipv4.tcp_keepalive_intvl = 30     # 每 30 秒探测一次
+net.ipv4.tcp_keepalive_probes = 3     # 3 次探测失败断开
 
-# 网络性能
-net.core.rmem_default = 262144       # 接收缓冲区默认 256KB
-net.core.wmem_default = 262144       # 发送缓冲区默认 256KB
-net.core.rmem_max = 4194304          # 接收缓冲区最大 4MB
-net.core.wmem_max = 4194304          # 发送缓冲区最大 4MB
+# ===== 网络缓冲区（影响吞吐量） =====
+net.core.rmem_max = 16777216          # 接收缓冲区最大 16MB
+net.core.wmem_max = 16777216          # 发送缓冲区最大 16MB
+net.ipv4.tcp_rmem = 4096 87380 16777216   # TCP 接收缓冲区 min default max
+net.ipv4.tcp_wmem = 4096 65536 16777216   # TCP 发送缓冲区 min default max
 
-# TCP 自动窗口缩放
+# ===== 窗口缩放（高延迟链路必备） =====
 net.ipv4.tcp_window_scaling = 1
-net.ipv4.tcp_rmem = 4096 87380 4194304   # min default max
-net.ipv4.tcp_wmem = 4096 65536 4194304
 
-# 减少慢启动
+# ===== 禁用空闲后慢启动（跨地域部署时有用） =====
 net.ipv4.tcp_slow_start_after_idle = 0
 
-# 内存
-vm.swappiness = 1
-vm.overcommit_memory = 1
-
-# 文件描述符
+# ===== 内存与文件描述符 =====
+vm.swappiness = 1                     # 尽量不使用 Swap
+vm.overcommit_memory = 1             # 允许内存超分配（fork() 需要）
 fs.file-max = 1000000
 
-# TCP Fast Open（减少握手延迟）
+# ===== TCP Fast Open（减少一次 RTT） =====
 net.ipv4.tcp_fastopen = 3
 EOF
 
 sysctl -p
+echo "Netty 内核参数优化完成"
 ```
 
 ---
 
 ## 9.2 Netty 核心参数调优
 
-### ChannelOption 参数速查
+### 参数配置总览（含解释）
 
 ```java
-// ServerBootstrap 参数配置模板
+// 生产环境的 Netty ServerBootstrap 配置模板
+// 每一行都有为什么要这么设
 ServerBootstrap b = new ServerBootstrap();
 
 b.group(bossGroup, workerGroup)
  .channel(NioServerSocketChannel.class)
 
- // ===== 服务端 Socket 参数 =====
- .option(ChannelOption.SO_BACKLOG, 1024)        // accept 队列大小
- .option(ChannelOption.SO_REUSEADDR, true)      // 端口复用（快速重启）
- .option(ChannelOption.SO_RCVBUF, 262144)       // 接收缓冲区 256KB
+ // ===== 服务端 ServerSocketChannel 的参数 =====
+ .option(ChannelOption.SO_BACKLOG, 1024)
+ // accept 队列大小。默认 128 太小，高并发时连接被拒绝。
+ // 需要与内核参数 net.core.somaxconn 配合（取最小值）。
+ // 比如设了 1024，但 somaxconn=128，实际队列=128。
 
- // ===== 客户端 Socket 参数（每个连接） =====
- .childOption(ChannelOption.TCP_NODELAY, true)  // 禁用 Nagle 算法
- .childOption(ChannelOption.SO_KEEPALIVE, true) // TCP keepalive
- .childOption(ChannelOption.SO_SNDBUF, 262144)  // 发送缓冲区
- .childOption(ChannelOption.SO_RCVBUF, 262144)  // 接收缓冲区
+ .option(ChannelOption.SO_REUSEADDR, true)
+ // 端口复用。默认情况下，服务关闭后端口会进入 TIME_WAIT，
+ // 短时间内重启会报 "Address already in use"。
+ // 加上这个参数可以立即复用端口。
 
- // ===== Netty 特有参数 =====
- .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT) // 内存池
+ // ===== 客户端连接的参数 =====
+ .childOption(ChannelOption.TCP_NODELAY, true)
+ // 禁用 Nagle 算法。几乎所有 Netty 应用都应该设成 true。
+ // Nagle 会将小包攒到一起发，增加延迟。
+ // 对 IM、RPC、实时推送等场景是灾难。
+ // 只有大文件传输场景才考虑保留 Nagle。
+
+ .childOption(ChannelOption.SO_KEEPALIVE, true)
+ // 启用 TCP keepalive。当连接长时间空闲时，
+ // 操作系统会发送探测包检查对端是否存活。
+ // 注意：TCP keepalive 的间隔由内核参数决定（默认 2 小时，太长）。
+ // 需要配合前面的 tcp_keepalive_time 调短。
+
+ .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+ // 使用池化内存分配器。必须启用。
+ // 非池化版本每次读写都分配新内存，GC 压力极大。
+
  .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
-     new WriteBufferWaterMark(32 * 1024, 64 * 1024)) // 水位线
+     new WriteBufferWaterMark(32 * 1024, 64 * 1024))
+ // 写缓冲区水位线。当 ChannelOutboundBuffer 超过 64KB 时，
+ // Channel.isWritable() 返回 false。
+ // 可以在 channelWritabilityChanged 中暂停读取。
+ // 默认为 32KB/64KB，大多数场景下够用。
+ // 如果传输大消息，可以适当调高。
+
  .childOption(ChannelOption.RCVBUF_ALLOCATOR,
-     new AdaptiveRecvByteBufAllocator(64, 4096, 65536)); // 自适应缓冲区
+     new AdaptiveRecvByteBufAllocator(64, 4096, 65536))
+ // 接收缓冲区自适应分配器。
+ // 初始 4KB，如果数据量大自动增加到最多 64KB。
+ // 大多数场景用默认值即可。
 ```
 
-### 参数详解
+### 参数详解——为什么这些配置很重要
 
-**SO_BACKLOG**
+**SO_BACKLOG——被忽略的"第一道防线"**
+
+```
+一个真实的线上案例：
+
+  某 Netty 服务在压测中，TPS 始终上不去。查看监控：CPU 不到 20%，内存充足。
+  但客户端大量报 "Connection Refused"。
+
+  排查步骤：
+  1. `ss -lnt | grep 8080` → 显示队列 128/128（满了！）
+  2. 检查 backlog 配置 → 忘了设，用的默认值 128
+  3. 修改为 1024，配合调整 somaxconn → 队列不再溢出
+  4. TPS 直接翻倍
+
+  教训：SO_BACKLOG 是 Netty 配置中成本最低（一行代码）但收益最大的参数。
+```
+
+**TCP_NODELAY——延迟的"开关"**
+
+```
+Nagle 算法的工作演示：
+
+  时间    客户端操作                      Nagle 开启（默认）         Nagle 关闭（TCP_NODELAY=true）
+  ───────────────────────────────────────────────────────────────────────
+  T0      发送 "H"                        发出（第一个包不等）      发出
+  T1      发送 "e"                        等上一个 ACK               发出
+  T2      发送 "l"                        继续等                     发出
+  T3      发送 "l"                        继续等                     发出
+  T4      发送 "o"                        继续等                     发出
+  T5      ◄── 收到前一个包的 ACK          将 "ello" 一次性发出
+                                                                                                            
+  结果：
+          Nagle 开启：2 个包（"H" + "ello"）
+          Nagle 关闭：5 个包（"H"+"e"+"l"+"l"+"o"）
+
+  在 IM 场景中，每条消息可能就是一个 "你好"（6 字节）。
+  Nagle 开启后，这条消息最多会等 200ms（TCP_NODELAY 定时器）才发出。
+  200ms 的延迟在 IM 中是完全不可接受的。
+
+  结论：大多数 Netty 应用中，TCP_NODELAY=true 是必选项。
+```
+
+**ALLOCATOR——内存池是必选项**
 
 ```java
-// 全连接队列大小
-.option(ChannelOption.SO_BACKLOG, 1024)
+// 验证 PooledByteBufAllocator 的效果
+// 用微基准测试对比：
+
+// 情况 A：未池化（每次创建新对象）
+for (int i = 0; i < 100000; i++) {
+    ByteBuf buf = Unpooled.buffer(1024);
+    buf.writeBytes(data);
+    process(buf);
+    buf.release();
+    // 每次创建新对象，GC 压力巨大
+}
+
+// 情况 B：池化
+for (int i = 0; i < 100000; i++) {
+    ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer(1024);
+    buf.writeBytes(data);
+    process(buf);
+    buf.release();
+    // 释放后内存回到池中，下一次分配直接复用
+}
+
+// 两者的吞吐量差异在高并发下可以达到 3-5 倍
 ```
 
-```
-当 Netty 处理 accept() 的速度跟不上连接接入的速度时，
-连接会在全连接队列中排队。队列满了之后，新的连接会被拒绝。
+### EventLoopGroup 线程数——多少算合适？
 
-建议值：
-  服务端：1024（默认 128，对高并发应用太小了）
-  Redis 配置：511
-```
-
-**TCP_NODELAY**
-
-```java
-// 禁用 Nagle 算法
-.childOption(ChannelOption.TCP_NODELAY, true)
-```
+Netty 新手最容易问的问题："BossGroup 设几个线程？WorkerGroup 设几个？"
 
 ```
-Nagle 算法：将多个小包合并为一个大包发送
-目的：提高网络利用率
-代价：增加延迟（最多等待 200ms）
+BossGroup 线程数：
+  ┌──────────────────────────────────────────────┐
+  │  Boss 线程只做一件事：accept 新连接             │
+  │  accept() 本身是一个极其轻量的操作              │
+  │  一个线程一秒钟可以 accept 数万个连接            │
+  │                                                │
+  │  所以：BossGroup 通常 = 1                       │
+  │                                                │
+  │  例外：如果你在不同的端口上监听（比如 8080 和    │
+  │  8443 两个端口），可以用 2 个 Boss 线程         │
+  └──────────────────────────────────────────────┘
 
-适用场景：
-  实时性要求高的场景（聊天、游戏、RPC）：禁用 Nagle
-  大文件传输、批量数据：保留 Nagle（默认）
-
-几乎所有的 Netty 应用都应该设置 TCP_NODELAY = true
-```
-
-**ALLOCATOR**
-
-```java
-// 内存分配器
-.childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
-
-// 或者在 JVM 参数中全局设置
-// -Dio.netty.allocator.type=pooled
-// -Dio.netty.allocator.maxOrder=9  // 16MB Chunk 大小
-// -Dio.netty.allocator.numHeapArenas=8  // Arena 数量
-// -Dio.netty.allocator.numDirectArenas=8
-```
-
-```
-PooledByteBufAllocator vs UnpooledByteBufAllocator：
-
-  场景         池化          非池化
-  高并发      快（复用内存）  慢（每次分配新内存）
-  内存碎片     低             高
-  GC 压力    小              大
-
-  生产环境：必须使用 PooledByteBufAllocator
-```
-
-**WRITE_BUFFER_WATER_MARK**
-
-```java
-.childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
-    new WriteBufferWaterMark(32 * 1024, 64 * 1024))
-```
-
-```
-水位线的作用：
-
-  低水位（32KB）：缓冲区内数据少于 32KB → 认为"可写"
-  高水位（64KB）：缓冲区内数据超过 64KB → 认为"不可写"
-  
-  配合 channelWritabilityChanged 使用
-  当 Channel 不可写时，暂停读取上游数据（背压）
-
-  建议值：
-    低延迟场景：32KB / 64KB
-    大流量场景：64KB / 128KB
-    极端情况：256KB / 512KB
-```
-
-**RCVBUF_ALLOCATOR**
-
-```java
-// 自适应接收缓冲区分配器
-.childOption(ChannelOption.RCVBUF_ALLOCATOR,
-    new AdaptiveRecvByteBufAllocator(64, 4096, 65536));
-```
-
-```
-三个参数：min, initial, max
-
-  min（64 字节）：初始缓冲区大小
-  initial（4096 字节）：默认初始大小  
-  max（65536 字节）：最大缓冲区大小
-
-  自适应逻辑：
-  如果连续几次读到的数据都接近当前缓冲区大小 → 增大
-  如果连续几次读到的数据都远小于当前缓冲区大小 → 减小
-
-  Netty 默认就是 AdaptiveRecvByteBufAllocator
-  大多数场景不需要显式设置
-```
-
-### EventLoopGroup 线程数
-
-```java
-EventLoopGroup bossGroup = new NioEventLoopGroup(1); // Boss：1 个足够
-EventLoopGroup workerGroup = new NioEventLoopGroup(); // Worker：默认 CPU×2
-
-// 也可以指定
-int workerThreads = Runtime.getRuntime().availableProcessors() * 2;
-EventLoopGroup workerGroup = new NioEventLoopGroup(workerThreads);
-```
-
-```
-线程数选择建议：
-
-  Boss Group:
-    通常 = 1（accept 操作不是瓶颈）
-    如果服务器有多个网卡绑定不同的 IP，可以设置为 IP 数量
-
-  Worker Group:
-    默认 = CPU 核数 × 2（大多数场景的最佳实践）
-    纯 I/O 密集型：CPU 核数 × 2 到 × 4
-    含业务逻辑：CPU 核数 × 1 到 × 2
-    别超过 16（再多了锁竞争收益下降）
+WorkerGroup 线程数：
+  ┌──────────────────────────────────────────────┐
+  │  Worker 线程负责：Channel 的读写、解码、业务   │
+  │                                               │
+  │  默认值 = CPU 核数 × 2（大多数场景的最佳实践） │
+  │                                               │
+  │  如果你有 8 核 CPU：                          │
+  │  默认 = 16 个 Worker 线程                      │
+  │  每个 Worker 管理 1/16 的连接                 │
+  │                                               │
+  │  如果你的 Handler 中处理逻辑比较重：           │
+  │  → 减少 Worker 线程数到 CPU 核数 × 1          │
+  │  → 或者（更推荐）把业务逻辑异步化             │
+  │                                               │
+  │  别超过 16 个（即使你有 32 核 CPU）：          │
+  │  → 线程数过多导致锁竞争加剧                    │
+  │  → 上下文切换开销增加                          │
+  │  → 收益递减                                   │
+  └──────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 本章总结
 
-| 参数 | 默认值 | 生产推荐 | 说明 |
-|------|--------|---------|------|
-| SO_BACKLOG | 128 | 1024 | accept 队列，太小丢连接 |
-| TCP_NODELAY | false | **true** | 禁用 Nagle，降低延迟 |
-| SO_KEEPALIVE | false | **true** | 启用 TCP keepalive |
-| ALLOCATOR | 池化 | PooledByteBufAllocator | 内存池必须开启 |
-| WRITE_BUFFER_WATER_MARK | 32K/64K | 按需调整 | 背压控制的关键 |
-| Worker 线程数 | CPU×2 | CPU×2 ~ CPU×4 | 别超过 16 |
+| 参数 | 作用域 | 默认值 | 生产推荐值 | 如果不调... |
+|------|--------|--------|-----------|------------|
+| `SO_BACKLOG` | Netty | 128 | 1024 | 高并发时连接被拒绝 |
+| `somaxconn` | OS | 128 | 1024 | SO_BACKLOG 设再大也没用 |
+| `TCP_NODELAY` | Netty | false | **true** | 小消息延迟 200ms |
+| `SO_KEEPALIVE` | Netty | false | true | TCP 不检测死连接 |
+| `tcp_keepalive_time` | OS | 7200 (2h) | 120 (2min) | 死连接占 2 小时才释放 |
+| `ALLOCATOR` | Netty | Pooled | Pooled(必须) | 高并发下 GC 压力山大 |
+| `WRITE_BUFFER_WATER_MARK` | Netty | 32K/64K | 按需调整 | 慢客户端导致 OOM |
+| `Worker 线程数` | Netty | CPU×2 | CPU×2 ~ CPU×4 | 设太多反而更慢 |
 
 **核心原则**：
-1. **TCP_NODELAY 几乎是必开的**——Nagle 算法在大多数 Netty 场景下弊大于利
-2. **池化分配器是标配**——`PooledByteBufAllocator` 在高并发下的性能是非池化的数倍
-3. **内核参数要和 Netty 参数配合调整**——`somaxconn` < `SO_BACKLOG` = 白设
+1. **内核参数和 Netty 参数必须协同调整**——`SO_BACKLOG=1024` 加上 `somaxconn=128`，实际是 128。你以为是 1024，其实是 128。这是最常见的配置失误
+2. **TCP_NODELAY 几乎是必开的**——Nagle 算法在大多数 Netty 场景下弊大于利。只有大文件传输场景才考虑保留它
+3. **池化分配器是标配**——`PooledByteBufAllocator` 在高并发下的性能是非池化的 3-5 倍。没有理由不用它
+4. **不要调自己没有压测过的参数**——每个参数调整都需要有压测数据支撑。不要因为"看了篇文章说这样设好"就盲目改。先压测，再调参，再压测
