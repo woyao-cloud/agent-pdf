@@ -1,129 +1,117 @@
 # 第18章 开发者核心技能
 
-## 18.1 Spring Kafka
+## 18.1 Spring Kafka最佳实践
 
-### 核心注解
+### 核心注解速查
 
-```java
-@KafkaListener        // 声明消费者方法
-@KafkaHandler         // 类级别的@KafkaListener中区分方法
-@RetryableTopic       // 声明重试Topic
-@DltHandler           // 死信队列处理器
-@Header               // 获取消息头
-@Payload              // 获取消息体
-@SendTo               // 将结果发送到指定Topic
-```
+| 注解 | 用途 | 关键属性 |
+|------|------|---------|
+| `@KafkaListener` | 声明消费者方法 | topics, groupId, containerFactory |
+| `@RetryableTopic` | 声明重试Topic | attempts, backoff, dltTopicSuffix |
+| `@DltHandler` | 处理死信消息 | 无额外属性 |
+| `@Header` | 获取消息头 | value（如KafkaHeaders.OFFSET） |
+| `@Payload` | 获取消息体 | 无额外属性（默认） |
 
-### 自动配置
+### 配置模板
 
 ```yaml
-# application.yml
+# application.yml 完整配置模板
 spring:
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: 
+      - broker1:9092
+      - broker2:9092
+      - broker3:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       properties:
         enable.idempotence: true
+        compression.type: snappy
+        batch.size: 32768
+        linger.ms: 10
     consumer:
-      group-id: my-group
+      group-id: ${spring.application.name}
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "com.example.*"
+        isolation.level: read_committed
     listener:
       ack-mode: MANUAL_IMMEDIATE
       concurrency: 3
+      missing-topics-fatal: false
 ```
 
-## 18.2 命令行工具
+### 异常处理分类
+
+```java
+// RetryableException（临时故障·应重试）
+// - TimeoutException: 网络超时，下游服务未响应
+// - ServiceUnavailableException: 服务暂时不可用（HTTP 503）
+// - NotLeaderOrFollowerException: Broker Leader切换中
+// 处理策略：指数退避重试，通常3-5次
+
+// NonRetryableException（不可重试·直接DLQ）
+// - SerializationException: 消息序列化/反序列化失败
+// - AuthenticationException: 认证失败
+// - RecordTooLargeException: 消息超过大小限制
+// - NullPointerException: 业务代码Bug
+// 处理策略：直接进入DLQ，记录错误信息
+
+// 判断原则：不确定的异常，重试1次后进入DLQ
+```
+
+## 18.2 命令行工具速查
 
 ```bash
-# Topic管理
+# 查看集群状态
+kafka-broker-api-versions.sh --bootstrap-server localhost:9092
+
+# 查看Topic列表和详情
 kafka-topics.sh --bootstrap-server localhost:9092 --list
-kafka-topics.sh --create --topic test --partitions 3 --replication-factor 1
-kafka-topics.sh --alter --topic test --partitions 6
-kafka-topics.sh --describe --topic test
+kafka-topics.sh --describe --topic orders
 
-# 生产者/消费者
-kafka-console-producer.sh --bootstrap-server localhost:9092 --topic test
-kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test --from-beginning
-
-# 消费者组管理
+# 查看消费者组和Lag
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
 kafka-consumer-groups.sh --describe --group my-group
-kafka-consumer-groups.sh --reset-offsets --group my-group --topic test --to-earliest --execute
 
-# 配置管理
-kafka-configs.sh --bootstrap-server localhost:9092 --entity-type topics --entity-name test --describe
+# 生产/消费消息（测试用）
+kafka-console-producer.sh --topic test --bootstrap-server localhost:9092
+kafka-console-consumer.sh --topic test --from-beginning --bootstrap-server localhost:9092
+
+# 动态修改Topic配置
+kafka-configs.sh --bootstrap-server localhost:9092 \
+  --alter --entity-type topics --entity-name orders \
+  --add-config retention.ms=86400000
 ```
 
-## 18.3 Kafka Streams API要点
-
-```java
-// 掌握以下核心操作
-KStream: filter, map, flatMap, groupByKey, join
-KTable: aggregate, reduce, count, toStream
-Window: tumblingWindow, slidingWindow, sessionWindow
-StateStore: KeyValueStore, WindowStore
-Processor: process, transform, suppress
-```
-
-## 18.4 核心配置速查
-
-| 配置 | 推荐值 | 说明 |
-|------|--------|------|
-| acks | all | 最强可靠性 |
-| retries | 3 | 重试次数 |
-| enable.idempotence | true | 幂等性 |
-| compression.type | snappy | 压缩 |
-| max.request.size | 1MB (default) | 消息大小限制 |
-| group.id | 业务含义命名 | 消费者组 |
-| auto.offset.reset | earliest/latest | 起始位置 |
-| enable.auto.commit | false | 手动提交 |
-| max.poll.records | 500 | 批处理 |
-
-## 18.5 异常处理指南
-
-```java
-// RetryableException（临时故障）
-// - 网络超时 TimeoutException
-// - 服务不可用 ServiceUnavailableException  
-// - Broker不可用 NotLeaderOrFollowerException
-// 处理：指数退避重试
-
-// NonRetryableException（不可重试）
-// - 序列化异常 SerializationException
-// - 认证异常 AuthenticationException
-// - 消息过大 RecordTooLargeException
-// 处理：直接DLQ
-
-// KafkaException（通用异常包装）
-// 处理：检查cause判断是否可重试
-```
-
-## 18.6 学习路径
+## 18.3 学习路径
 
 ```
-Level 1: 能发送和消费消息
+Level 1: 基础阶段
   - 掌握Producer/Consumer API
   - 理解Topic/Partition/Offset概念
+  - 能使用Spring Kafka发送和消费消息
 
-Level 2: 能处理异常场景
+Level 2: 进阶阶段
   - 掌握重试和死信队列
-  - 理解offset提交策略
-  - 掌握幂等消费
+  - 理解offset提交策略（手动/自动）
+  - 掌握幂等消费实现
+  - 掌握Kafka Streams基础操作
 
-Level 3: 能设计消息架构
-  - 掌握Kafka Streams
-  - 掌握Kafka Connect
+Level 3: 架构阶段
+  - 掌握Kafka Connect（Source/Sink Connector）
   - 理解事务和Exactly-Once
+  - 掌握CDC方案（Debezium）
+  - 能够设计高可用消息架构
 
-Level 4: 能运维和调优
-  - 掌握集群监控
-  - 理解性能调优
-  - 掌握故障恢复
+Level 4: 专家阶段
+  - 掌握集群监控和性能调优
+  - 理解操作系统级别优化
+  - 掌握故障恢复和容量规划
+  - 能设计和运维大规模Kafka集群
 ```

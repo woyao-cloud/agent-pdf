@@ -1,145 +1,139 @@
 # 第17章 监控与运维
 
-## 17.1 集群监控
+## 17.1 日常运维操作
 
-### 核心指标监控
-
-```yaml
-# Prometheus告警规则
-groups:
-  - name: kafka_alerts
-    rules:
-      # 离线分区告警
-      - alert: OfflinePartitions
-        expr: kafka_server_ReplicaManager_OfflinePartitionsCount > 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Kafka有离线分区"
-      
-      # 副本同步延迟
-      - alert: UnderReplicatedPartitions
-        expr: kafka_server_ReplicaManager_UnderReplicatedPartitions > 0
-        for: 5m
-        labels:
-          severity: warning
-      
-      # 消费者Lag过高
-      - alert: HighConsumerLag
-        expr: kafka_consumer_lag > 10000
-        for: 5m
-        labels:
-          severity: warning
-      
-      # Broker宕机
-      - alert: BrokerDown
-        expr: up{job="kafka"} < 3
-        for: 1m
-        labels:
-          severity: critical
-```
-
-### 消费者Lag监控
+### Topic管理
 
 ```bash
-# 查看消费者组Lag
-kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --group my-group --describe
+# 创建Topic（推荐指定分区数和副本数）
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic orders --partitions 6 --replication-factor 3
 
-# 输出：
-# GROUP           TOPIC          PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG
-# my-group        orders         0          1000            1500            500
-# my-group        orders         1          2000            2500            500
-# my-group        orders         2          3000            3500            500
+# 查看Topic详情
+kafka-topics.sh --bootstrap-server localhost:9092 \
+  --describe --topic orders
+
+# 输出示例：
+# Topic: orders  PartitionCount: 6  ReplicationFactor: 3
+#   Topic: orders  Partition: 0  Leader: 1  Replicas: 1,2,3  Isr: 1,2,3
+#   Topic: orders  Partition: 1  Leader: 2  Replicas: 2,3,1  Isr: 2,3,1
+
+# 修改Topic配置（在线动态调整）
+kafka-configs.sh --bootstrap-server localhost:9092 \
+  --alter --entity-type topics --entity-name orders \
+  --add-config retention.ms=604800000
 ```
 
-## 17.2 运维操作
+### 消费者组管理
+
+```bash
+# 查看所有消费者组
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+
+# 查看组的Lag情况
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --describe --group order-processor
+
+# 重置消费者组offset（需要组内无活动消费者）
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --group order-processor \
+  --reset-offsets --to-earliest --topic orders --execute
+
+# 将offset移到最新（跳过积压消息）
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --group order-processor \
+  --reset-offsets --to-latest --topic orders --execute
+```
 
 ### 分区重分配
+
+当新增Broker或需要重新平衡分区分布时，使用分区重分配工具：
 
 ```bash
 # 1. 生成迁移计划
 kafka-reassign-partitions.sh --bootstrap-server localhost:9092 \
   --generate --topics-to-move-json-file topics.json \
-  --broker-list "1,2,3"
+  --broker-list "1,2,3,4"
 
 # 2. 执行迁移
 kafka-reassign-partitions.sh --bootstrap-server localhost:9092 \
   --execute --reassignment-json-file reassign.json
 
-# 3. 验证迁移
+# 3. 验证迁移进度
 kafka-reassign-partitions.sh --bootstrap-server localhost:9092 \
   --verify --reassignment-json-file reassign.json
 ```
 
-### 扩容操作
+分区重分配是异步的，Kafka会逐步将数据从旧Broker复制到新Broker。期间不会影响正常的消息读写。
 
-```bash
-# 1. 启动新Broker
-# 2. 将部分分区迁移到新Broker
-# 3. 调整Topic分区数（如果需要）
-kafka-topics.sh --bootstrap-server localhost:9092 \
-  --alter --topic orders --partitions 6
+## 17.2 故障恢复
 
-# 注意：分区只能增加不能减少！
+### 常见故障处理步骤
+
+**场景1：Broker宕机**
+```
+现象：OfflinePartitions > 0
+处理步骤：
+1. 检查宕机Broker的日志（server.log）
+2. 尝试重启Broker服务
+3. 如果短时间内无法恢复，触发Leader选举
+   kafka-leader-election.sh --bootstrap-server localhost:9092 \
+     --topic orders --partition 0 --election-type PREFERRED
+4. 监控ISR是否恢复
 ```
 
-### 数据迁移
-
-```bash
-# MirrorMaker 2.0 跨集群同步
-mm2.properties:
-clusters=A,B
-A.bootstrap.servers=kafka-a:9092
-B.bootstrap.servers=kafka-b:9092
-A->B.enabled=true
-A->B.topics=orders,payments
+**场景2：磁盘空间不足**
+```
+现象：写入失败，日志报错"disk out of space"
+处理步骤：
+1. 立即：调整保留策略，删除历史数据
+   kafka-configs.sh --alter --entity-type topics --entity-name orders \
+     --add-config retention.ms=3600000  # 临时改为1小时
+2. 中期：清理不再需要的数据
+   kafka-configs.sh --alter --entity-type topics --entity-name orders \
+     --add-config cleanup.policy=delete
+3. 长期：扩容磁盘或增加节点
 ```
 
-## 17.3 故障恢复
-
-### 常见故障处理
-
-| 故障 | 现象 | 处理步骤 |
-|------|------|---------|
-| Broker宕机 | 分区Leader不可用 | 1. 检查日志 2. 重启Broker 3. 检查ISR |
-| 磁盘满 | 写入失败 | 1. 清理日志 2. 扩容磁盘 3. 调整保留策略 |
-| 分区不可用 | UnderReplicated | 1. 检查副本同步 2. 手动Leader选举 |
-| 消息积压 | Lag持续增长 | 1. 增加消费者 2. 优化消费逻辑 3. 扩容Topic |
-
-### 数据恢复
-
-```bash
-# 查看未消费的消息（调试用）
-kafka-console-consumer.sh --bootstrap-server localhost:9092 \
-  --topic orders \
-  --partition 0 \
-  --offset 1000 \
-  --max-messages 10
+**场景3：消费者Lag持续增长**
+```
+现象：消费速度跟不上生产速度
+排查：
+1. 检查消费者日志：是否有异常或慢查询？
+2. 检查下游系统（DB、外部API）的响应时间
+3. 检查消费者数量是否足够（分区数是否够）
+处理：
+1. 临时：增加消费者数量（确保分区数足够）
+2. 优化：批量处理、异步处理、增加缓存
+3. 扩容：增加Topic分区数和消费者数
 ```
 
-## 17.4 容量规划
+## 17.3 容量规划
 
-### 容量评估公式
+### 磁盘容量估算
 
 ```bash
-# 磁盘容量
-单分区每日数据量 = 生产速率(msg/s) × 平均消息大小(byte) × 86400 / 1024^3(GB)
-总数据量 = 单分区数据量 × 分区数 × 保留天数 × 副本数 × 2(压缩比)
+# 磁盘空间计算公式
+# 单分区每日数据量 = 消息速率(msg/s) × 平均消息大小(byte) × 86400秒
+# 总存储需求 = 单分区数据量 × 分区数 × 保留天数 × 副本数
 
 # 示例：10万msg/s, 1KB/msg, 12分区, 7天, 3副本
-# = 100000 × 1024 × 86400 × 12 × 7 × 3 × 2 ≈ 4.3TB
-
-# 内存
-# 每个连接约100KB
-# 操作系统页缓存：建议分配系统内存的50%
+日增量 = 100000 × 1024 × 86400 = 8.6GB（非压缩，单分区）
+总需求 = 8.6GB × 12 × 7 × 3 = 2.2TB
 ```
 
-### 配置建议
+### 集群规模建议
 
-| 集群规模 | 节点 | 磁盘 | 内存 | CPU |
-|---------|------|------|------|-----|
-| 开发/测试 | 3 | 500GB × 3 | 8GB | 4核 |
-| 中等规模 | 3-6 | 2TB × N | 16GB | 8核 |
-| 大规模 | 6-12 | 4TB × N | 32GB+ | 16核+ |
+| 集群规模 | Broker | 磁盘 | 内存 |
+|---------|--------|------|------|
+| 开发/测试 | 3 | 500GB × 3 | 8GB |
+| 中等规模 | 3-6 | 2TB × N | 16GB |
+| 大规模 | 6-12 | 4TB+ × N | 32GB+ |
+
+## 17.4 关键技能
+
+- 掌握kafka-topics、kafka-consumer-groups等命令行工具
+- 理解分区重分配的流程和原理
+- 掌握消费者group的Lag监控和offset重置
+- 熟悉磁盘容量估算和集群扩容方案
+- 掌握Broker宕机、磁盘满等常见故障的恢复步骤

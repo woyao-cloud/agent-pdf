@@ -1,54 +1,66 @@
 # 第8章 数据管道ETL
 
-## 场景描述
+## 8.1 场景故事：从MySQL到Elasticsearch
 
-Kafka Connect是Kafka的ETL工具，用于在Kafka和外部系统（数据库、文件系统、云服务）之间可靠地传输数据。不用写一行代码即可完成数据导入导出。
+### 手写数据同步的痛苦
 
-### 解决的问题
+很多团队在项目初期会采用"手写同步脚本"的方式把MySQL数据同步到Elasticsearch：
 
-**传统ETL的痛点**：
-```
-手写脚本读取数据库 → 转换 → 写入目标 → 维护困难
-数据格式耦合 → 修改schema需要改代码
-无容错机制 → 失败后恢复困难
-```
-
-**Kafka Connect**：
-```
-Source Connector → Kafka Topic → Sink Connector
-     ↓                               ↓
-  数据库/文件                       ES/S3/HDFS
-```
-
-### 实现原理
-
-**Kafka Connect架构**：
-```
-Kafka Connect Cluster
-├── Worker 1
-│   ├── Source Connector: MySQL→Kafka
-│   └── Sink Connector: Kafka→Elasticsearch
-├── Worker 2
-│   ├── Source Connector: PostgreSQL→Kafka
-│   └── Sink Connector: Kafka→S3
-└── Worker 3
-    ├── Source Connector: MongoDB→Kafka
-    └── Sink Connector: Kafka→HDFS
+```java
+@Scheduled(fixedRate = 60000)
+public void syncOrdersToES() {
+    // 每1分钟查询最近更新的订单
+    List<Order> orders = orderRepository.findByUpdatedAtAfter(lastSyncTime);
+    for (Order order : orders) {
+        // 逐个写入ES
+        esClient.index("orders", order.getId(), order);
+    }
+    lastSyncTime = LocalDateTime.now();
+}
 ```
 
-**Connector类型**：
+这个方案在初期工作良好，但随着业务发展，问题逐渐暴露：
 
-| 类型 | 方向 | 示例 |
-|------|------|------|
-| Source | 外部系统→Kafka | JDBC Source、Debezium Source |
-| Sink | Kafka→外部系统 | Elasticsearch Sink、S3 Sink |
-| 单机模式 | 单进程 | 开发和测试 |
-| 分布式模式 | 集群 | 生产环境 |
+- **时延瓶颈**：1分钟的轮询间隔意味着ES中的数据至少比MySQL老1分钟。如果缩短轮询间隔到几秒，数据库压力会大幅上升。
+- **无法捕获删除操作**：`updated_at`时间戳只能捕获更新和新增，无法捕获物理删除。需要额外维护一个"软删除"标记。
+- **全量同步的尴尬**：如果ES索引需要重建（映射变更、数据恢复），需要停服维护或忍受长时间的不一致窗口。
+- **扩展性问题**：每次新增一个需要同步的系统（比如还要同步到Redis、同步到ClickHouse），都需要编写新的同步脚本。
 
-### Docker Compose
+Kafka Connect解决了这些问题。它不需要写同步代码，只需要配置JSON即可。
+
+## 8.2 实现原理
+
+### Kafka Connect的架构
+
+Kafka Connect的核心概念非常清晰：
+
+**Connector（连接器）**：定义数据从哪里来到哪里去的高层配置。例如：一个JDBC Source Connector从MySQL读取数据，一个Elasticsearch Sink Connector将数据写入ES。
+
+**Task（任务）**：Connector的实际执行单元。一个Connector可以拆分为多个Task并行工作。例如：从MySQL读取100万行数据时，可以启动4个Task，每个Task负责处理一部分数据。
+
+**Worker（工作者）**：运行Connector和Task的进程。可以单机运行（Standalone模式）也可以集群运行（Distributed模式）。
+
+**Converters（转换器）**：将Kafka Connect的内部数据格式（Connect Record）与Kafka存储的字节数组之间进行转换。常见的Converters有JsonConverter、AvroConverter、StringConverter。
+
+**Transforms（转换器/SMT）**：在Connector处理数据时对数据记录进行轻量级修改。例如：重命名字段、删除字段、添加静态字段、路由到不同Topic等。
+
+### Source Connector的工作模式
+
+JDBC Source Connector支持多种数据拉取模式，理解这些模式的差异对于正确配置非常重要：
+
+**Bulk模式**：一次性全量拉取。适用于首次加载或数据量小的场景。每次启动Connector或触发重新拉取时，执行完整的SELECT * FROM table语句。
+
+**Incrementing模式**：基于自增ID增量拉取。适用于只有新增数据、没有数据更新的场景。Connector会记录上次拉取到的最大ID，下次拉取时只查询ID大于该值的记录。
+
+**Timestamp模式**：基于时间戳增量拉取。适用于数据会被更新的场景。Connector记录上次拉取的最大时间戳，查询 `WHERE updated_at > last_timestamp`。
+
+**Timestamp+Incrementing组合模式**：同时使用自增ID和时间戳。这是最通用的模式，适用于既有新增又有更新的场景，而且可以处理同一时间戳批次内的大量数据。
+
+## 8.3 完整配置与实战
+
+### Docker Compose环境
 
 ```yaml
-# docker/scenario-08-etl/docker-compose.yml
 version: '3.8'
 services:
   zookeeper:
@@ -73,7 +85,6 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: mydb
 
-  # Kafka Connect
   connect:
     image: confluentinc/cp-kafka-connect:7.5.0
     depends_on: [kafka]
@@ -87,122 +98,41 @@ services:
       CONNECT_STATUS_STORAGE_TOPIC: "connect-status"
       CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
       CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_PLUGIN_PATH: "/usr/share/java,/etc/kafka-connect/jars"
     volumes:
       - ./mysql-connector-java.jar:/etc/kafka-connect/jars/mysql-connector-java.jar
 ```
 
-### JDBC Source Connector配置
-
-```json
-// 注册JDBC Source Connector
-// POST http://localhost:8083/connectors
-{
-  "name": "mysql-orders-source",
-  "config": {
-    "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
-    "connection.url": "jdbc:mysql://mysql:3306/mydb",
-    "connection.user": "root",
-    "connection.password": "root",
-    "table.whitelist": "orders",
-    "mode": "incrementing",
-    "incrementing.column.name": "id",
-    "topic.prefix": "mysql-",
-    "poll.interval.ms": 1000,
-    "batch.max.rows": 100,
-    "errors.tolerance": "all",
-    "errors.deadletterqueue.topic.name": "connect-dlq"
-  }
-}
+注册JDBC Source Connector将MySQL订单数据实时同步到Kafka：
+```bash
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "mysql-orders-source",
+    "config": {
+      "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+      "connection.url": "jdbc:mysql://mysql:3306/mydb",
+      "connection.user": "root",
+      "connection.password": "root",
+      "table.whitelist": "orders",
+      "mode": "timestamp+incrementing",
+      "incrementing.column.name": "id",
+      "timestamp.column.name": "updated_at",
+      "topic.prefix": "mysql-",
+      "poll.interval.ms": 1000,
+      "batch.max.rows": 100,
+      "errors.tolerance": "all",
+      "errors.deadletterqueue.topic.name": "connect-dlq"
+    }
+  }'
 ```
 
-### Sink Connector配置
-
-```json
-// 注册Elasticsearch Sink Connector
-// POST http://localhost:8083/connectors
-{
-  "name": "es-orders-sink",
-  "config": {
-    "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
-    "connection.url": "http://elasticsearch:9200",
-    "topics": "mysql-orders",
-    "key.ignore": true,
-    "type.name": "_doc",
-    "batch.size": 100,
-    "linger.ms": 1000,
-    "transforms": "removePrefix",
-    "transforms.removePrefix.type": "org.apache.kafka.connect.transforms.RegexRouter",
-    "transforms.removePrefix.regex": "mysql-(.*)",
-    "transforms.removePrefix.replacement": "$1"
-  }
-}
-```
-
-### 单表获取所有数据（快照+增量）
-
-Kafka Connect JDBC Source支持多种模式：
-
-| 模式 | 说明 | 适用场景 |
-|------|------|---------|
-| bulk | 全量导入 | 一次性加载 |
-| incrementing | 自增ID增量 | 新增数据 |
-| timestamp | 时间戳增量 | 数据更新 |
-| timestamp+incrementing | 时间戳+自增ID | 新增+更新 |
-
-```json
-{
-  "mode": "timestamp+incrementing",
-  "incrementing.column.name": "id",
-  "timestamp.column.name": "updated_at",
-  "validate.non.null": false
-}
-```
-
-### 潜在风险与优化
+## 8.4 潜在风险与优化
 
 | 风险 | 说明 | 优化方案 |
 |------|------|---------|
-| **数据重复** | 重启后可能重复拉取 | 确保sink端幂等 |
-| **Schema变更** | 源表增减字段 | 使用Avro + Schema Registry |
-| **连接器宕机** | Connect节点故障 | 分布式模式 + 多Worker |
-| **性能瓶颈** | 单Connector吞吐不足 | 增加Task数量 |
+| 数据重复 | 重启后可能重复拉取 | 确保sink端幂等 |
+| Schema变更 | 源表增减字段 | 使用Avro + Schema Registry |
+| 性能瓶颈 | 单Connector吞吐不足 | 增加Task数量 |
 
-**Task并行度**：
-```json
-{
-  "config": {
-    "tasks.max": 4
-  }
-}
-// Connect会将数据范围拆分为4个task并行拉取
-// 如：id 1-1000 task1, 1001-2000 task2, ...
-```
-
-### 典型问题处理
-
-**问题：如何保证MySQL到ES的数据一致性？**
-
-```
-方案1：使用CDC（下一章详解）
-- Debezium监听binlog
-- 精确捕获每行变更
-
-方案2：双写 + 对账
-- 写入MySQL同时写入Kafka
-- 定时对账检查一致性
-
-方案3：全量+增量
-- 首次bulk全量加载
-- 后续timestamp+incrementing增量
-```
-
-### 关键技能
-
-- 熟练掌握Kafka Connect REST API
-- 理解Single Message Transform (SMT)转换
-- 掌握Connector的并行度配置
-- 熟悉JDBC、ES、S3等常用Connector
-- 理解Schema管理策略
+JDBC Source Connector的性能瓶颈通常不在Kafka Connect本身，而在数据库端。如果数据库表有大量数据，要确保 `incrementing.column.name` 和 `timestamp.column.name` 列上有索引，否则全表扫描会拖慢数据库。

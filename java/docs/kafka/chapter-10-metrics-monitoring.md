@@ -1,49 +1,66 @@
 # 第10章 指标监控
 
-## 场景描述
+## 10.1 场景故事：没有监控的Kafka集群
 
-Kafka作为分布式系统的数据中枢，承载着所有业务的消息流转。实时监控Kafka的生产消费速率、积压情况、集群健康状态，是保障系统稳定性的前提。
+想象一下，你负责维护一个Kafka集群，每天处理数十亿条消息。某天下午，你突然收到业务团队的投诉："用户下单后收不到确认消息了！"你登录到集群上，发现Kafka的Broker进程还在运行，没有任何错误日志。花了一个小时排查后，才发现原来某个消费者的处理逻辑中了一个Bug，导致消费速度急剧下降，消息积压已经达到了数百万条。但因为没有监控，这整整一个小时的积压期间，没有任何告警通知你。
 
-### 解决的问题
+**没有监控的Kafka集群就像在黑夜中开车——没有仪表盘、没有车灯、没有GPS**。你完全不知道系统的运行状态，只能在故障发生后才被动地排查。
+
+监控系统就像是Kafka的仪表盘，它告诉你：
+- 集群是否健康？UnderReplicatedPartitions是否为0？
+- 消费者的Lag是否在安全范围内？
+- 生产者的发送速率是否在正常基线内？
+- 是否存在性能瓶颈？
+
+## 10.2 核心监控指标体系
+
+### 第一层：集群健康指标
+
+Broker维度最关键的几个指标：
+
+**OfflinePartitions（离线分区数）**：这个指标应该是0，任何大于0的值都表示有分区处于不可用状态，意味着该分区的Leader宕机且没有新的Leader被选举出来。这是最严重的问题，需要立即响应。
+
+**UnderReplicatedPartitions（副本同步滞后分区数）**：这个指标应该是0或保持稳定。如果持续增长，说明某些Follower副本的同步速度跟不上Leader的写入速度。可能的原因包括网络带宽不足、Broker负载过高、Follower所在机器的磁盘性能差。
+
+**ActiveControllerCount**：在ZooKeeper模式下，Controller负责管理集群元数据。这个指标应该是1，因为同时只能有一个Controller。如果出现多个Controller（脑裂），会导致元数据混乱。在KRaft模式下，Controller Count应该是3（如果配置了3个Controller节点）。
+
+### 第二层：性能指标
+
+**RequestHandlerAvgIdlePercent**：请求处理器线程的空闲百分比。如果这个值低于30%，说明Broker的CPU或I/O资源紧张，请求处理线程处于饱和状态。需要考虑扩容或优化。
+
+**NetworkProcessorAvgIdlePercent**：网络线程的空闲百分比。如果低于30%，说明网络I/O成为瓶颈。可以增加 `num.network.threads` 配置。
+
+**TotalTimeMs**：请求的总处理时间。包括队列等待时间、本地处理时间、响应发送时间。如果总处理时间持续升高，说明Broker负载在增加。
+
+### 第三层：消费者Lag监控
+
+Lag是Kafka监控中最重要也最容易出问题的指标。Lag = 分区的最新Offset - 消费者提交的Offset。Lag本身并不可怕——实际上一定程度的Lag是正常的，说明消费者在批量处理消息。真正的问题是Lag**持续增长**——这意味着消费速度小于生产速度。
+
+```bash
+# 查看消费者组Lag
+kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
+  --group order-processor --describe
+
+# 输出示例：
+GROUP            TOPIC          PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG
+order-processor  orders         0          1500            1600            100
+order-processor  orders         1          2000            2500            500
+order-processor  orders         2          3000            3500            500
+```
+
+在这个例子中，Partition 1和Partition 2的Lag相对较高。这不是问题——只要Lag值保持稳定或下降。但如果过一会儿再运行同样的命令，发现Partition 1的Lag从500变成了1000，说明消费端遇到了瓶颈。
+
+## 10.3 监控架构
 
 ```
-无监控的Kafka：
-- 消息积压无人发现 → 消费者延迟越来越大
-- Broker宕机无人感知 → 分区不可用
-- 生产者发送失败无人告警 → 数据丢失
-
-有监控的Kafka：
-- 实时查看生产/消费速率
-- 自动告警消息积压
-- 集群健康状态一目了然
+Kafka Broker (JMX) → Prometheus → Grafana
+Kafka Consumer Lag → Lag Exporter → Prometheus → Grafana
+应用自定义指标 → Micrometer → Prometheus → Grafana
 ```
 
-### 实现原理
-
-**监控架构**：
-```
-Kafka Broker JMX Metrics → Prometheus → Grafana
-Kafka Consumer Lag → Burrow/Kafka Lag Exporter → Prometheus → Grafana
-应用自定义Metrics → Micrometer → Prometheus → Grafana
-```
-
-**关键监控指标**：
-
-| 维度 | 指标 | 告警阈值 |
-|------|------|---------|
-| 集群健康 | UnderReplicatedPartitions | > 0 |
-| 集群健康 | OfflinePartitions | > 0 |
-| 集群健康 | ActiveControllerCount | != 1 |
-| 生产者 | RequestsPerSec | 对比历史基线 |
-| 消费者 | ConsumerLag | > 10000 |
-| Broker | NetworkProcessorAvgIdlePercent | < 30% |
-| Broker | LogFlushRateAndTimeMs | 异常升高 |
-| 系统 | CpuUsage | > 80% |
-
-### Docker Compose（Prometheus+Grafana+Burrow）
+### Docker Compose
 
 ```yaml
-# docker/scenario-10-monitoring/docker-compose.yml
 version: '3.8'
 services:
   zookeeper:
@@ -60,16 +77,7 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      # 开启JMX Exporter
-      KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.rmi.port=9999 -Djava.rmi.server.hostname=localhost"
-
-  # Prometheus + JMX Exporter
-  jmx-exporter:
-    image: sscaling/jmx-prometheus-exporter:0.20.0
-    ports: ["5556:5556"]
-    volumes:
-      - ./jmx-exporter-config.yml:/opt/jmx_exporter/config.yml
-    command: ["5556", "/opt/jmx_exporter/config.yml"]
+      KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999"
 
   prometheus:
     image: prom/prometheus:latest
@@ -82,175 +90,25 @@ services:
     ports: ["3000:3000"]
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
-    volumes:
-      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards
-
-  # 消费者Lag监控（Burrow）
-  burrow:
-    image: linkedin/burrow:latest
-    ports: ["8000:8000"]
-    volumes:
-      - ./burrow-config:/etc/burrow
 ```
 
-**prometheus.yml**：
+### Prometheus告警规则
+
 ```yaml
-global:
-  scrape_interval: 15s
-scrape_configs:
-  - job_name: 'kafka'
-    static_configs:
-      - targets: ['localhost:5556']
-  - job_name: 'burrow'
-    static_configs:
-      - targets: ['burrow:8000']
+groups:
+  - name: kafka_alerts
+    rules:
+      - alert: UnderReplicatedPartitions
+        expr: kafka_server_ReplicaManager_UnderReplicatedPartitions > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Kafka有副本同步滞后的分区"
+
+      - alert: HighConsumerLag
+        expr: kafka_consumer_lag > 10000
+        for: 5m
+        labels: { severity: warning }
 ```
 
-### Java代码：Micrometer监控
-
-```java
-// ============ 1. 添加Micrometer依赖 ============
-// <dependency>
-//     <groupId>io.micrometer</groupId>
-//     <artifactId>micrometer-registry-prometheus</artifactId>
-// </dependency>
-// <dependency>
-//     <groupId>io.micrometer</groupId>
-//     <artifactId>micrometer-core</artifactId>
-// </dependency>
-
-// ============ 2. 自定义指标 ============
-@Component
-public class KafkaMetricsCollector {
-    
-    private final MeterRegistry meterRegistry;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    
-    // 消息发送速率
-    private final Counter messageSentCounter;
-    // 发送失败次数
-    private final Counter messageFailedCounter;
-    // 发送延迟
-    private final Timer sendLatencyTimer;
-    
-    public KafkaMetricsCollector(MeterRegistry meterRegistry,
-                                  KafkaTemplate<String, Object> kafkaTemplate) {
-        this.meterRegistry = meterRegistry;
-        this.kafkaTemplate = kafkaTemplate;
-        
-        this.messageSentCounter = Counter.builder("kafka.message.sent")
-            .description("消息发送总数")
-            .register(meterRegistry);
-        
-        this.messageFailedCounter = Counter.builder("kafka.message.failed")
-            .description("消息发送失败总数")
-            .register(meterRegistry);
-        
-        this.sendLatencyTimer = Timer.builder("kafka.send.latency")
-            .description("消息发送延迟")
-            .register(meterRegistry);
-    }
-    
-    public void recordSend(String topic, boolean success, long latencyMs) {
-        if (success) {
-            messageSentCounter.increment();
-        } else {
-            messageFailedCounter.increment();
-        }
-        sendLatencyTimer.record(Duration.ofMillis(latencyMs));
-        
-        // 按Topic分类的指标
-        meterRegistry.counter("kafka.message.sent", "topic", topic).increment();
-    }
-}
-
-// ============ 3. 消费者Lag监控 ============
-@Component
-public class LagMonitor {
-    
-    private final KafkaAdmin kafkaAdmin;
-    private final MeterRegistry meterRegistry;
-    
-    @Scheduled(fixedRate = 30000)
-    public void reportConsumerLag() {
-        try (AdminClient admin = AdminClient.create(kafkaAdmin.getConfigurationProperties())) {
-            // 获取所有消费者组
-            ListConsumerGroupsResult groups = admin.listConsumerGroups();
-            
-            for (ConsumerGroupListing group : groups.valid().get()) {
-                String groupId = group.groupId();
-                
-                // 获取组内各分区的offset
-                ListConsumerGroupOffsetsResult offsets = 
-                    admin.listConsumerGroupOffsets(groupId);
-                Map<TopicPartition, OffsetAndMetadata> committed = 
-                    offsets.partitionsToOffsetAndMetadata().get();
-                
-                // 获取分区的当前最新offset
-                Map<TopicPartition, Long> endOffsets = 
-                    admin.listOffsets(committed.keySet().stream()
-                        .collect(Collectors.toMap(
-                            tp -> tp,
-                            tp -> OffsetSpec.latest()
-                        ))).all().get()
-                        .entrySet().stream()
-                        .collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            e -> e.getValue().offset()
-                        ));
-                
-                // 计算Lag
-                for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : committed.entrySet()) {
-                    TopicPartition tp = entry.getKey();
-                    long committedOffset = entry.getValue().offset();
-                    long latestOffset = endOffsets.get(tp);
-                    long lag = latestOffset - committedOffset;
-                    
-                    // 上报到Prometheus
-                    Gauge.builder("kafka.consumer.lag", lag)
-                        .tag("group", groupId)
-                        .tag("topic", tp.topic())
-                        .tag("partition", String.valueOf(tp.partition()))
-                        .register(meterRegistry);
-                }
-            }
-        } catch (Exception e) {
-            log.error("监控消费者Lag失败", e);
-        }
-    }
-}
-```
-
-### 潜在风险与优化
-
-| 风险 | 说明 | 优化方案 |
-|------|------|---------|
-| **告警风暴** | 大量指标同时触发告警 | 设置告警聚合和静默时间 |
-| **指标数据量大** | 高分区数产生大量监控指标 | 聚合指标、只监控关键分区 |
-| **监控本身延迟** | 拉取间隔太长看不到实时数据 | 缩短scrape_interval |
-| **Prometheus内存** | 指标过多导致OOM | 设置retention和sample限制 |
-
-### 典型问题处理
-
-**问题：如何设置合理的Consumer Lag告警阈值？**
-
-```
-方案1：绝对阈值
-- Lag > 10000 告警（适用于低吞吐场景）
-
-方案2：时间阈值
-- Lag估算处理时间 > 5分钟 告警
-- 预计处理时间 = Lag / 消费速率
-
-方案3：趋势告警
-- Lag持续增长（消费速率 < 生产速率）
-- 而非Lag的绝对值
-```
-
-### 关键技能
-
-- 掌握Kafka JMX监控指标含义
-- 熟练使用Prometheus+Grafana
-- 理解Consumer Lag的计算和监控
-- 掌握基于Micrometer的自定义指标收集
-- 了解Burrow/Lag Exporter等消费者Lag监控工具
+Lag告警阈值的设置需要考虑业务容忍度。对实时性要求高的场景（如支付通知），Lag超过1000就应该告警；对实时性要求低的场景（如日志收集），Lag超过10万才需要关注。

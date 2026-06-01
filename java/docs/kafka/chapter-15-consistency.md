@@ -1,158 +1,153 @@
 # 第15章 数据一致性与可靠性
 
-## 15.1 消息丢失场景分析
+## 15.1 消息丢失场景深度分析
 
-### 生产者→Broker丢失
+### 丢失可能发生的三个环节
 
-| 场景 | 原因 | 解决方案 |
-|------|------|---------|
-| 生产者发送失败 | 网络超时 | acks=all + retries |
-| Leader切换 | 未同步副本丢失数据 | min.insync.replicas=2 |
-| 磁盘故障 | 单副本永久丢失 | replication.factor≥3 |
+消息丢失可能发生在Kafka消息传递的三个环节中的任何一个。理解每个环节的丢失原因，才能针对性地配置：
 
-**可靠发送配置组合**：
-```properties
-# 最强可靠性配置（不会丢消息）
-acks=all
-retries=Integer.MAX_VALUE     # 无限重试
-enable.idempotence=true
-max.in.flight.requests.per.connection=1  # 防止乱序
+**生产者→Broker环节的丢失**
+
+当生产者发送消息后，如果Leader Broker在将消息同步给Follower之前宕机，且 `acks` 配置为 `0` 或 `1`，这条消息就会丢失：
+
 ```
-但注意：此配置吞吐最低。
-
-### Broker→消费者丢失
-
-| 场景 | 原因 | 解决方案 |
-|------|------|---------|
-| 自动提交offset | 处理成功前提交offset | enable.auto.commit=false |
-| 处理异常 | 消费逻辑抛异常 | 手动提交 + 异常处理 |
-| 再均衡 | 未提交的offset丢失 | RebalanceListener中提交 |
-
-## 15.2 消息重复场景分析
-
-### 生产者重复
-
-**原因**：Produce发送后Broker已接收但ACK超时，Producer重试导致重复。
-
-**解决方案**：
-```properties
-# 幂等性（Exactly-Once Producer）
-enable.idempotence=true
-# 原理：每个Producer有唯一的Producer ID (PID)
-# 每个消息的序列号 (sequence number)
-# Broker去重：相同(PID, sequence)的消息只保留一次
+acks=0: 生产者发送后不管Broker死活——Broker宕机时消息必然丢失
+acks=1: 生产者等待Leader确认——但如果Leader在同步给Follower前宕机，消息丢失
+acks=all: 生产者等待所有ISR确认——只要至少一个ISR存活，消息不丢失
 ```
 
-### 消费者重复
+可靠配置：`acks=all` + `replication.factor=3` + `min.insync.replicas=2`。这保证了即使一个Broker宕机，生产者仍然可以正常写入（因为还有2个ISR），且数据不会丢失（因为还有2个副本）。
 
-**原因**：处理成功但提交offset失败。
+**Broker自身的数据丢失**
 
-**解决方案**：
+即使配置了3副本，如果Broker配置了不恰当的刷盘策略，仍可能丢失数据：
+
+```properties
+# 危险配置（消息停留在操作系统页缓存中，断电即丢失）
+log.flush.interval.messages=Long.MAX_VALUE
+log.flush.interval.ms=Long.MAX_VALUE
+
+# 安全配置（频繁刷盘，但性能下降明显）
+log.flush.interval.messages=1
+log.flush.interval.ms=1000
+```
+
+但Kafka的推荐做法是**依赖副本机制而非刷盘策略**。3副本 + 不同机器 = 即使一台机器断电，其他机器还有数据。此时即使不频繁刷盘，也不会丢失数据（除非三台机器同时断电）。
+
+**消费者环节的丢失**
+
 ```java
-// 方式1：幂等消费（推荐）
-@KafkaListener(topics = "orders")
-public void processOrder(Order order) {
-    // 使用业务键保证幂等
-    String dedupKey = "order:" + order.getId();
-    
-    // SET NX（不存在才插入）
-    Boolean success = redisTemplate.opsForValue()
-        .setIfAbsent(dedupKey, "processed", Duration.ofHours(24));
-    
-    if (Boolean.TRUE.equals(success)) {
-        // 第一次处理
-        orderService.process(order);
-    } else {
-        // 已经处理过，跳过
-        log.info("跳过重复消息: {}", order.getId());
-    }
+// ❌ 丢失配置：在消息处理前提交了offset
+while(true) {
+    ConsumerRecords<String, String> records = consumer.poll(100);
+    consumer.commitSync();  // 提交offset在前！
+    process(records);       // 如果这里崩溃，消息已提交但未处理
 }
+```
 
-// 方式2：数据库唯一约束
+正确的做法是"先处理，后提交"：`process(records)` 成功后，再调用 `commitSync()`。
+
+## 15.2 消息重复场景
+
+### 重复产生的三个环节
+
+**生产者重试导致的重复**：Producer发送消息后未收到ACK（实际上Broker已写入成功），重试导致同一条消息被写入两次。解决方案：启用幂等性 `enable.idempotence=true`。
+
+**消费者提交失败导致的重复**：消费者处理成功但提交offset失败，重启后从旧的offset重新消费。解决方案：消费端幂等设计。
+
+**Rebalance导致的重复**：再均衡发生时，未提交的offset导致消息被重新分配给其他消费者。解决方案：在RebalanceListener中提交当前offset。
+
+### 幂等消费的三种实现
+
+```java
+// 方案1：数据库唯一约束（抗重复）
 @Transactional
 public void processOrder(Order order) {
-    // 利用数据库的唯一约束防止重复
+    // 利用UNIQUE约束，重复插入会抛异常
     jdbcTemplate.update(
-        "INSERT INTO processed_orders(order_id) VALUES(?) ON DUPLICATE KEY UPDATE processed_at=NOW()",
-        order.getId());
+        "INSERT INTO processed_msg(msg_id, status) VALUES(?, 'DONE') ON CONFLICT(msg_id) DO NOTHING",
+        order.getEventId());
+    // 业务处理
+    orderRepository.updateStatus(order.getOrderId(), "PAID");
+}
+
+// 方案2：Redis原子操作（高性能）
+public boolean deduplicate(String eventId) {
+    // SET NX：不存在才设置成功，返回true
+    return redisTemplate.opsForValue()
+        .setIfAbsent("dedup:" + eventId, "1", Duration.ofHours(24));
+}
+
+// 方案3：业务状态机（不需要额外存储）
+public void processPayment(PaymentEvent event) {
+    Order order = orderRepository.findById(event.getOrderId());
+    // 基于当前状态判断：如果已经是PAID，跳过
+    if (order.getStatus() == OrderStatus.PAID) {
+        return; // 已经处理过，幂等跳过
+    }
+    if (order.getStatus() != OrderStatus.PENDING) {
+        return; // 当前状态下不允许支付处理
+    }
+    order.setStatus(OrderStatus.PAID);
+    orderRepository.save(order);
 }
 ```
 
-## 15.3 Exactly-Once语义
+## 15.3 Exactly-Once完整配置
 
-| 语义 | 描述 | 配置 |
+| 语义 | 配置 | 效果 |
 |------|------|------|
-| At Most Once | 最多一次（可能丢） | acks=0，自动提交 |
-| At Least Once | 至少一次（可能重复） | acks=all，手动提交 |
-| Exactly Once | 精确一次（不丢不重） | 幂等+事务+read_committed |
+| At Most Once | acks=0 | 可能丢消息 |
+| At Least Once | acks=all + 手动提交 | 不丢但可能重复 |
+| Exactly Once | 幂等+事务+read_committed | 不丢不重复 |
 
-**Exactly-Once完整配置**：
 ```properties
-# Producer
-enable.idempotence=true
-transactional.id=unique-tx-id
-acks=all
-
-# Consumer
-isolation.level=read_committed
-enable.auto.commit=false
+# Exactly-Once配置
+producer:
+  enable.idempotence: true
+  transactional.id: "app-tx-1"
+  acks: all
+consumer:
+  isolation.level: read_committed
+  enable.auto.commit: false
 ```
 
-## 15.4 数据一致性方案
+## 15.4 Outbox模式
 
-### 最终一致性架构
+Outbox模式是实现数据库与Kafka强一致性的推荐方案。核心思想：将"待发送的消息"与业务数据在同一个数据库事务中写入，再由独立的发送程序从数据库读取并发送到Kafka：
 
-```
-服务A（DB写入）→ Outbox表（同DB事务）→ CDC(Debezium) → Kafka → 服务B
-```
-
-**Outbox模式**：
 ```java
 @Transactional
 public void createOrder(Order order) {
     // 1. 写入业务表
-    orderRepository.save(order);
+    jdbcTemplate.update("INSERT INTO orders ...", order);
     
-    // 2. 写入Outbox表（同事务）
-    OutboxMessage msg = new OutboxMessage();
-    msg.setAggregateId(order.getId());
-    msg.setAggregateType("order");
-    msg.setEventType("OrderCreated");
-    msg.setPayload(objectMapper.writeValueAsString(order));
-    outboxRepository.save(msg);
+    // 2. 同一个事务中写入outbox表
+    jdbcTemplate.update(
+        "INSERT INTO outbox(id, topic, key, value, created_at) VALUES(?, ?, ?, ?, NOW())",
+        UUID.randomUUID().toString(),
+        "order-events",
+        order.getId(),
+        objectMapper.writeValueAsString(order));
 }
 
-// Outbox消息由Debezium捕获并推送到Kafka
-// 消费者从Kafka消费 → 处理 → 标记Outbox为已发送
-```
-
-### 数据对账
-
-```java
-// 定时对账：发现不一致后自动修复
-@Scheduled(fixedRate = 60000)  // 每分钟
-public void reconcileOrders() {
-    // 从Kafka获取offset范围内的消息
-    // 从数据库获取对应记录
-    // 逐条比对
-    // 不一致的修复或告警
+// 独立的发送程序（定时任务或CDC）
+@Scheduled(fixedDelay = 100)
+public void publishOutbox() {
+    List<Outbox> messages = jdbcTemplate.query(
+        "SELECT * FROM outbox ORDER BY created_at LIMIT 100", mapper);
+    for (Outbox msg : messages) {
+        kafkaTemplate.send(msg.getTopic(), msg.getKey(), msg.getValue());
+        jdbcTemplate.update("DELETE FROM outbox WHERE id = ?", msg.getId());
+    }
 }
 ```
 
-## 15.5 典型问题处理
+Outbox模式的优势：不需要分布式事务，不需要Kafka事务，但它提供了与Kafka事务相同的"数据库操作和消息发送"原子性保证。消息发送可能延迟几毫秒到几百毫秒（取决于轮询间隔），但不会丢失。
 
-**问题：如何保证支付场景下Kafka消息的最终一致性？**
+## 15.5 关键技能
 
-```
-方案：异步确保型（Saga模式）
-
-1. 订单服务：创建订单（状态=PENDING）
-2. 订单服务：发送"支付确认"消息到Kafka
-3. 支付服务：消费消息，执行扣款
-4. 支付服务：发送"扣款成功/失败"消息
-5. 订单服务：消费消息，更新订单状态
-   - 扣款成功 → 订单完成
-   - 扣款失败 → 订单取消（补偿）
-```
-
-> **核心原则**：幂等消费 + 最终补偿 + 定时对账
+- 理解acks/replication.factor/min.insync.replicas的配合
+- 掌握幂等消费的三种实现方式
+- 理解Outbox模式解决分布式事务问题的原理
+- 掌握数据对账和修复的方法
