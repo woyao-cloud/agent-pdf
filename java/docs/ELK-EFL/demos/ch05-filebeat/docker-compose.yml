@@ -154,21 +154,31 @@ services:
     image: docker.elastic.co/beats/filebeat:${FILEBEAT_VERSION:-8.12.0}
     container_name: filebeat
     user: root
+    entrypoint: ["filebeat", "-e", "-strict.perms=false"]
     volumes:
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ${APP_LOG_DIR:-/var/log/apps}:/var/log/apps:ro
+      - logs-volume:/var/log/apps:ro
       - filebeat-data:/usr/share/filebeat/data
     networks:
       - elk-demo
     depends_on:
       - es-node1
 
+  # ==================== 日志生成器 ====================
+  log-generator:
+    image: python:3-alpine
+    container_name: log-generator
+    entrypoint: ["python3", "/app/generate_logs.py"]
+    volumes:
+      - ./generate_logs.py:/app/generate_logs.py:ro
+      - logs-volume:/logs
 
 volumes:
   es_data1:
   es_data2:
   es_data3:
   filebeat-data:
+  logs-volume:
   kafka_data:
 networks:
   elk-demo:
