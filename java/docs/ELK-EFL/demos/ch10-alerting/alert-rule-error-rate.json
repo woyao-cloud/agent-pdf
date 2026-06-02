@@ -1,0 +1,34 @@
+{
+  "name": "核心服务错误率告警",
+  "rule_type_id": "observability.rules.custom_threshold",
+  "consumer": "alerts",
+  "params": {
+    "criteria": [
+      {
+        "threshold": 10,
+        "comparator": ">"
+      }
+    ],
+    "searchConfiguration": {
+      "query": {
+        "query": "level: \"ERROR\" AND serviceName: (\"order-service\" OR \"payment-service\")",
+        "language": "kuery"
+      },
+      "index": "app-logs-*"
+    },
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m"
+  },
+  "schedule": {
+    "interval": "1m"
+  },
+  "actions": [
+    {
+      "group": "threshold met",
+      "id": "webhook-connector-id",
+      "params": {
+        "body": "{\n  \"msgtype\": \"markdown\",\n  \"markdown\": {\n    \"title\": \"🔴 服务错误告警\",\n    \"text\": \"### 🔴 服务错误告警\\n\\n**告警名称**: {{alertName}}\\n**错误数**: {{context.value}}\\n**查看详情**: {{context.kibanaUrl}}\"\n  }\n}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+# ============================================
+# Filebeat —— 输出到 Kafka（第6章）
+# ============================================
+# 与 ch05 的区别：output 为 kafka 而非 elasticsearch
+# ============================================
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/apps/*.json.log
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    multiline:
+      type: pattern
+      pattern: '^\d{4}-\d{2}-\d{2}'
+      negate: true
+      match: after
+
+processors:
+  - add_host_metadata: ~
+  - add_docker_metadata: ~
+  - drop_fields:
+      fields: ["agent.hostname", "agent.type", "agent.version"]
+
+output.kafka:
+  hosts: ["kafka:9092"]
+  topic: "app-logs"
+  codec.json:
+    pretty: false
+  required_acks: 1
+  compression: gzip
+  bulk_max_size: 2048

@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  fluent-bit:
+    image: cr.fluentbit.io/fluent/fluent-bit:${FLUENT_BIT_VERSION:-2.2}
+    container_name: fluent-bit
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ${APP_LOG_DIR:-/var/log/apps}:/var/log/apps:ro
+      - fluentbit-data:/fluent-bit/output
+    environment:
+      - ES_HOST=es-node1
+      - ES_PORT=9200
+    networks:
+      - elk-demo
+
+volumes:
+  fluentbit-data:
+
+networks:
+  elk-demo:
+    external: true

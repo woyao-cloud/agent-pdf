@@ -1,0 +1,43 @@
+# ============================================
+# Filebeat —— 采集 Spring Boot JSON 日志
+# ============================================
+# 用法：
+#   先启动基础设施：docker compose up -d
+#   再启动 Filebeat：docker compose -f ch05-filebeat/docker-compose.yml up -d
+# ============================================
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/apps/*.json.log
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    multiline:
+      type: pattern
+      pattern: '^\d{4}-\d{2}-\d{2}'
+      negate: true
+      match: after
+      max_lines: 50
+
+filebeat.registry:
+  clean_removed: false
+  flush: 5s
+
+processors:
+  - add_host_metadata: ~
+  - add_docker_metadata: ~
+  - drop_fields:
+      fields: ["agent.hostname", "agent.type", "agent.version", "ecs"]
+
+output.elasticsearch:
+  hosts: ["localhost:9200"]
+  index: "app-logs-%{+yyyy.MM.dd}"
+  bulk_max_size: 2048
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  name: filebeat.log
+  keepfiles: 3
