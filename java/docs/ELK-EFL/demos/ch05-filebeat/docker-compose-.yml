@@ -1,0 +1,29 @@
+# ============================================
+# 第5章 —— Filebeat 采集日志
+# ============================================
+# 依赖：需先启动根目录的 docker-compose.yml
+# 启动：docker compose -f ch05-filebeat/docker-compose.yml up -d
+# ============================================
+
+version: "3.8"
+
+services:
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:${FILEBEAT_VERSION:-8.12.0}
+    container_name: filebeat
+    user: root
+    volumes:
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ${APP_LOG_DIR:-/var/log/apps}:/var/log/apps:ro
+      - filebeat-data:/usr/share/filebeat/data
+    networks:
+      - elk-demo
+    depends_on:
+      - es-node1
+
+volumes:
+  filebeat-data:
+
+networks:
+  elk-demo:
+    external: true

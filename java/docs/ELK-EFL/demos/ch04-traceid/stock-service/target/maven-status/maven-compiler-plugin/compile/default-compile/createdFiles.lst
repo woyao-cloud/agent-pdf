@@ -1,0 +1,3 @@
+com\example\stock\config\TraceIdFilter.class
+com\example\stock\controller\StockController.class
+com\example\stock\StockApplication.class

@@ -1,0 +1,4 @@
+com\example\order\OrderApplication.class
+com\example\order\client\PaymentClient.class
+com\example\order\config\FeignConfig.class
+com\example\order\controller\OrderController.class
