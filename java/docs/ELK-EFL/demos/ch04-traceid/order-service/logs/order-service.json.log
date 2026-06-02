@@ -1,0 +1,51 @@
+{"@timestamp":"2026-06-02T16:50:51.460Z","level":"INFO","message":"Starting OrderApplication using Java 21 with PID 8008 (D:\\学习\\大模型\\pdf\\java\\docs\\ELK-EFL\\demos\\ch04-traceid\\order-service\\target\\classes started by laidong in D:\\学习\\大模型\\pdf\\java\\docs\\ELK-EFL\\demos\\ch04-traceid\\order-service)","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:51.472Z","level":"INFO","message":"No active profile set, falling back to 1 default profile: \"default\"","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.046Z","level":"INFO","message":"BeanFactory id=ec2b371c-c1fb-3014-aaca-5a8c5f4f2946","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.311Z","level":"INFO","message":"Tomcat initialized with port 8081 (http)","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.326Z","level":"INFO","message":"Initializing ProtocolHandler [\"http-nio-8081\"]","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.330Z","level":"INFO","message":"Starting service [Tomcat]","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.331Z","level":"INFO","message":"Starting Servlet engine: [Apache Tomcat/10.1.19]","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.408Z","level":"INFO","message":"Initializing Spring embedded WebApplicationContext","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.411Z","level":"INFO","message":"Root WebApplicationContext: initialization completed in 898 ms","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.800Z","level":"INFO","message":"Starting ProtocolHandler [\"http-nio-8081\"]","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.828Z","level":"INFO","message":"Tomcat started on port 8081 (http) with context path ''","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:50:52.840Z","level":"INFO","message":"Started OrderApplication in 2.115 seconds (process running for 2.494)","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:52:55.401Z","level":"INFO","message":"Initializing Spring DispatcherServlet 'dispatcherServlet'","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:52:55.404Z","level":"INFO","message":"Initializing Servlet 'dispatcherServlet'","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:52:55.408Z","level":"INFO","message":"Completed initialization in 2 ms","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:52:55.640Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=999","traceId":"b7314769eecb4b638ccb343a31195792","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:52:55.647Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"b7314769eecb4b638ccb343a31195792","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:52:56.205Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=b7314769eecb4b638ccb343a31195792","traceId":"b7314769eecb4b638ccb343a31195792","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:55:41.397Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=999","traceId":"a61f30d9d4b34d88a3a0dc118b45ba7c","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:55:41.399Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"a61f30d9d4b34d88a3a0dc118b45ba7c","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:55:41.414Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=a61f30d9d4b34d88a3a0dc118b45ba7c","traceId":"a61f30d9d4b34d88a3a0dc118b45ba7c","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:02.699Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=998","traceId":"7dfc1da86db340baa19c96e0f3d7858a","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:02.699Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"7dfc1da86db340baa19c96e0f3d7858a","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:02.709Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=7dfc1da86db340baa19c96e0f3d7858a","traceId":"7dfc1da86db340baa19c96e0f3d7858a","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:06.931Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=997","traceId":"d73ea7551c024d639e6e41e10be0a3e2","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:06.934Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"d73ea7551c024d639e6e41e10be0a3e2","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:06.957Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=d73ea7551c024d639e6e41e10be0a3e2","traceId":"d73ea7551c024d639e6e41e10be0a3e2","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:10.341Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=996","traceId":"215f2da9b5814a379d2bfa3971eb03eb","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:10.345Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"215f2da9b5814a379d2bfa3971eb03eb","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:10.370Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=215f2da9b5814a379d2bfa3971eb03eb","traceId":"215f2da9b5814a379d2bfa3971eb03eb","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:14.571Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=995","traceId":"c4e6d719efbb4f33a1ac84b59da71418","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:14.573Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"c4e6d719efbb4f33a1ac84b59da71418","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:14.596Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=c4e6d719efbb4f33a1ac84b59da71418","traceId":"c4e6d719efbb4f33a1ac84b59da71418","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:18.472Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=994","traceId":"4816a34d484b4aac80510c9be066156e","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:18.473Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"4816a34d484b4aac80510c9be066156e","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:18.497Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=4816a34d484b4aac80510c9be066156e","traceId":"4816a34d484b4aac80510c9be066156e","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:22.441Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=993","traceId":"0026f0b2c68c42e291d2df946e49210e","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:22.443Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"0026f0b2c68c42e291d2df946e49210e","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:22.467Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=0026f0b2c68c42e291d2df946e49210e","traceId":"0026f0b2c68c42e291d2df946e49210e","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:27.489Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=992","traceId":"91678873fc574cf7889a05ba7d60fb31","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:27.491Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"91678873fc574cf7889a05ba7d60fb31","serviceName":"default"}
+{"@timestamp":"2026-06-02T16:57:27.515Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=91678873fc574cf7889a05ba7d60fb31","traceId":"91678873fc574cf7889a05ba7d60fb31","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:02:12.599Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=994","traceId":"0cf48f08f29a465ea7cbecdebd09eea0","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:02:12.601Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"0cf48f08f29a465ea7cbecdebd09eea0","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:02:12.618Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=0cf48f08f29a465ea7cbecdebd09eea0","traceId":"0cf48f08f29a465ea7cbecdebd09eea0","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:08:09.457Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=994","traceId":"cafc6a0c3902463489cf620b6df62491","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:08:09.462Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"cafc6a0c3902463489cf620b6df62491","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:08:09.468Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=cafc6a0c3902463489cf620b6df62491","traceId":"cafc6a0c3902463489cf620b6df62491","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:52:13.539Z","level":"INFO","message":"订单服务: 收到下单请求, userId=user_1001, amount=994","traceId":"4b5cecf856c245af8cacbeafd42035a7","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:52:13.539Z","level":"INFO","message":"订单服务: 调用支付服务","traceId":"4b5cecf856c245af8cacbeafd42035a7","serviceName":"default"}
+{"@timestamp":"2026-06-02T18:52:13.547Z","level":"INFO","message":"订单服务: 支付结果 = 支付成功, traceId=4b5cecf856c245af8cacbeafd42035a7","traceId":"4b5cecf856c245af8cacbeafd42035a7","serviceName":"default"}

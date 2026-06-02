@@ -28,7 +28,7 @@ curl -s -X PUT "$ES_HOST/_ilm/policy/app-logs-policy" -H 'Content-Type: applicat
       }
     }
   }
-}' | jq '.'
+}'
 
 # 2. 创建 Index Template
 echo ">>> 2. 创建 Index Template: app-logs-template"
@@ -56,13 +56,13 @@ curl -s -X PUT "$ES_HOST/_index_template/app-logs-template" -H 'Content-Type: ap
       }
     }
   }
-}' | jq '.'
+}'
 
 # 3. 创建第一个索引
 echo ">>> 3. 创建初始索引: app-logs-000001"
 curl -s -X PUT "$ES_HOST/app-logs-000001" -H 'Content-Type: application/json' -d '{
   "aliases": { "app-logs": { "is_write_index": true } }
-}' | jq '.'
+}'
 
 echo ""
 echo "===== 完成！====="
