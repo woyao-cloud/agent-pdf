@@ -115,7 +115,7 @@ services:
     ports:
       - "9092:9092"
     environment:
-      - CLUSTER_ID=ELK-DEMO-CLUSTER-001
+      - CLUSTER_ID=UEww8CWPQa6aPjZJSJiX7A
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
       - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
