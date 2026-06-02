@@ -232,7 +232,6 @@ output {
 # logstash/config/logstash.yml
 # Logstash 性能调优配置
 
-# Pipeline 配置
 pipeline:
   # 同时运行多个 Pipeline（默认 1）
   # 提高 Logstash 的并行处理能力
@@ -243,11 +242,29 @@ pipeline:
     size: 2048              # 每批最多 2048 条
     delay: 50               # 等待 50ms 再发（凑更多条）
 
-# 监控
-xpack.monitoring.enabled: false
-
 # JVM 配置（config/jvm.options）
 # -Xms1g -Xmx1g  # 根据数据量调整，一般 2-4GB
+```
+
+---
+
+## 6.4 宕机场景模拟
+
+```
+模拟 Logstash 宕机 5 分钟：
+
+  1. Logstash 宕机（docker stop logstash）
+  2. Filebeat 仍在正常运行，继续读取日志并发送到 Kafka
+  3. Kafka 中积压了 5 分钟的数据（假设 1GB）
+  4. Logstash 恢复（docker start logstash）
+  5. Logstash 从 Kafka 上次消费的位置继续读取
+  6. 积压的数据被慢慢消费（Logstash 处理速度 < Kafka 写入速度）
+  7. 一段时间后积压被消化完，恢复正常
+
+  结果：
+  - 数据不丢失（因为 Kafka 持久化了）
+  - 延迟增加（积压的数据需要时间消费）
+  - 应用不受影响（Filebeat → Kafka 链路正常）
 ```
 
 ---
@@ -262,6 +279,6 @@ xpack.monitoring.enabled: false
 
 **核心原则**：
 1. **Kafka 是 ELK 企业架构的"稳定器"**——它解耦了"日志产生"和"日志消费"两个过程。Filebeat 只管往 Kafka 写，不管 ES 是否可用；Logstash 只管从 Kafka 读，不管数据产出的速率。即使 ES 宕机 1 小时，Kafka 中的日志也不会丢
-2. **Logstash 的 Filter 是数据处理的核心**——脱敏、日期解析、字段清理、路由到不同索引都在 Filter 中完成。如果不需要这些复杂处理，可以用更轻的组件（如 Kafka Connect）
-3. **死信队列（DLQ）是必不可少的**——总有少数日志会因为各种原因写 ES 失败（格式不匹配、字段超长等）。不配置 DLQ，这些数据就丢了。配置了 DLQ，你可以事后分析失败原因并修复
-4. **按日志级别分索引是搜索优化的最佳实践**——ERROR 日志的搜索频率远高于 INFO 日志。将它们分开到不同的索引后，搜索 ERROR 时只需要在小索引中查，速度更快
+2. **Logstash 的 Filter 是数据处理的核心**——脱敏、日期解析、字段清理、路由到不同索引都在 Filter 中完成
+3. **死信队列（DLQ）是必不可少的**——总有少数日志会因为各种原因写 ES 失败。不配置 DLQ，这些数据就丢了
+4. **按日志级别分索引是搜索优化的最佳实践**——ERROR 日志的搜索频率远高于 INFO 日志。分开后搜索 ERROR 时只需要在小索引中查，速度更快

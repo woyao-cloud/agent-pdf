@@ -2,17 +2,23 @@
 
 ## 本章导读
 
-日志系统与业务系统有一个本质区别：**日志只有写入和查询，没有修改**。昨天的日志不会变，今天的日志源源不断。这种模式非常适合 ILM（索引生命周期管理）——让 ES 自动管理索引的创建、滚动、归档和删除。
+一个刚接触 ELK 的团队经常犯的错误：直接把日志写入 ES，不配置 Index Template，不配置 ILM。一个月后——"ES 集群的磁盘满了，怎么办？"
 
-但如果没有提前设计好索引模板，日志写入后会出现各种问题：字段类型错误（字符串被识别为 text 而不是 keyword）、Mapping 爆炸（动态字段太多）、单索引过大（性能下降）。本章的目标是在日志写入之前就把这些问题全部解决。
+更糟糕的是，他们发现 Logstash 默认将 `@timestamp` 识别为 `date` 类型，但 `level` 字段因为数据中混入了数字和字符串，被识别为 `text` 类型——导致无法用 `term` 查询精确匹配 `"level: ERROR"`。而 `message` 字段因为第一条日志中包含了 HTML 标签，被识别为了 `text` 类型——但业务需求是要做 `term` 精确匹配。
+
+这些问题全都可以通过**提前创建 Index Template** 来避免。本章从 Index Template 开始，到 ILM 的自动滚动和删除，给出日志场景的标准配置。
 
 ---
 
 ## 8.1 拒绝 Mapping 爆炸
 
+### dynamic: strict 是必须的
+
 ```json
-// 创建 Index Template——所有 app-logs-* 索引遵循此模板
-// 关键：dynamic: strict 禁止自动创建未定义字段
+// Index Template——所有 app-logs-* 索引遵循此模板
+// 关键配置：dynamic: "strict"
+// 效果：写入未定义的字段时 ES 拒绝写入（返回错误）
+// 而不是自动创建新的 Mapping 字段
 
 PUT _index_template/app-logs-template
 {
@@ -22,12 +28,7 @@ PUT _index_template/app-logs-template
     "settings": {
       "number_of_shards": 3,
       "number_of_replicas": 1,
-      "refresh_interval": "5s",
-      "translog": {
-        "durability": "async",
-        "sync_interval": "5s",
-        "flush_threshold_size": "512mb"
-      }
+      "refresh_interval": "5s"
     },
     "mappings": {
       "dynamic": "strict",
@@ -39,27 +40,43 @@ PUT _index_template/app-logs-template
         "message":      { "type": "text" },
         "serviceName":  { "type": "keyword" },
         "traceId":      { "type": "keyword" },
-        "spanId":       { "type": "keyword" },
         "userId":       { "type": "keyword" },
         "orderId":      { "type": "keyword" },
         "duration":     { "type": "long" },
-        "stack_trace":  { "type": "text", "index": false },
         "status_code":  { "type": "integer" },
-        "request_path": { "type": "keyword" },
-        "method":       { "type": "keyword" }
+        "stack_trace":  { "type": "text", "index": false }
       }
     }
   }
 }
 ```
 
+### 日志场景的分片配置
+
+```
+分片数的确定方法：
+
+  场景：每天 500GB 日志，保留 30 天
+  总数据量 = 500GB × 30 = 15TB
+
+  单个分片的最佳大小 = 10GB - 50GB
+  每天的分片数 = 500GB / 50GB = 10 个主分片
+
+  所以：number_of_shards = 10
+        number_of_replicas = 1（至少 1 个副本保障高可用）
+        每天总分片数 = 10 × 2 = 20
+
+  30 天共有 20 × 30 = 600 个分片
+  对 5 节点的集群来说，完全可以接受
+```
+
 ---
 
-## 8.2 ILM 策略配置
+## 8.2 ILM 策略
 
 ```json
-// ILM 策略：自动管理日志索引的生命周期
-// 阶段：Hot → Warm → Delete
+// ILM 策略：自动管理日志索引
+// 阶段：Hot（写入）→ Warm（只读+合并）→ Delete（删除）
 
 PUT _ilm/policy/app-logs-policy
 {
@@ -85,54 +102,19 @@ PUT _ilm/policy/app-logs-policy
       },
       "delete": {
         "min_age": "30d",
-        "actions": {
-          "delete": {}
-        }
+        "actions": { "delete": {} }
       }
     }
   }
 }
-```
 
----
-
-## 8.3 日志索引模板 + ILM 完整配置
-
-```json
-// 创建同时包含 Template 和 ILM 的完整配置
-
+// 将 ILM 策略绑定到索引模板
 PUT _index_template/app-logs-template
 {
-  "priority": 100,
-  "index_patterns": ["app-logs-*"],
   "template": {
     "settings": {
-      "number_of_shards": 3,
-      "number_of_replicas": 1,
-      "refresh_interval": "5s",
       "index.lifecycle.name": "app-logs-policy",
       "index.lifecycle.rollover_alias": "app-logs"
-    },
-    "mappings": {
-      "dynamic": "strict",
-      "properties": {
-        "@timestamp":   { "type": "date" },
-        "level":        { "type": "keyword" },
-        "message":      { "type": "text" },
-        "serviceName":  { "type": "keyword" },
-        "traceId":      { "type": "keyword" },
-        "userId":       { "type": "keyword" }
-      }
-    }
-  }
-}
-
-// 创建第一个索引，绑定 ILM
-PUT app-logs-000001
-{
-  "aliases": {
-    "app-logs": {
-      "is_write_index": true
     }
   }
 }
@@ -142,13 +124,4 @@ PUT app-logs-000001
 
 ## 本章总结
 
-| 配置项 | 作用 | 推荐值 |
-|-------|------|--------|
-| `dynamic: strict` | 禁止未知字段 | 生产环境必须 |
-| `number_of_shards` | 分片数 | 3（日志场景） |
-| `refresh_interval` | 刷新频率 | 5s-30s（日志不需要实时） |
-| `rollover max_size` | 滚动大小 | 50GB |
-| `rollover max_age` | 滚动时间 | 1d |
-| `delete min_age` | 保留天数 | 30d |
-
-**核心原则**：索引模板必须在写入日志前创建，ILM 是日志场景的标配
+索引模板 + ILM 是日志场景的标准配置。提前配置好 dynamic: strict、分片数、ILM 策略，才能避免日志写入后出现 Mapping 错误和磁盘满的问题。

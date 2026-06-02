@@ -2,202 +2,262 @@
 
 ## 本章导读
 
-在 K8s 环境中，Filebeat 面临一个尴尬问题：每个 Pod 都输出日志到 stdout，然后被 Docker 重定向到文件。Filebeat 需要读取这些文件——但 Pod 销毁后文件也消失了，Filebeat 的 Registry 记录了一个不存在的文件，可能导致数据错乱。
+在 K8s 环境中，每个 Pod 的输出日志最终会写到宿主机的某个路径下。Filebeat 需要读取这些文件并跟踪文件轮转——这本身没什么问题。但当一个 Pod 被销毁后，它的日志文件也被删除了。Filebeat 的 registry 中记录了一个"已删除文件"的记录，如果不处理，registry 会不断膨胀；如果处理（`clean_removed: true`），则可能丢失数据。
 
-Fluent Bit 是专为容器化环境设计的日志采集器。它由 C 语言编写，内存占用只有 3-50MB（Filebeat 的 1/10），支持直接从 Docker 的守护进程读取日志，完美适配 K8s 环境。
-
----
-
-## 7.1 为什么 K8s 环境首选 Fluent Bit？
-
-```
-Filebeat vs Fluent Bit 在 K8s 环境中的对比：
-
-  Filebeat（Go 语言，内存 30-50MB）：
-  优点：配置简单，和 ELK 栈集成最好
-  缺点：内存占用高，在 Pod 中部署成本高
-       对 K8s 元数据的支持不如 Fluent Bit 丰富
-
-  Fluent Bit（C 语言，内存 3-50MB）：
-  优点：内存占用极低，天生适配容器
-       内置 K8s 元数据过滤器（自动添加 Pod 名/命名空间/标签）
-       支持丰富的 Output：ES、Kafka、S3、Prometheus 等
-  缺点：插件生态不如 Logstash 丰富
-       复杂的数据处理需要 Lua 脚本
-
-  结论：
-  在 K8s 中，Fluent Bit 是事实上的标准选择
-  它通常作为 DaemonSet 部署在每个节点上
-  采集该节点上所有 Pod 的日志
-```
+Fluent Bit 是专为容器化环境设计的解决方案。它由 C 语言编写（不是 Go，不是 Java），内存占用仅 3-50MB。更重要的是，它原生支持 Kubernetes 元数据——自动将 Pod 名称、命名空间、标签等附加到每条日志记录中。在 K8s 中，这是 Filebeat 无法比拟的优势。
 
 ---
 
-## 7.2 核心配置: fluent-bit.conf
+## 7.1 为什么 K8s 环境首选 Fluent Bit
+
+### Fluent Bit vs Filebeat 在 K8s 中的对比
+
+```
+部署模式对比：
+
+  Filebeat in K8s（DaemonSet）：
+  ┌────────────────────────────────────────────────────┐
+  │  K8s Worker Node                                    │
+  │  ┌──────────────────────────────────────────────┐  │
+  │  │  Filebeat Pod（DaemonSet）                     │  │
+  │  │  内存: 30-50MB                                │  │
+  │  │  读取 /var/log/containers/*.log               │  │
+  │  │  需要 add_kubernetes 处理器来获取 Pod 元数据    │  │
+  │  └──────────────────────────────────────────────┘  │
+  │  ┌────────┐ ┌────────┐ ┌────────┐                 │
+  │  │ Pod A  │ │ Pod B  │ │ Pod C  │                 │
+  │  └────────┘ └────────┘ └────────┘                 │
+  └────────────────────────────────────────────────────┘
+
+  Fluent Bit in K8s（DaemonSet）：
+  ┌────────────────────────────────────────────────────┐
+  │  K8s Worker Node                                    │
+  │  ┌──────────────────────────────────────────────┐  │
+  │  │  Fluent Bit Pod（DaemonSet）                   │  │
+  │  │  内存: 5-20MB                                 │  │
+  │  │  ← 原生 K8s 过滤器，自动追加 Pod 元数据         │  │
+  │  │  ← 不需要额外的处理器配置                       │  │
+  │  └──────────────────────────────────────────────┘  │
+  │  ┌────────┐ ┌────────┐ ┌────────┐                 │
+  │  │ Pod A  │ │ Pod B  │ │ Pod C  │                 │
+  │  └────────┘ └────────┘ └────────┘                 │
+  └────────────────────────────────────────────────────┘
+
+  关键差异：
+  Filebeat 需要额外配置 add_kubernetes 处理器
+  Fluent Bit 内置 K8s 过滤器，一行配置即可
+  Fluent Bit 的内存占用是 Filebeat 的 1/3 到 1/5
+```
+
+### DaemonSet 部署 Fluent Bit
+
+```yaml
+# fluent-bit-ds.yaml —— K8s DaemonSet 部署
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: logging
+  labels:
+    app: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      serviceAccountName: fluent-bit
+      containers:
+      - name: fluent-bit
+        image: cr.fluentbit.io/fluent/fluent-bit:2.2
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 50m            # 50 毫核
+            memory: 20Mi        # 20MB 内存
+          limits:
+            cpu: 200m
+            memory: 100Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: fluentbit-config
+          mountPath: /fluent-bit/etc/
+        - name: fluentbit-storage
+          mountPath: /fluent-bit/output
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: fluentbit-config
+        configMap:
+          name: fluent-bit-config
+      - name: fluentbit-storage
+        hostPath:
+          path: /var/log/flb-storage  # 文件缓冲持久化
+      terminationGracePeriodSeconds: 10
+      tolerations:
+      - operator: Exists              # 在所有节点上运行（包括 control plane）
+```
+
+---
+
+## 7.2 核心配置：fluent-bit.conf
 
 ```ini
-# fluent-bit.conf
-# Fluent Bit 配置：采集容器日志 → 发送到 ES（或 Kafka）
+# fluent-bit.conf —— 生产级 Fluent Bit 配置
 
 [SERVICE]
-    # Flush 间隔（每秒 flush 一次）
-    flush           1
-    
-    # 日志级别
-    log_level       info
-    
-    # 是否开启 HTTP 监控
-    HTTP_Server     On
-    HTTP_Listen     0.0.0.0
-    HTTP_Port       2020
+    # Flush 间隔（每秒发送一次）
+    flush                    1
 
-# ===== 输入：Docker 控制台日志 =====
+    # 日志级别
+    log_level                info
+
+    # 启用文件系统缓冲（防丢数据）
+    storage.path             /fluent-bit/output
+    storage.sync             normal
+    storage.checksum         off
+    storage.backlog.mem_limit 50M
+
+    # HTTP 监控接口
+    HTTP_Server              On
+    HTTP_Listen              0.0.0.0
+    HTTP_Port                2020
+
+# ===== 输入：读取容器日志文件 =====
 [INPUT]
-    Name            tail                    # 从文件尾部读取
-    Path            /var/log/containers/*.log  # K8s Pod 日志路径
-    multiline.parser  docker, cri           # 合并多行日志
-    DB              /var/log/flb_kube.db    # 记录处理位置（类似 Filebeat Registry）
-    Mem_Buf_Limit   50MB                    # 内存缓冲上限
-    Skip_Long_Lines On                      # 跳过超长行
+    Name              tail
+    Tag               kube.*
+    Path              /var/log/containers/*.log
+    Parser            docker            # 使用 Docker 日志格式解析
+    DB                /var/log/flb_kube.db  # 记录读取位置
+    Mem_Buf_Limit     50MB
+    Skip_Long_Lines   On
+    Refresh_Interval  10
+
+# ===== 解析器：JSON 解析 =====
+[PARSER]
+    Name        docker
+    Format      json
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%L
 
 # ===== 过滤器：K8s 元数据 =====
 [FILTER]
-    Name            kubernetes              # 自动添加 K8s 元数据
-    Match           *
-    Kube_URL        https://kubernetes.default.svc:443
-    Kube_CA_File    /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-    Kube_Token_File /var/run/secrets/kubernetes.io/serviceaccount/token
-    Merge_Log       On                      # 自动解析 JSON 日志
-    Merge_Log_Key   log_parsed              # 将解析后的日志放入此字段
-    K8S-Logging.Parser On
+    Name                kubernetes
+    Match               kube.*
+    Kube_URL            https://kubernetes.default.svc:443
+    Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+    Kube_Tag_Prefix     kube.var.log.containers.
+    Merge_Log           On            # 自动解析 JSON 格式的日志
+    Merge_Log_Key       log_parsed    # 解析后的 JSON 存入此字段
+    Keep_Log            Off           # 解析后删除原始 message 字段
+    Annotations         Off           # 不追加 Pod 注解（节省空间）
+    Labels              On            # 追加 Pod 标签
 
-# ===== 过滤器：修改记录 =====
+# ===== 过滤器：字段清理 =====
 [FILTER]
-    Name            modify
-    Match           *
-    # 删除不必要的字段（减少 ES 存储）
-    Remove          stream
-    Remove          docker_id
-    Remove          container_id
-    # 重命名字段
-    Rename          log     message
+    Name                modify
+    Match               kube.*
+    Remove              stream
+    Remove              docker_id
+    Remove              container_id
 
-# ===== 输出：发送到 ES =====
+# ===== 输出：发送到 Elasticsearch =====
 [OUTPUT]
-    Name            es
-    Match           *
-    Host            ${ES_HOST}
-    Port            ${ES_PORT}
-    Index           app-logs-${HOSTNAME}-%Y.%m.%d
-    Type            _doc
-    Generate_ID     On
-    
-    # 批量写入
-    Buffer_Size     1MB
-    Flush_Size      2048
-    
+    Name                es
+    Match               kube.*
+    Host                ${ES_HOST}
+    Port                ${ES_PORT}
+    Index               k8s-logs-%Y.%m.%d
+    Type                _doc
+    Generate_ID         On
+
+    # 批量写入配置
+    Buffer_Size         1MB
+    Flush_Size          2048
+
     # 重试
-    Retry_Limit     6
+    Retry_Limit         6
 ```
 
 ---
 
-## 7.3 Fluent Bit Lua 脚本处理
-
-对于 Fluent Bit 内置 Filter 无法处理的复杂场景，可以用 Lua 脚本扩展：
+## 7.3 Fluent Bit Lua 脚本
 
 ```lua
--- parsers/redact.lua
--- 用 Lua 脚本实现敏感信息脱敏
+-- filters/redact.lua —— 敏感信息脱敏
 
-function redact_message(tag, timestamp, record)
-    -- 脱敏手机号
-    if record["message"] then
-        local msg = record["message"]
-        -- 13812341234 → 138****1234
-        msg = string.gsub(msg, "(1[3-9]%d)%d%d%d%d(%d%d%d%d)", "%1****%2")
-        record["message"] = msg
+function redact(tag, timestamp, record)
+    -- 递归处理消息字段中的敏感信息
+    if record["log_parsed"] then
+        local msg = record["log_parsed"]["message"]
+        if msg then
+            -- 手机号脱敏：13812341234 → 138****1234
+            msg = string.gsub(msg, "(1[3-9]%d)%d%d%d%d(%d%d%d%d)", "%1****%2")
+            -- 身份证脱敏
+            msg = string.gsub(msg, "(%d{6})%d%d%d%d%d%d%d%d(%d{4})", "%1********%2")
+            record["log_parsed"]["message"] = msg
+        end
     end
-
-    -- 脱敏身份证号
-    if record["log_parsed"] and record["log_parsed"]["id_card"] then
-        record["log_parsed"]["id_card"] = "******19900101****"
-    end
-
-    -- 返回 true 保留记录，返回 false 丢弃
     return true, timestamp, record
 end
-
--- 返回处理后的记录数
-return 1
-```
-
-```toml
-# 在 fluent-bit.conf 中引用 Lua 脚本
-[FILTER]
-    Name    lua
-    Match   *
-    script  /fluent-bit/scripts/redact.lua
-    call    redact_message
-```
-
----
-
-## 7.4 Fluent Bit 内存缓冲调优
-
-```
-Fluent Bit 的缓冲层次：
-
-  内存缓冲 → 文件系统缓冲（可选）→ 输出
-
-  第 1 层：Mem_Buf_Limit（内存缓冲上限）
-  ┌────────────────────────────────────────────┐
-  │  限制 Fluent Bit 用于缓存日志的内存容量     │
-  │  当内存达到上限时，Fluent Bit 的行为：       │
-  │  → 如果配置了文件系统缓冲，写入文件缓冲      │
-  │  → 如果没有文件缓冲，丢弃最早的数据          │
-  │  建议：50MB-100MB（容器环境）               │
-  └────────────────────────────────────────────┘
-
-  第 2 层：文件系统缓冲（Storage.type = filesystem）
-  ┌────────────────────────────────────────────┐
-  │  当输出（ES/Kafka）不可用时                 │
-  │  日志先写入磁盘文件                         │
-  │  输出恢复后从磁盘文件读取发送             │
-  │  ← 这是 Fluent Bit 防丢数据的关键配置       │
-  └────────────────────────────────────────────┘
 ```
 
 ```ini
-# 文件系统缓冲配置
-[SERVICE]
-    # 启用文件系统缓冲
-    storage.path        /var/log/flb-storage/
-    storage.sync        normal
-    storage.checksum    on
-    storage.backlog.mem_limit 50MB
+# 在 fluent-bit.conf 中引用 Lua 脚本
+[FILTER]
+    Name    lua
+    Match   kube.*
+    script  /fluent-bit/scripts/redact.lua
+    call    redact
+```
 
-[INPUT]
-    Name    tail
-    Path    /var/log/containers/*.log
-    # 使用文件系统缓冲（防止输出不可用时丢失数据）
-    storage.type    filesystem
-    Mem_Buf_Limit   50MB
+---
+
+## 7.4 缓冲层次与持久化
+
+```
+Fluent Bit 的两级缓冲：
+
+  第 1 级：内存缓冲（Mem_Buf_Limit）
+  ┌────────────────────────────────────────────┐
+  │  默认：每个 INPUT 插件最多使用 50MB 内存    │
+  │  达到上限后：                              │
+  │  → 没有 storage.type=filesystem → 丢弃数据│
+  │  → 有 storage.type=filesystem → 写入磁盘  │
+  └────────────────────────────────────────────┘
+
+  第 2 级：文件系统缓冲（Storage）
+  ┌────────────────────────────────────────────┐
+  │  路径：/fluent-bit/output                  │
+  │  作用：当 ES 不可用时，缓冲数据到磁盘       │
+  │  配置：storage.path + storage.sync         │
+  │  注意：必须挂载 hostPath 卷才能持久化      │
+  └────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 本章总结
 
-| 对比维度 | Fluent Bit | Filebeat | Logstash |
-|---------|-----------|----------|---------|
-| **语言** | C | Go | JRuby |
-| **内存占用** | 3-50MB | 30-50MB | 500MB-1GB |
-| **K8s 集成** | 原生支持 | 需要插件 | 不推荐直接跑在 K8s |
-| **数据处理** | Lua 脚本扩展 | 有限 | 插件丰富，能力最强 |
-| **适用角色** | **边缘采集（推荐）** | 边缘采集 | 中心处理 |
+```yaml
+Fluent Bit 核心优势：
+  - 内存占用小（5-20MB），适合 K8s 容器化部署
+  - 原生 K8s 过滤器，自动追加 Pod 元数据
+  - 两级缓冲（内存 + 文件系统），防止数据丢失
 
-**核心原则**：
-1. **Fluent Bit 是 K8s 环境的第一选择**——它的内存占用和 K8s 元数据支持是 Filebeat 无法比拟的。在 K8s 中，Fluent Bit 通常作为 DaemonSet 部署
-2. **Fluent Bit 适合做"边缘采集"而非"中心处理"**——它负责从容器中采集日志并简单处理。复杂的数据清洗（多字段转换、条件路由）应该交给 Logstash 或 Fluentd
-3. **文件系统缓冲是防丢数据的关键**——默认 Fluent Bit 只有内存缓冲。开启 `storage.type filesystem` 后，即使 ES 宕机，日志也不会丢失
+适用场景：K8s 环境、资源受限的容器环境
+不适用场景：需要复杂数据清洗（应该用 Logstash）
+```
