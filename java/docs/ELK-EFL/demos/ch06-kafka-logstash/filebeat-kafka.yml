@@ -24,7 +24,7 @@ processors:
       fields: ["agent.hostname", "agent.type", "agent.version"]
 
 output.kafka:
-  hosts: ["kafka:9092"]
+  hosts: ["kafka:9093"]
   topic: "app-logs"
   codec.json:
     pretty: false
