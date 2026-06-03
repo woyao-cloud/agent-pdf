@@ -1,0 +1,16 @@
+# ============================================
+# Logstash 主配置
+# ============================================
+
+# HTTP API（默认 127.0.0.1:9600）
+http.host: "0.0.0.0"
+
+# 禁用监控（避免连接 elasticsearch 主机名）
+xpack.monitoring.enabled: false
+
+# Pipeline 配置
+pipeline:
+  workers: 1
+  batch:
+    size: 125
+    delay: 5

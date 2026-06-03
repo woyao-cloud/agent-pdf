@@ -142,6 +142,7 @@ services:
       - "5044:5044"
     volumes:
       - ./ch06-kafka-logstash/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./ch06-kafka-logstash/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
     environment:
       - LS_JAVA_OPTS=-Xms${LS_HEAP_SIZE:-512m} -Xmx${LS_HEAP_SIZE:-512m}
     networks:
