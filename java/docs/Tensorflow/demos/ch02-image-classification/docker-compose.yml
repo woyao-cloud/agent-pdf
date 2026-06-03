@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  train:
+    image: tensorflow/tensorflow:2.16.1
+    container_name: tf-ch02-train
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: python train.py

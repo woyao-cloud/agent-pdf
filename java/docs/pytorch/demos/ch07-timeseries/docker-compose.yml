@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  train:
+    image: pytorch/pytorch:2.2.0-cpu
+    container_name: pt-ch07-train
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: python train.py

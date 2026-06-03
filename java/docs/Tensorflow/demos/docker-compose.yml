@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  jupyter-cpu:
+    image: tensorflow/tensorflow:2.16.1-jupyter
+    container_name: tf-jupyter-cpu
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./workspace:/tf/workspace
+      - ./models:/tf/models
+    environment:
+      - JUPYTER_TOKEN=123456
+    command: >
+      jupyter notebook --ip=0.0.0.0 --port=8888
+      --allow-root --NotebookApp.token=123456
+    networks:
+      - tf-net
+
+  jupyter-gpu:
+    image: tensorflow/tensorflow:2.16.1-gpu-jupyter
+    container_name: tf-jupyter-gpu
+    profiles: ["gpu"]
+    ports:
+      - "8889:8888"
+    volumes:
+      - ./workspace:/tf/workspace
+      - ./models:/tf/models
+    environment:
+      - JUPYTER_TOKEN=123456
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      jupyter notebook --ip=0.0.0.0 --port=8888
+      --allow-root --NotebookApp.token=123456
+    networks:
+      - tf-net
+
+  tf-serving:
+    image: tensorflow/serving:2.16.1
+    container_name: tf-serving
+    profiles: ["serving"]
+    ports:
+      - "8500:8500"
+      - "8501:8501"
+    volumes:
+      - ./models:/models
+    environment:
+      - MODEL_NAME=default
+    command: >
+      --model_config_file=/models/models.config
+      --model_config_file_poll_wait_seconds=60
+      --enable_batching=true
+    networks:
+      - tf-net
+
+networks:
+  tf-net:
+    driver: bridge

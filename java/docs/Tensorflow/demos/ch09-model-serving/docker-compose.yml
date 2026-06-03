@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  tf-serving:
+    image: tensorflow/serving:2.16.1
+    container_name: tf-serving
+    ports:
+      - "8500:8500"
+      - "8501:8501"
+    volumes:
+      - ./models:/models
+    environment:
+      - MODEL_NAME=default
+    command: >
+      --model_config_file=/models/models.config
+      --enable_batching=true
+
+  client:
+    image: python:3.9
+    container_name: tf-client
+    working_dir: /app
+    volumes:
+      - ./client.py:/app/client.py
+    command: >
+      sh -c "pip install requests && python client.py"
+    depends_on:
+      - tf-serving

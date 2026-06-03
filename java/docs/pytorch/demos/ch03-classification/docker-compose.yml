@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  train:
+    image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+    container_name: pt-ch03-train
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    command: >
+      sh -c "pip install torchvision && python train.py"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

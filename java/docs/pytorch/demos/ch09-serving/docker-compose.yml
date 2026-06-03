@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  torchserve:
+    image: pytorch/torchserve:0.9.0
+    container_name: torchserve
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./model_store:/home/model-server/model-store
+      - ./config.properties:/home/model-server/config.properties
+    command: >
+      torchserve --start --model-store /home/model-server/model-store
+      --models my_model=my_model.mar

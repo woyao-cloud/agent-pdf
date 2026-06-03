@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  jupyter-cpu:
+    image: pytorch/pytorch:2.2.0-cpu
+    container_name: pt-jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./workspace:/workspace
+    working_dir: /workspace
+    command: >
+      sh -c "pip install jupyter torchvision torchtext
+      && jupyter notebook --ip=0.0.0.0 --port=8888
+      --allow-root --NotebookApp.token=123456"
+    networks:
+      - pt-net
+
+  jupyter-gpu:
+    image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+    container_name: pt-jupyter-gpu
+    profiles: ["gpu"]
+    ports:
+      - "8889:8888"
+    volumes:
+      - ./workspace:/workspace
+    working_dir: /workspace
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      sh -c "pip install jupyter torchvision torchtext
+      && jupyter notebook --ip=0.0.0.0 --port=8888
+      --allow-root --NotebookApp.token=123456"
+    networks:
+      - pt-net
+
+networks:
+  pt-net:
+    driver: bridge
