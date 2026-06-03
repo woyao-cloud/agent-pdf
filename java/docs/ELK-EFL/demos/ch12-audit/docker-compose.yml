@@ -1,0 +1,161 @@
+# ============================================
+# ELK/EFK 演示项目 —— 共享基础设施
+# ============================================
+# 这组配置提供所有章节共用的基础设施：
+#   - 3 节点 ES 集群（存储日志）
+#   - Kibana（可视化）
+#   - Kafka（消息缓冲）
+#   - Logstash（数据处理）
+#   - Filebeat（日志采集）
+#
+# 启动：docker compose up -d
+# 停止：docker compose down -v
+# ============================================
+
+version: "3.8"
+
+services:
+  # ==================== ES 集群 ====================
+  es-node1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION:-8.12.0}
+    container_name: es-node1
+    hostname: es-node1
+    environment:
+      - node.name=es-node1
+      - cluster.name=${ES_CLUSTER_NAME:-elk-demo-cluster}
+      - discovery.seed_hosts=es-node2,es-node3
+      - cluster.initial_master_nodes=es-node1,es-node2,es-node3
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms${ES_HEAP_SIZE:-1g} -Xmx${ES_HEAP_SIZE:-1g}"
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    volumes:
+      - es_data1:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elk-demo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  es-node2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION:-8.12.0}
+    container_name: es-node2
+    hostname: es-node2
+    environment:
+      - node.name=es-node2
+      - cluster.name=${ES_CLUSTER_NAME:-elk-demo-cluster}
+      - discovery.seed_hosts=es-node1,es-node3
+      - cluster.initial_master_nodes=es-node1,es-node2,es-node3
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms${ES_HEAP_SIZE:-1g} -Xmx${ES_HEAP_SIZE:-1g}"
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    volumes:
+      - es_data2:/usr/share/elasticsearch/data
+    networks:
+      - elk-demo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  es-node3:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION:-8.12.0}
+    container_name: es-node3
+    hostname: es-node3
+    environment:
+      - node.name=es-node3
+      - cluster.name=${ES_CLUSTER_NAME:-elk-demo-cluster}
+      - discovery.seed_hosts=es-node1,es-node2
+      - cluster.initial_master_nodes=es-node1,es-node2,es-node3
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms${ES_HEAP_SIZE:-1g} -Xmx${ES_HEAP_SIZE:-1g}"
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    volumes:
+      - es_data3:/usr/share/elasticsearch/data
+    networks:
+      - elk-demo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ==================== Kibana ====================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION:-8.12.0}
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es-node1:9200
+    networks:
+      - elk-demo
+    depends_on:
+      es-node1:
+        condition: service_healthy
+
+  # ==================== Kafka (KRaft mode) ====================
+  kafka:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION:-7.6.0}
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      - CLUSTER_ID=UEww8CWPQa6aPjZJSJiX7A
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_NUM_PARTITIONS=3
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_LOG_RETENTION_HOURS=168
+      - KAFKA_HEAP_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - elk-demo
+
+  # ==================== Logstash ====================
+  logstash:
+    image: docker.elastic.co/logstash/logstash:${LOGSTASH_VERSION:-8.12.0}
+    container_name: logstash
+    hostname: logstash
+    ports:
+      - "5044:5044"
+    volumes:
+      - ../ch06-kafka-logstash/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    environment:
+      - LS_JAVA_OPTS=-Xms${LS_HEAP_SIZE:-512m} -Xmx${LS_HEAP_SIZE:-512m}
+    networks:
+      - elk-demo
+    depends_on:
+      - kafka
+      - es-node1
+
+volumes:
+  es_data1:
+  es_data2:
+  es_data3:
+  kafka_data:
+
+networks:
+  elk-demo:
+    driver: bridge
