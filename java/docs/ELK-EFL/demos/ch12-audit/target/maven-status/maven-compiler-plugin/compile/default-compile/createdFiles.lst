@@ -1,5 +1,6 @@
 com\example\audit\AuditEvent$AuditEventBuilder.class
+com\example\audit\AuditEvent.class
 com\example\audit\AuditApplication.class
 com\example\audit\AuditLogger.class
 com\example\audit\AuditController.class
-com\example\audit\AuditEvent.class
+com\example\audit\AuditLogger$1.class

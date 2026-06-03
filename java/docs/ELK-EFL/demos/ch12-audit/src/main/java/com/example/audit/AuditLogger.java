@@ -1,14 +1,17 @@
 package com.example.audit;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.time.Instant;
 
 /**
@@ -23,8 +26,20 @@ public class AuditLogger {
     @Autowired(required = false)
     private KafkaTemplate<String, String> kafkaTemplate;
 
-    private final ObjectMapper mapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule());
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    public AuditLogger() {
+        // 将 Instant 序列化为 epoch 毫秒（long 整数）
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Instant.class, new StdSerializer<Instant>(Instant.class) {
+            @Override
+            public void serialize(Instant value, JsonGenerator gen, SerializerProvider provider)
+                    throws IOException {
+                gen.writeNumber(value.toEpochMilli()); // 毫秒整数
+            }
+        });
+        mapper.registerModule(module);
+    }
 
     /**
      * 记录审计事件
@@ -37,12 +52,11 @@ public class AuditLogger {
                 kafkaTemplate.send(AUDIT_TOPIC, json);
             }
 
-            // 同时打印普通日志（ELK 中也存一份）
             log.info("AUDIT: action={}, userId={}, resource={}, result={}",
                     event.getAction(), event.getUserId(),
                     event.getResource(), event.getResult());
 
-        } catch (JsonProcessingException e) {
+        } catch (IOException e) {
             log.error("审计事件序列化失败", e);
         }
     }

@@ -1,0 +1,27 @@
+.env
+# Ignore local editor/project state
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Ignore temporary runtime files
+*.log
+*.pid
+*.tmp
+*.cache
+
+# Python and Java build artifacts
+__pycache__/
+*.pyc
+*/*.class
+
+# Docker and container artifacts
+docker-compose.override.yml
+*.env.local
+
+# Ignore generated or local test data
+/tmp/
+/local/
+logs/
