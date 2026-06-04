@@ -10,20 +10,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl wget git unzip zip build-essential \
     numactl linux-tools-common linux-tools-generic \
     && rm -rf /var/lib/apt/lists/*
-
+WORKDIR /workspace
+COPY cases /workspace/cases
+COPY scripts /workspace/scripts
 # Install JDK 21 (Eclipse Temurin)
-RUN curl -L -o /tmp/jdk.tar.gz \
-    https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.2%2B13/OpenJDK21U-jdk_x64_linux_hotspot_21.0.2_13.tar.gz \
-    && tar -xzf /tmp/jdk.tar.gz -C /opt/ \
+COPY tars /tmp/tars
+RUN  tar -xzf /tmp/tars/jdk.tar.gz -C /opt/ \
     && mv /opt/jdk-21.0.2+13 $JAVA_HOME \
-    && rm /tmp/jdk.tar.gz
+    && rm /tmp/tars/jdk.tar.gz
 
 # Install Maven
 RUN curl -L -o /tmp/maven.tar.gz \
     https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz \
     && tar -xzf /tmp/maven.tar.gz -C /opt/ \
     && mv /opt/apache-maven-3.9.9 $MAVEN_HOME \
-    && rm /tmp/maven.tar.gz
+    && rm /tmp/tars/maven.tar.gz
 
 # Install async-profiler
 RUN curl -L -o /tmp/async-profiler.tar.gz \
@@ -51,9 +52,7 @@ RUN curl -L -o /tmp/k6.tar.gz \
     && ln -s /opt/k6/k6 /usr/local/bin/k6 \
     && rm /tmp/k6.tar.gz
 
-WORKDIR /workspace
-COPY cases /workspace/cases
-COPY scripts /workspace/scripts
+
 RUN chmod +x /workspace/scripts/*.sh
 
 # Verify installations

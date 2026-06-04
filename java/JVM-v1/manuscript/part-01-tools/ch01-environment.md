@@ -262,6 +262,7 @@ tty: true
 
 ```bash
 cd jvm-lab
+docker build  -t jvm-lab:latest .
 docker compose up -d
 ```
 
