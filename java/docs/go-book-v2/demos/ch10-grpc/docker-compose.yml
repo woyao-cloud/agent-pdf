@@ -1,0 +1,47 @@
+version: '3.8'
+services:
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: micro-etcd
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+    ports:
+      - "2379:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  stock-server:
+    build:
+      context: .
+      dockerfile: stock-server/Dockerfile
+    container_name: micro-stock
+    ports:
+      - "50052:50052"
+    depends_on:
+      etcd:
+        condition: service_healthy
+
+  order-server:
+    build:
+      context: .
+      dockerfile: order-server/Dockerfile
+    container_name: micro-order
+    ports:
+      - "50051:50051"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      stock-server:
+        condition: service_started
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: micro-client
+    depends_on:
+      - order-server
+      - stock-server
