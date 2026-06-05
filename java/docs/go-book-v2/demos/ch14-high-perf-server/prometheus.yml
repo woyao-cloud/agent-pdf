@@ -1,0 +1,27 @@
+# Prometheus 抓取配置
+# 用于监控 API 网关的性能指标
+global:
+  scrape_interval:     15s  # 默认抓取间隔
+  evaluation_interval: 15s  # 规则评估间隔
+
+scrape_configs:
+  # 网关自身指标
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:6060']  # Docker Compose 内部可用服务名
+        labels:
+          service: 'api-gateway'
+    metrics_path: '/metrics'
+
+  # pprof 性能指标（Go runtime 指标）
+  - job_name: 'gateway-pprof'
+    static_configs:
+      - targets: ['gateway:6060']
+        labels:
+          service: 'api-gateway-pprof'
+    metrics_path: '/debug/pprof/'
+
+  # Prometheus 自身指标
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

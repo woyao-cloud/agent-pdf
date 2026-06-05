@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: .
+    ports:
+      - "8080:8080"
+      - "6060:6060"
+    environment:
+      - GATEWAY_ADDR=:8080
+      - RATE_LIMIT=100
+      - RATE_BURST=200
+      - BREAKER_THRESHOLD=5
+      - BREAKER_TIMEOUT=10s
+      - POOL_IDLE=50
+    networks:
+      - gateway-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - gateway-net
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - gateway-net
+
+networks:
+  gateway-net:
+    driver: bridge
