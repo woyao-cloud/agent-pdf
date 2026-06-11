@@ -17,7 +17,11 @@
 | [第4章：Kubernetes 云原生监控](PART2-Scenarios/04-Kubernetes-Monitoring.md) | Prometheus Operator、Node Exporter、kube-state-metrics | [K8s 监控实验](labs/ch04-kubernetes/README.md) |
 | [第5章：黑盒监控与 SLA 探测](PART2-Scenarios/05-Blackbox-SLA.md) | Blackbox Exporter、证书监控、SLA 计算 | [黑盒监控实验](labs/ch05-blackbox/README.md) |
 | [第6章：PromQL 深度解析](PART2-Scenarios/06-PromQL-Deep-Dive.md) | 向量匹配、rate vs irate、Recording Rules | [PromQL 实验](labs/ch06-promql/README.md) |
-### 第三部分：告警与高可用架构（待补充）
+### 第三部分：告警路由与高可用架构
+| 章节 | 主题 | 实验 |
+|------|------|------|
+| [第7章：Alertmanager 告警路由与降噪](PART3-Advanced/07-Alertmanager.md) | 路由树、分组、抑制、告警风暴治理 | [Alertmanager 实验](labs/ch07-alertmanager/README.md) |
+| [第8章：高可用与长期存储](PART3-Advanced/08-HA-Storage.md) | Thanos、VictoriaMetrics、联邦集群 | [高可用存储实验](labs/ch08-ha-storage/README.md) |
 ### 第四部分：生产问题排查与调优（待补充）
 ### 第五部分：开发者技能与工程化（待补充）
 

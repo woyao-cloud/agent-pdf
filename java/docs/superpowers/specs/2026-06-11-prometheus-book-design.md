@@ -806,10 +806,178 @@ labs/ch06-promql/
 http_requests_total / on() group_left sum(http_requests_total) by (method)
 ```
 
+## Phase 3 设计
+
+Phase 3 覆盖第 7~8 章，聚焦告警治理与高可用架构。
+
+| 章节 | 主题 | 技术栈 | 实验类型 |
+|------|------|--------|---------|
+| 第7章 | Alertmanager 告警路由与降噪 | Alertmanager + 路由树 + Inhibition + Webhook | Docker Compose (含告警生成器、Webhook 接收器) |
+| 第8章 | 高可用与长期存储 | Thanos (Sidecar+MinIO+Query) + VictoriaMetrics | Docker Compose (两套独立方案) |
+
+### 端口规划
+
+| 章节 | 服务 | 端口 |
+|------|------|------|
+| ch07 | Prometheus | 9097 |
+| ch07 | Grafana | 3007 |
+| ch07 | Alertmanager | 9093 |
+| ch07 | MailHog | 8025 (Web UI), 1025 (SMTP) |
+| ch07 | webhook-receiver | 5002 |
+| ch07 | alert-generator | 8088 |
+| ch08 (Thanos) | Prometheus-1 | 9098 |
+| ch08 (Thanos) | Prometheus-2 | 9099 |
+| ch08 (Thanos) | Grafana | 3008 |
+| ch08 (Thanos) | MinIO Console | 9001 |
+| ch08 (Thanos) | MinIO API | 9000 |
+| ch08 (Thanos) | Thanos Query | 10902 |
+| ch08 (VM) | VictoriaMetrics | 8428 |
+| ch08 (VM) | Prometheus (source) | 9100 |
+
+### 第 7 章设计：Alertmanager 深度剖析与告警降噪
+
+#### 电子书大纲
+
+**7.1 Alertmanager 三大核心机制**
+- **分组（Grouping）**：将同类告警合并为一条通知。关键参数：`group_wait`、`group_interval`、`repeat_interval`
+- **抑制（Inhibition）**：当某条告警触发时，抑制与其相关的其他告警。典型场景：机房断网→抑制该机房所有主机告警
+- **静默（Silences）**：在窗口期内手动屏蔽指定告警，常用于"已知问题，正在修复"的场景
+
+**7.2 路由树设计**
+- Alertmanager 的路由树基于 Label 匹配，支持多级分发
+- 示例：P0→电话/PagerDuty，P1→短信/钉钉，P2→邮件
+- 路由树的匹配顺序和默认路由
+
+**7.3 告警风暴治理**
+- **问题**：阈值设置不合理，缺乏 `for` 持续时间判定 → 告警频繁抖动 → "狼来了"效应
+- **方案 1**：为告警规则添加 `for: 5m`，确保持续 5 分钟才触发
+- **方案 2**：合理设置告警阈值（预留 buffer，如内存 80% 告警、90% 紧急）
+- **方案 3**：Inhibition 规则消除级联告警
+
+**7.4 实战配置**
+- Webhook 集成钉钉/飞书/企业微信
+- 告警恢复通知配置
+- `resolve_timeout` 与告警自动解决
+
+#### 实验环境
+
+```
+labs/ch07-alertmanager/
+├── docker-compose.yml
+├── README.md
+├── alertmanager/
+│   └── config.yml              # 路由树 + 分组 + 抑制 + Webhook
+├── prometheus/
+│   ├── prometheus.yml
+│   └── rules/
+│       └── alerts.yml           # 告警规则（含 for 持续判定）
+├── alert-generator/             # Python 模拟告警触发
+│   ├── Dockerfile
+│   └── generator.py
+├── webhook-receiver/            # 捕获并展示告警
+│   ├── Dockerfile
+│   └── app.py
+└── scripts/
+    └── simulate-outage.sh       # 模拟"机房断网"
+```
+
+**四个核心实验：**
+
+**实验 1：路由树与分级分发**
+1. 启动环境
+2. P0 告警触发→webhook-receiver 显示告警
+3. P2 告警触发→MailHog 收到邮件通知
+4. 验证不同的路由匹配
+
+**实验 2：分组与告警降噪**
+1. 触发 10 个同类型的 `host_high_cpu` 告警（不同 instance）
+2. 未分组前：10 条独立告警
+3. 配置分组后：仅收到 1 条聚合告警 `[10] 实例 CPU 过高`
+
+**实验 3：Inhibition 抑制**
+1. 触发 `datacenter_down` 告警（模拟机房断网）
+2. 该机房的所有 `host_down` 告警被自动抑制
+3. 其他机房的 `host_down` 告警依然正常发送
+
+**实验 4：告警恢复通知**
+1. 触发告警后，模拟问题修复
+2. 观察 Alertmanager 发送告警恢复通知到 Webhook
+
+### 第 8 章设计：高可用与长期存储
+
+#### 电子书大纲
+
+**8.1 联邦集群（Federation）**
+- 架构：边缘 Prometheus 抓取细节数据，全局 Prometheus 从边缘拉取聚合
+- 适用场景：多机房、多集群
+- `honor_labels` 在联邦中的用法
+
+**8.2 Thanos 架构**
+- Sidecar：附加在 Prometheus 旁，将 Block 上传到对象存储
+- Store Gateway：从对象存储读取数据
+- Query：全局聚合查询，实现跨 Prometheus 的全局视图
+- Compactor：下采样和压缩历史 Block
+
+**8.3 VictoriaMetrics**
+- 单节点 vs 集群模式
+- Remote Write 协议兼容性
+- 更高的压缩率和更低的资源占用
+
+**8.4 架构选型指南**
+- 小型部署（<10 台主机）：Prometheus 单机 + 长 retention
+- 中型部署（<100 台）：VictoriaMetrics 单节点
+- 大型部署（>100 台或跨集群）：Thanos 全栈
+
+#### 实验环境
+
+**Thanos 方案：**
+```
+labs/ch08-ha-storage/thanos/
+├── docker-compose.yml
+├── prometheus1/
+│   └── prometheus.yml
+├── prometheus2/
+│   └── prometheus.yml
+└── scripts/
+    └── query-compare.sh
+```
+
+**VM 方案：**
+```
+labs/ch08-ha-storage/victoriametrics/
+├── docker-compose.yml
+├── prometheus/
+│   └── prometheus.yml      # remote_write 配置
+└── scripts/
+    └── storage-check.sh
+```
+
+**五个核心实验：**
+
+**实验 1：联邦集群**
+- 两个 Prometheus 实例各自抓取不同的模拟目标
+- 全局 Prometheus 通过 `/federate` 端点拉取聚合数据
+
+**实验 2：Thanos Sidecar + MinIO**
+- Sidecar 自动上传 Block 到 MinIO
+- `thanos tools bucket verify` 验证数据完整性
+
+**实验 3：Thanos Query 全局视图**
+- 查询 `up` 指标，看来自两个 Prometheus 的数据合并展示
+- 对比单机查询和 Thanos Query 的结果差异
+
+**实验 4：VM Remote Write**
+- Prometheus 配置远程写入 VM
+- 停止 Prometheus 后，VM 中的数据依然可查
+
+**实验 5：存储压缩率对比**
+- 同数据集写入 Prometheus 和 VM
+- 对比磁盘占用
+
 ## 文件与配置约定
 
 - Python 实验应用：统一使用 `prometheus_client` 库（`pip install prometheus-client`）
 - Docker Compose 版本：所有 Compose 文件使用 version '3.8'
-- 端口规划：每章递增：ch01→9091/3001/5001/8081, ch02→9092/3002/8083/8084, ch03→9093/3003/8085, ch04→9094/3004, ch05→9095/3005/9115/8086, ch06→9096/3006/8087
+- 端口规划：ch07→9097/3007/9093/8025/1025/5002/8088, ch08→9098/9099/3008/9000/9001/10902/8428/9100
 - 数据持久化：命名 volume 如 `prometheus_data_ch0X`
 - 日志规范：所有实验附带 README.md，包含实验目的、步骤、预期结果和观察要点
