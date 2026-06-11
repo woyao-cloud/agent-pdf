@@ -22,7 +22,11 @@
 |------|------|------|
 | [第7章：Alertmanager 告警路由与降噪](PART3-Advanced/07-Alertmanager.md) | 路由树、分组、抑制、告警风暴治理 | [Alertmanager 实验](labs/ch07-alertmanager/README.md) |
 | [第8章：高可用与长期存储](PART3-Advanced/08-HA-Storage.md) | Thanos、VictoriaMetrics、联邦集群 | [高可用存储实验](labs/ch08-ha-storage/README.md) |
-### 第四部分：生产问题排查与调优（待补充）
+### 第四部分：生产问题排查与调优
+| 章节 | 主题 | 实验 |
+|------|------|------|
+| [第9章：生产环境三大杀手排查](PART4-Troubleshooting/09-Troubleshooting.md) | OOM/高基数、抓取失败、TSDB 损坏修复 | [排障实验](labs/ch09-troubleshooting/README.md) |
+| [第10章：核心参数与内核调优](PART4-Troubleshooting/10-Tuning.md) | GOGC、并发抓取、Remote Write 队列 | [调优实验](labs/ch10-tuning/README.md) |
 ### 第五部分：开发者技能与工程化（待补充）
 
 ## 快速开始

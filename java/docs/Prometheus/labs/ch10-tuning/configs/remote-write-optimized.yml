@@ -1,0 +1,50 @@
+# Remote Write 调优配置模板
+# 根据不同的网络条件和远端性能选择合适的配置
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+remote_write:
+  # 方案 A：高性能内网（VM/Thanos 在同一内网，延迟 < 1ms）
+  - url: http://victoriametrics:8428/api/v1/write
+    queue_config:
+      capacity: 10000
+      max_samples_per_send: 2000
+      min_shards: 10
+      max_shards: 100
+      min_backoff: 10ms
+      max_backoff: 500ms
+      batch_send_deadline: 5s
+
+  # 方案 B：公网/跨机房（延迟 10-50ms）
+  - url: https://remote-storage.example.com/api/v1/write
+    queue_config:
+      capacity: 5000
+      max_samples_per_send: 500
+      min_shards: 3
+      max_shards: 30
+      min_backoff: 100ms
+      max_backoff: 5s
+      batch_send_deadline: 10s
+    remote_timeout: 30s
+    # 基础认证
+    basic_auth:
+      username: 'prometheus'
+      password: 'changeme'
+
+  # 方案 C：低配环境（内存 < 8GB）
+  - url: http://victoriametrics:8428/api/v1/write
+    queue_config:
+      capacity: 1000
+      max_samples_per_send: 250
+      min_shards: 1
+      max_shards: 10
+      min_backoff: 50ms
+      max_backoff: 2s
+    remote_timeout: 10s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
