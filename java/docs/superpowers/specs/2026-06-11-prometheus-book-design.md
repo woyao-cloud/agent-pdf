@@ -974,10 +974,101 @@ labs/ch08-ha-storage/victoriametrics/
 - 同数据集写入 Prometheus 和 VM
 - 对比磁盘占用
 
+## Phase 4 设计
+
+Phase 4 覆盖第 9~10 章，聚焦生产问题排查与性能调优。
+
+| 章节 | 主题 | 说明 | 实验类型 |
+|------|------|------|---------|
+| 第9章 | 生产环境三大杀手排查 | OOM/高基数、抓取失败、TSDB 损坏修复 | 复用已有环境 + 诊断脚本 |
+| 第10章 | 核心参数与内核调优 | GOGC、并发抓取、Remote Write 队列 | 调优清单 + 对比实验脚本 |
+
+### 第 9 章设计：生产环境三大杀手排查
+
+#### 电子书大纲
+
+**9.1 内存 OOM 与高基数**
+- 排查手段：`promtool tsdb analyze`、`/api/v1/status/tsdb`、Top 10 基数排序
+- 紧急止血：Relabel 规则 Drop、metric_relabel_configs 临时禁用
+- 长效方案：Label 基数预算、Review 机制、业务埋点规范
+
+**9.2 抓取失败与数据断点**
+- 根因分析树：scrape_timeout / 网络抖动 / body 过大 / 应用 GC 停顿
+- 排查流程：查看 Prometheus Targets (DOWN/Unknown) → 分析日志 → curl 调试目标端点
+- 解决方案：调优 scrape_interval/timeout、GZIP 压缩、GC 调优
+
+**9.3 TSDB 损坏与 WAL 修复**
+- 典型日志特征：`corrupted segment`、`WAL truncation failed`
+- 修复命令速查表
+- promtool 工具链：`tsdb analyze` / `tsdb list` / `tsdb clean-tombstones`
+
+#### 实验环境
+
+```
+labs/ch09-troubleshooting/
+├── README.md
+├── scenarios/
+│   ├── 01-high-cardinality.sh   # 高基数诊断（引用 ch02 数据）
+│   ├── 02-scrape-failed.sh      # 模拟抓取失败
+│   └── 03-tsdb-repair.sh        # TSDB 修复流程
+└── cheatsheet/
+    └── troubleshooting.md        # 排障命令速查表
+```
+
+**三个实验：**
+
+**实验 1：高基数诊断**
+1. 启动 ch02 high-card-gen 环境（CARD_USER=1000）
+2. 使用 `promtool tsdb analyze` 查看 Top 10 高基数指标
+3. 通过 `/api/v1/status/tsdb` API 获取序列数和内存统计
+4. 应用 relabeling 规则 Drop 高基数 Label，观察序列数下降
+
+**实验 2：抓取失败模拟**
+1. 模拟目标应用响应变慢（故意制造 large body 或超时）
+2. 在 Prometheus Targets 页面观察状态变为 DOWN
+3. 从 Prometheus 日志中定位 scrape 失败的根因
+4. 调优 scrape_interval/scrape_timeout 后恢复
+
+**实验 3：TSDB 修复**
+1. 模拟 WAL 损坏（删除 WAL 段文件）
+2. 使用 promtool tsdb clean-tombstones 修复
+3. 极端情况：删除 WAL 目录（接受 2h 数据丢失）
+
+### 第 10 章设计：核心参数与内核调优
+
+#### 电子书大纲
+
+**10.1 GOGC 环境变量调优**
+- 原理：GOGC=100 → GC 触发频繁，GOGC=400 → 更少 GC 更多内存
+- 实验：ch02 high-card-gen 环境下，GOGC=100 vs GOGC=400 对比
+- 注意事项：内存充足时用内存换 CPU，避免容器 OOM
+
+**10.2 并发抓取调优**
+- `--query.max-concurrency`：查询并发上限（默认 20）
+- `--storage.tsdb.max-block-chunk-segment-size`：Chunk 段大小（默认 32KB）
+- 何时调大、何时调小
+
+**10.3 Remote Write 调优**
+- capacity / max_samples_per_send / min_shards / max_shards
+- 重试与背压：`retry_on_http_429`、`min_backoff`、`max_backoff`
+- 队列积压时的表现和处理
+
+#### 实验环境
+
+```
+labs/ch10-tuning/
+├── README.md
+├── configs/
+│   ├── gogc-benchmark.sh         # GOGC 对比实验
+│   └── remote-write-optimized.yml # Remote Write 调优配置模板
+└── reference/
+    └── parameter-reference.md    # 完整参数手册
+```
+
 ## 文件与配置约定
 
 - Python 实验应用：统一使用 `prometheus_client` 库（`pip install prometheus-client`）
 - Docker Compose 版本：所有 Compose 文件使用 version '3.8'
-- 端口规划：ch07→9097/3007/9093/8025/1025/5002/8088, ch08→9098/9099/3008/9000/9001/10902/8428/9100
+- 端口规划：所有章节 Prometheus→909X, Grafana→300X 递增
 - 数据持久化：命名 volume 如 `prometheus_data_ch0X`
 - 日志规范：所有实验附带 README.md，包含实验目的、步骤、预期结果和观察要点
