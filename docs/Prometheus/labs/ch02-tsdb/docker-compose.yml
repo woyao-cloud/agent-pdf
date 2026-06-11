@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  data-generator:
+    build: ./data-generator
+    container_name: prom-tsdb-normal
+    ports:
+      - "8081:8081"
+    networks:
+      - tsdb-net
+
+  high-card-gen:
+    build: ./high-card-gen
+    container_name: prom-tsdb-highcard
+    ports:
+      - "8082:8082"
+    environment:
+      - CARD_ENDPOINT=5
+      - CARD_USER=100
+      - CARD_REGION=3
+      - SCRAPE_INTERVAL=5
+    networks:
+      - tsdb-net
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: ch02-tsdb-prometheus-1
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-admin-api'
+      - '--storage.tsdb.min-block-duration=5m'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_ch02:/prometheus
+    ports:
+      - "9091:9090"
+    depends_on:
+      - data-generator
+      - high-card-gen
+    networks:
+      - tsdb-net
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch02
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana_data_ch02:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - tsdb-net
+
+networks:
+  tsdb-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch02:
+  grafana_data_ch02:

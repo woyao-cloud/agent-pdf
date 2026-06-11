@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+# Admin API 用于 TSDB 分析
+# 启动命令添加: --web.enable-admin-api
+
+scrape_configs:
+  - job_name: 'data-generator'
+    static_configs:
+      - targets: ['data-generator:8081']
+
+  - job_name: 'high-card-gen'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['high-card-gen:8082']
+    # 可选：用 metric_relabel_configs 演示高基数防护
+    # metric_relabel_configs:
+    #   - regex: 'user_id'
+    #     action: labeldrop
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
