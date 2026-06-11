@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  exemplar-demo:
+    build: .
+    container_name: prom-exemplar
+    ports:
+      - "8089:8089"
+    networks:
+      - o11y-net
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch12
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--enable-feature=exemplar-storage'
+      - '--storage.tsdb.retention.time=7d'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_ch12:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - exemplar-demo
+    networks:
+      - o11y-net
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch12
+    ports:
+      - "3090:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_INSTALL_PLUGINS=grafana-tempo-app
+    volumes:
+      - grafana_data_ch12:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - o11y-net
+
+networks:
+  o11y-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch12:
+  grafana_data_ch12:

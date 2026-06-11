@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: prom-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=test
+    ports:
+      - "3306:3306"
+    networks:
+      - exporter-net
+
+  go-exporter:
+    build: ./go-exporter
+    container_name: prom-go-exporter
+    ports:
+      - "9301:9300"
+    depends_on:
+      - mysql
+    networks:
+      - exporter-net
+
+  python-exporter:
+    build: ./python-exporter
+    container_name: prom-py-exporter
+    ports:
+      - "9302:9300"
+    depends_on:
+      - mysql
+    networks:
+      - exporter-net
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch11
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - prometheus_data_ch11:/prometheus
+    ports:
+      - "9099:9090"
+    depends_on:
+      - go-exporter
+      - python-exporter
+    networks:
+      - exporter-net
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch11
+    ports:
+      - "3099:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - prometheus
+    networks:
+      - exporter-net
+
+networks:
+  exporter-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch11:

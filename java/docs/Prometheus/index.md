@@ -27,7 +27,13 @@
 |------|------|------|
 | [第9章：生产环境三大杀手排查](PART4-Troubleshooting/09-Troubleshooting.md) | OOM/高基数、抓取失败、TSDB 损坏修复 | [排障实验](labs/ch09-troubleshooting/README.md) |
 | [第10章：核心参数与内核调优](PART4-Troubleshooting/10-Tuning.md) | GOGC、并发抓取、Remote Write 队列 | [调优实验](labs/ch10-tuning/README.md) |
-### 第五部分：开发者技能与工程化（待补充）
+### 第五部分：开发者技能与工程化
+| 章节 | 主题 | 实验 |
+|------|------|------|
+| [第11章：自定义 Exporter 开发](PART5-Engineering/11-Custom-Exporter.md) | Go Collector 接口、Python 实现、异步缓存最佳实践 | [Exporter 实验](labs/ch11-custom-exporter/README.md) |
+| [第12章：可观测性三大支柱联动](PART5-Engineering/12-Observability.md) | Exemplars、Loki 集成、Metrics→Logs→Traces | [O11y 实验](labs/ch12-o11y/README.md) |
+| [第13章：监控体系工程化规范](PART5-Engineering/13-Engineering.md) | 命名规范、告警分级、RED/USE 方法论 | — |
+| [附录](PART5-Engineering/appendices/) | PromQL 速查表、Helm Chart、报错字典、面试题 | — |
 
 ## 快速开始
 
