@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.24.0
+    container_name: prom-blackbox-exporter
+    command:
+      - '--config.file=/config/config.yml'
+    volumes:
+      - ./blackbox-exporter/config.yml:/config/config.yml
+    ports:
+      - "9115:9115"
+    networks:
+      - bb-net
+
+  web-target:
+    build: ./web-target
+    container_name: prom-blackbox-web
+    ports:
+      - "8086:80"
+    networks:
+      - bb-net
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch05
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
+      - prometheus_data_ch05:/prometheus
+    ports:
+      - "9095:9090"
+    depends_on:
+      - blackbox-exporter
+      - web-target
+    networks:
+      - bb-net
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch05
+    ports:
+      - "3005:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana_data_ch05:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - bb-net
+
+networks:
+  bb-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch05:
+  grafana_data_ch05:

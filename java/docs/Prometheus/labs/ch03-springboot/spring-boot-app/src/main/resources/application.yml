@@ -1,0 +1,16 @@
+server:
+  port: 8085
+spring:
+  application:
+    name: springboot-monitoring-demo
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    export:
+      prometheus:
+        enabled: true

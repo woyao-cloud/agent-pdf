@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  spring-boot-app:
+    build: ./spring-boot-app
+    container_name: prom-sb-app
+    ports:
+      - "8085:8085"
+    networks:
+      - sb-net
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch03
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_ch03:/prometheus
+    ports:
+      - "9093:9090"
+    depends_on:
+      - spring-boot-app
+    networks:
+      - sb-net
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch03
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana_data_ch03:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - sb-net
+
+networks:
+  sb-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch03:
+  grafana_data_ch03:

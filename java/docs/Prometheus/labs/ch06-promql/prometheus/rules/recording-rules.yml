@@ -1,0 +1,15 @@
+groups:
+  - name: promql-demo
+    rules:
+      - record: method:demo_http_requests:rate5m
+        expr: sum(rate(demo_http_requests_total[5m])) by (method)
+      - record: region:demo_http_requests:rate5m
+        expr: sum(rate(demo_http_requests_total[5m])) by (region)
+      - record: job:demo_http_requests:rate5m
+        expr: sum(rate(demo_http_requests_total[5m]))
+      - record: method:demo_request_duration:p50
+        expr: histogram_quantile(0.50, sum(rate(demo_request_duration_seconds_bucket[5m])) by (le, method))
+      - record: method:demo_request_duration:p95
+        expr: histogram_quantile(0.95, sum(rate(demo_request_duration_seconds_bucket[5m])) by (le, method))
+      - record: method:demo_request_duration:p99
+        expr: histogram_quantile(0.99, sum(rate(demo_request_duration_seconds_bucket[5m])) by (le, method))

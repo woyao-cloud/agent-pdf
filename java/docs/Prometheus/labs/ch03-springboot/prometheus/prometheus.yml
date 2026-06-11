@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  scrape_timeout: 8s
+
+scrape_configs:
+  - job_name: 'spring-boot-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['spring-boot-app:8085']
+    metric_relabel_configs:
+      - source_labels: [__name__, uri]
+        regex: 'http_server_requests_seconds.*;/api/user/\d+(/.*)?'
+        target_label: uri
+        replacement: '/api/user/{id}${1}'
+      - source_labels: [__name__, uri]
+        regex: 'http_server_requests_seconds.*;/api/order/\d+(/.*)?'
+        target_label: uri
+        replacement: '/api/order/{id}${1}'
+      - regex: 'trace_id|span_id|parent_id'
+        action: labeldrop
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

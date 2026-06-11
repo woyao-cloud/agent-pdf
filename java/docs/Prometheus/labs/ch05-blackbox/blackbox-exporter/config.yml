@@ -1,0 +1,23 @@
+modules:
+  http_2xx:
+    prober: http
+    http:
+      valid_status_codes: [200, 201, 302]
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+  http_404:
+    prober: http
+    http:
+      valid_status_codes: [404]
+      method: GET
+  tcp_connect:
+    prober: tcp
+  icmp:
+    prober: icmp
+    icmp:
+      preferred_ip_protocol: ip4
+  dns_query:
+    prober: dns
+    dns:
+      query_type: A
+      preferred_ip_protocol: ip4
