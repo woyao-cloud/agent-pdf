@@ -85,11 +85,7 @@ Go选择了一条截然不同的路线：所有核心工具都是语言标准的
 
 ### 6. 交叉编译——一条命令走天下
 
-这是Go最令人惊喜的特性之一。你想在Windows上编译一个Linux程序？用Go的话，只需要一行命令：
-
-```
-GOOS=linux GOARCH=amd64 go build
-```
+这是Go最令人惊喜的特性之一。你想在Windows上编译一个Linux程序？用Go的话，只需要运行 `GOOS=linux GOARCH=amd64 go build` 这一条命令。
 
 就这么简单。没有交叉编译工具链的安装，没有配置文件的修改，没有"XXX平台不支持"的错误。你在Windows上写代码，一行命令就能编译出Linux、macOS甚至ARM架构（如树莓派）的可执行文件。
 
@@ -169,27 +165,7 @@ Go编译出来的是一个独立的、包含所有依赖的静态链接二进制
 
 ## Go语言生态概览
 
-Go的标准库是其最大的财富之一。以下是一些核心包：
-
-```
-标准库
-├── fmt           — 格式化输入输出
-├── net/http      — HTTP客户端和服务器
-├── encoding/json — JSON编解码
-├── database/sql  — 数据库访问接口
-├── io            — I/O操作
-├── os            — 操作系统接口
-├── sync          — 同步原语
-├── time          — 时间操作
-├── strings       — 字符串处理
-├── regexp        — 正则表达式
-├── testing       — 测试框架
-├── context       — 上下文管理（超时、取消）
-├── crypto        — 加密算法
-├── errors        — 错误处理
-├── log           — 日志记录
-└── reflect       — 反射（运行时类型检查）
-```
+Go的标准库是其最大的财富之一。核心包包括：`fmt`（格式化输入输出）、`net/http`（HTTP客户端和服务器）、`encoding/json`（JSON编解码）、`database/sql`（数据库访问接口）、`io`（I/O操作）、`os`（操作系统接口）、`sync`（同步原语）、`time`（时间操作）、`strings`（字符串处理）、`regexp`（正则表达式）、`testing`（测试框架）、`context`（上下文管理与超时取消）、`crypto`（加密算法）、`errors`（错误处理）、`log`（日志记录）和`reflect`（反射）。
 
 可以说，Go的标准库覆盖了构建一个网络服务所需的大部分功能，这是其他语言少有的优势。
 

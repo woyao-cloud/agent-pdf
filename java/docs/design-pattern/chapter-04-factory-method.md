@@ -1,28 +1,35 @@
 # 第4章 工厂方法模式（Factory Method）
-+
-**工厂方法模式**是创建型模式中最核心的模式，它定义了创建对象的接口，但由子类决定具体创建哪个类的实例。
-+
+
+- **工厂方法模式**是创建型模式中最核心的模式，它定义了创建对象的接口，但由子类决定具体创建哪个类的实例。
+-
+
 ## 4.1 解决的问题与应用场景
-+
+
+-
+
 ### 4.1.1 问题分析
-+
-在软件系统中，对象的创建往往是一个复杂的过程：可能需要处理配置信息、依赖关系、初始化逻辑等。如果将对象创建逻辑直接放在客户端代码中，会造成：- **客户端代码与具体产品类耦合**- **对象创建逻辑难以复用**
-- **违反开闭原则**：新增产品需要修改客户端代码
-+
+
+- 在软件系统中，对象的创建往往是一个复杂的过程：可能需要处理配置信息、依赖关系、初始化逻辑等。如果将对象创建逻辑直接放在客户端代码中，会造成：- **客户端代码与具体产品类耦合**- **对象创建逻辑难以复用**
+
+* **违反开闭原则**：新增产品需要修改客户端代码
+
+-
+
 ### 4.1.2 典型应用场景
-+
-**1. 数据库连接创建**```java
+
+- **1. 数据库连接创建**`java
 // 不同数据库使用不同的连接方式Connection conn = DatabaseFactory.getConnection("mysql");
-```**2. 支付方式选择**```java
+`**2. 支付方式选择**`java
 Payment payment = PaymentFactory.createPayment("alipay");
-payment.pay(100.0);```**3. 日志记录器**```java
+payment.pay(100.0);`**3. 日志记录器**`java
 Logger logger = LoggerFactory.createLogger("file");logger.info("message");
-```**4. 文档导出**```java
+`**4. 文档导出**`java
 Exporter exporter = ExporterFactory.createExporter("pdf");exporter.export(data);
-```**5. 图形绘制**```java
-Shape shape = ShapeFactory.createShape("circle");
-shape.draw();
-```
+`**5. 图形绘制**```java
+  Shape shape = ShapeFactory.createShape("circle");
+  shape.draw();
+
+````
 +
 ## 4.2 实现原理与UML
 +
@@ -57,24 +64,26 @@ shape.draw();
 +
 ### 4.2.4 时序图
 +
-```
-Client              Creator            ConcreteCreator       ConcreteProduct
-   │                   │                      │                    │
-   │                   │                      │                    │
-   │  anOperation()    │                      │                    │
-   │ ───────────────►  │                      │                    │
-   │                   │                      │                    │
-   │  factoryMethod()  │                      │                    │
-   │ ───────────────────────────────────────► │                    │
-   │                   │                   (创建实例)               │
-   │                   │                      │                    │
-   │                   │      product         │                    │
-   │ ◄─────────────────────────────────────── │                    │
-   │                   │                      │                    │
-   │  product.operation()                     │                    │
-   │ ────────────────────────────────────────────────────────────►  │
-   │                   │                      │                    │
-```+
+````
+
+Client Creator ConcreteCreator ConcreteProduct
+│ │ │ │
+│ │ │ │
+│ anOperation() │ │ │
+│ ───────────────► │ │ │
+│ │ │ │
+│ factoryMethod() │ │ │
+│ ───────────────────────────────────────► │ │
+│ │ (创建实例) │
+│ │ │ │
+│ │ product │ │
+│ ◄─────────────────────────────────────── │ │
+│ │ │ │
+│ product.operation() │ │
+│ ────────────────────────────────────────────────────────────► │
+│ │ │ │
+
+````+
 ## 4.3 代码实现
 +
 ### 4.3.1 基础实现
@@ -98,47 +107,61 @@ Payment payment = PaymentFactory.createPayment("alipay");payment.pay(100.0);```+
 +
 使用泛型创建更灵活的工厂：```java
 public class GenericFactory<T> {    private final Supplier<T> creator;        public GenericFactory(Supplier<T> creator) {        this.creator = creator;    }        public T create() {        return creator.get();    }}// 使用GenericFactory<Payment> alipayFactory = new GenericFactory<>(Alipay::new);Payment alipay = alipayFactory.create();
-```
-+
+````
+
+-
+
 ### 4.3.4 反射工厂
-+
-利用反射减少工厂与产品的耦合：```java
-public class ReflectiveFactory {    private static final Map<String, Class<?>> PRODUCT_TYPES =            new HashMap<>();        static {        PRODUCT_TYPES.put("alipay", Alipay.class);        PRODUCT_TYPES.put("wechat", WechatPay.class);    }        @SuppressWarnings("unchecked")    public static <T> T createProduct(Class<T> clazz) {        try {            return clazz.getDeclaredConstructor().newInstance();        } catch (Exception e) {            throw new RuntimeException("Failed to create product: " + clazz.getName(), e);        }    }        public static <T> T createProduct(String type, Class<T> baseType) {        Class<?> clazz = PRODUCT_TYPES.get(type.toLowerCase());        if (clazz == null) {            throw new IllegalArgumentException("Unknown product type: " + type);        }        if (!baseType.isAssignableFrom(clazz)) {            throw new IllegalArgumentException("Type mismatch");        }        return (T) createProduct(clazz);    }}```+
+
+- 利用反射减少工厂与产品的耦合：`java
+public class ReflectiveFactory {    private static final Map<String, Class<?>> PRODUCT_TYPES =            new HashMap<>();        static {        PRODUCT_TYPES.put("alipay", Alipay.class);        PRODUCT_TYPES.put("wechat", WechatPay.class);    }        @SuppressWarnings("unchecked")    public static <T> T createProduct(Class<T> clazz) {        try {            return clazz.getDeclaredConstructor().newInstance();        } catch (Exception e) {            throw new RuntimeException("Failed to create product: " + clazz.getName(), e);        }    }        public static <T> T createProduct(String type, Class<T> baseType) {        Class<?> clazz = PRODUCT_TYPES.get(type.toLowerCase());        if (clazz == null) {            throw new IllegalArgumentException("Unknown product type: " + type);        }        if (!baseType.isAssignableFrom(clazz)) {            throw new IllegalArgumentException("Type mismatch");        }        return (T) createProduct(clazz);    }}`+
+
 ### 4.3.5 使用容器（Spring风格）
-+
-使用Map容器管理工厂：```java
-public class PaymentFactory {    private static final Map<String, Payment> PAYMENTS = new HashMap<>();        static {        PAYMENTS.put("alipay", new Alipay());        PAYMENTS.put("wechat", new WechatPay());        PAYMENTS.put("bankcard", new BankCardPayment());    }        public static Payment getPayment(String type) {        Payment payment = PAYMENTS.get(type.toLowerCase());        if (payment == null) {            throw new IllegalArgumentException("Unknown payment type: " + type);        }        return payment;    }        // 支持注册新支付方式    public static void register(String type, Payment payment) {        PAYMENTS.put(type.toLowerCase(), payment);    }}```+
+
+- 使用Map容器管理工厂：`java
+public class PaymentFactory {    private static final Map<String, Payment> PAYMENTS = new HashMap<>();        static {        PAYMENTS.put("alipay", new Alipay());        PAYMENTS.put("wechat", new WechatPay());        PAYMENTS.put("bankcard", new BankCardPayment());    }        public static Payment getPayment(String type) {        Payment payment = PAYMENTS.get(type.toLowerCase());        if (payment == null) {            throw new IllegalArgumentException("Unknown payment type: " + type);        }        return payment;    }        // 支持注册新支付方式    public static void register(String type, Payment payment) {        PAYMENTS.put(type.toLowerCase(), payment);    }}`+
+
 ## 4.4 JDK/框架源码解析
-+
+
+-
+
 ### 4.4.1 JDK中的工厂方法
-+
-**1. Calendar类**```java
-public abstract class Calendar implements Serializable, Cloneable {    // 工厂方法    public static Calendar getInstance() {        return createCalendar(TimeZone.getDefault(), Locale.getDefault());    }        private static Calendar createCalendar(TimeZone zone, Locale aLocale) {        // 根据地区返回不同的日历实现        if (aLocale.getLanguage().equals("zh")) {            return new BuddhistCalendar(zone, aLocale);        }        // ...其他实现        return new GregorianCalendar(zone, aLocale);    }}```**2. NumberFormat类**```java
-public abstract class NumberFormat extends Format {    // 工厂方法    public static NumberFormat getInstance() {        return getInstance(Locale.getDefault(), NUMBERSTYLE);    }        public static NumberFormat getCurrencyInstance() {        return getInstance(Locale.getDefault(), CURRENCYSTYLE);    }}```**3. Colections类**```java
-public class Collections {    // 工厂方法    public static <T> List<T> emptyList() {        return (List<T>) EMPTY_LIST;    }        public static <K, V> Map<K, V> emptyMap() {        return (Map<K, V>) EMPTY_MAP;    }}```**4. Stream API**```java
-List<String> list = Arrays.asList("a", "b", "c");Stream<String> stream = list.stream();  // 工厂方法```
-+
+
+- **1. Calendar类**`java
+public abstract class Calendar implements Serializable, Cloneable {    // 工厂方法    public static Calendar getInstance() {        return createCalendar(TimeZone.getDefault(), Locale.getDefault());    }        private static Calendar createCalendar(TimeZone zone, Locale aLocale) {        // 根据地区返回不同的日历实现        if (aLocale.getLanguage().equals("zh")) {            return new BuddhistCalendar(zone, aLocale);        }        // ...其他实现        return new GregorianCalendar(zone, aLocale);    }}`**2. NumberFormat类**`java
+public abstract class NumberFormat extends Format {    // 工厂方法    public static NumberFormat getInstance() {        return getInstance(Locale.getDefault(), NUMBERSTYLE);    }        public static NumberFormat getCurrencyInstance() {        return getInstance(Locale.getDefault(), CURRENCYSTYLE);    }}`**3. Colections类**`java
+public class Collections {    // 工厂方法    public static <T> List<T> emptyList() {        return (List<T>) EMPTY_LIST;    }        public static <K, V> Map<K, V> emptyMap() {        return (Map<K, V>) EMPTY_MAP;    }}`**4. Stream API**`java
+List<String> list = Arrays.asList("a", "b", "c");Stream<String> stream = list.stream();  // 工厂方法`
+-
+
 ### 4.4.2 Spring框架中的应用
-+
-**1. BeanFactory**```java
-public interface BeanFactory {    Object getBean(String name) throws BeansException;    // 泛型工厂方法    <T> T getBean(Class<T> requiredType) throws BeansException;}```**2. FactoryBean接口**```java
-public interface FactoryBean<T> {    T getObject() throws Exception;    Class<?> getObjectType();    boolean isSingleton();}```**3. SqlSessionFactory**```java
-public interface SqlSessionFactory {    SqlSession openSession();    SqlSession openSession(boolean autoCommit);}```
-+
+
+- **1. BeanFactory**`java
+public interface BeanFactory {    Object getBean(String name) throws BeansException;    // 泛型工厂方法    <T> T getBean(Class<T> requiredType) throws BeansException;}`**2. FactoryBean接口**`java
+public interface FactoryBean<T> {    T getObject() throws Exception;    Class<?> getObjectType();    boolean isSingleton();}`**3. SqlSessionFactory**`java
+public interface SqlSessionFactory {    SqlSession openSession();    SqlSession openSession(boolean autoCommit);}`
+-
+
 ### 4.4.3 MyBatis中的工厂模式
-+
-**SqlSessionFactory创建SqlSession**```java
-public class DefaultSqlSessionFactory implements SqlSessionFactory {    @Override    public SqlSession openSession() {        return openSessionFromDataSource(            configuration.getDefaultExecutorType(),             null, false);    }        private SqlSession openSessionFromDataSource(        ExecutorType execType, TransactionIsolationLevel level, boolean autoCommit) {        Transaction tx = null;        try {            final Environment environment = configuration.getEnvironment();            TransactionFactory transactionFactory =                getTransactionFactoryFromEnvironment(environment);            tx = transactionFactory.newTransaction(                dataSource, level, autoCommit);            final Executor executor = configuration.newExecutor(tx, execType);            return new DefaultSqlSession(                configuration, executor, autoCommit);        } catch (Exception e) {            closeTransaction(tx);            throw ExceptionFactory.wrapException("Error opening session.  Cause: " + e, e);        } finally {            ErrorContext.instance().reset();        }    }}```
-+
+
+- **SqlSessionFactory创建SqlSession**`java
+public class DefaultSqlSessionFactory implements SqlSessionFactory {    @Override    public SqlSession openSession() {        return openSessionFromDataSource(            configuration.getDefaultExecutorType(),             null, false);    }        private SqlSession openSessionFromDataSource(        ExecutorType execType, TransactionIsolationLevel level, boolean autoCommit) {        Transaction tx = null;        try {            final Environment environment = configuration.getEnvironment();            TransactionFactory transactionFactory =                getTransactionFactoryFromEnvironment(environment);            tx = transactionFactory.newTransaction(                dataSource, level, autoCommit);            final Executor executor = configuration.newExecutor(tx, execType);            return new DefaultSqlSession(                configuration, executor, autoCommit);        } catch (Exception e) {            closeTransaction(tx);            throw ExceptionFactory.wrapException("Error opening session.  Cause: " + e, e);        } finally {            ErrorContext.instance().reset();        }    }}`
+-
+
 ### 4.4.4 日志框架中的应用
-+
-**Logback**```javapublic class LoggerFactory {    public static Logger getLogger(String name) {        return getILoggerFactory().getLogger(name);    }}```
-+
+
+- **Logback**`javapublic class LoggerFactory {    public static Logger getLogger(String name) {        return getILoggerFactory().getLogger(name);    }}`
+-
+
 ## 4.5 使用场景与案例
-+
+
+-
+
 ### 4.5.1 数据库连接工厂
-+
-```java
+
+-
+
+````java
 // 抽象产品public interface Connection {    void connect();    void disconnect();    void execute(String sql);}// 具体产品public class MySQLConnection implements Connection {    @Override    public void connect() { System.out.println("Connected to MySQL"); }    @Override    public void disconnect() { System.out.println("Disconnected from MySQL"); }    @Override    public void execute(String sql) { System.out.println("Executing: " + sql); }}public class PostgreSQLConnection implements Connection {    @Override    public void connect() { System.out.println("Connected to PostgreSQL"); }    @Override    public void disconnect() { System.out.println("Disconnected from PostgreSQL"); }    @Override    public void execute(String sql) { System.out.println("Executing: " + sql); }}// 抽象工厂public interface ConnectionFactory {    Connection createConnection();}// 具体工厂public class MySQLConnectionFactory implements ConnectionFactory {    @Override    public Connection createConnection() {        return new MySQLConnection();    }}public class PostgreSQLConnectionFactory implements ConnectionFactory {    @Override    public Connection createConnection() {        return new PostgreSQLConnection();    }}// 客户端代码public class DatabaseManager {    private ConnectionFactory factory;    private Connection connection;        public DatabaseManager(ConnectionFactory factory) {        this.factory = factory;    }        public void connect() {        connection = factory.createConnection();        connection.connect();    }}```
 +
 ### 4.5.2 图形编辑器
@@ -212,3 +235,4 @@ public class User {    private String name;    private int age;    private Strin
 +
 ---+
 在下一章中，我们将学习抽象工厂模式，它是对工厂方法模式的扩展，可以创建一系列相关的产品。
+````

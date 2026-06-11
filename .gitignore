@@ -1,0 +1,5 @@
+*.class
+
+java/docs/ELK-EFL/demos/ch12-audit/target/*/*.class
+
+java/docs/ELK-EFL/demos/ch12-audit/target/classes/com/example/audit/AuditLogger.class

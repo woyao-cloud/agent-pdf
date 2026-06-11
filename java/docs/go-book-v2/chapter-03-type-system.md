@@ -46,26 +46,7 @@ s2[0] = 999
 
 但Go的struct不是class的"阉割版"，它反映了Go设计者对"数据类型应该是什么"的不同理解。
 
-在Java或C++中，class是数据加方法的结合体。一个典型的Java类长这样：
-
-```java
-// Java的class：数据+方法绑定在一起
-public class Person {
-    private String name;
-    private int age;
-    
-    public Person(String name, int age) {
-        this.name = name;
-        this.age = age;
-    }
-    
-    public String greet() {
-        return "Hello, I'm " + name;
-    }
-}
-```
-
-Go的做法是把数据和操作数据的方法分离开。struct只管数据，方法单独定义：
+在Java或C++中，class是数据加方法的结合体——你定义一个Person类，其姓名、年龄属性和greet方法都绑在一起。在Go中，struct只管数据，方法单独定义：
 
 ```go
 // Go的struct：纯粹的数据结构
