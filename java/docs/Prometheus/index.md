@@ -10,7 +10,13 @@
 | [第1章：监控哲学的重塑](PART1-Principles/01-Pull-Model.md) | Pull 模型、多维数据模型、指标类型 | [Pull vs Push 对比实验](labs/ch01-pull-model/README.md) |
 | [第2章：TSDB 存储引擎揭秘](PART1-Principles/02-TSDB-Storage.md) | Head Block、Compaction、倒排索引、WAL | [TSDB 存储引擎实验](labs/ch02-tsdb/README.md) |
 
-### 第二部分：核心应用场景实战（待补充）
+### 第二部分：核心应用场景实战
+| 章节 | 主题 | 实验 |
+|------|------|------|
+| [第3章：微服务应用级监控](PART2-Scenarios/03-SpringBoot-Monitoring.md) | Micrometer、Spring Boot Actuator、高基数防护 | [Spring Boot 监控实验](labs/ch03-springboot/README.md) |
+| [第4章：Kubernetes 云原生监控](PART2-Scenarios/04-Kubernetes-Monitoring.md) | Prometheus Operator、Node Exporter、kube-state-metrics | [K8s 监控实验](labs/ch04-kubernetes/README.md) |
+| [第5章：黑盒监控与 SLA 探测](PART2-Scenarios/05-Blackbox-SLA.md) | Blackbox Exporter、证书监控、SLA 计算 | [黑盒监控实验](labs/ch05-blackbox/README.md) |
+| [第6章：PromQL 深度解析](PART2-Scenarios/06-PromQL-Deep-Dive.md) | 向量匹配、rate vs irate、Recording Rules | [PromQL 实验](labs/ch06-promql/README.md) |
 ### 第三部分：告警与高可用架构（待补充）
 ### 第四部分：生产问题排查与调优（待补充）
 ### 第五部分：开发者技能与工程化（待补充）

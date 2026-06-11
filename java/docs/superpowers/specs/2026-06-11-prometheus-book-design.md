@@ -481,10 +481,335 @@ scrape_configs:
     #     action: labeldrop
 ```
 
-### 文件与配置约定
+## Phase 2 设计
 
-- **Python 实验应用**：统一使用 `prometheus_client` 库（`pip install prometheus-client`）
-- **Docker Compose 版本**：所有 Compose 文件使用 version '3.8'
-- **端口规划**：ch01 系列用 9091~9099, 3001；ch02 系列用 9191~9199, 3002（避免冲突）
-- **数据持久化**：命名 volume 如 `prometheus_data_ch01`、`prometheus_data_ch02`，方便清理
-- **日志规范**：所有实验附带 `README.md`，包含实验目的、步骤、预期结果和观察要点
+Phase 2 覆盖第 3~6 章，聚焦核心应用场景实战。
+
+| 章节 | 主题 | 技术栈 | 实验类型 |
+|------|------|--------|---------|
+| 第3章 | Spring Boot 微服务监控 | Micrometer + Actuator + Prometheus | Docker Compose (含 Spring Boot 应用) |
+| 第4章 | Kubernetes 云原生监控 | Prometheus Operator + Node Exporter + cAdvisor + kube-state-metrics | kind + manifests 双方案 |
+| 第5章 | 黑盒监控与 SLA | Blackbox Exporter + PromQL | Docker Compose (外部探测) |
+| 第6章 | PromQL 深度解析 | Recording Rules + PromQL 调优 | Docker Compose + 专用数据集 |
+
+### 端口规划
+
+| 章节 | Prometheus | Grafana | 其他 |
+|------|-----------|---------|------|
+| ch03 (Spring Boot) | 9093 | 3003 | Spring Boot: 8085 |
+| ch04 (K8s) | 9094 | 3004 | — |
+| ch05 (Blackbox) | 9095 | 3005 | Blackbox: 9115, Web Target: 8086 |
+| ch06 (PromQL) | 9096 | 3006 | 数据生成器: 8087 |
+
+### 第 3 章设计：微服务应用级监控（Spring Boot）
+
+#### 电子书大纲
+
+**3.1 Micrometer 门面模式**
+- Micrometer 的核心定位：指标采集的 SLF4J
+- MeterRegistry、Meter、Counter、Timer、Gauge、DistributionSummary 概念
+- Spring Boot Actuator 自动装配：`micrometer-registry-prometheus`
+
+**3.2 内置指标详解**
+- JVM 指标：`jvm_memory_used_bytes`、`jvm_gc_pause_seconds`、`jvm_threads_live_threads`
+- Tomcat 指标：`tomcat_sessions_active_current_sessions`
+- 数据源指标：`hikaricp_connections_active`
+- HTTP 请求指标：`http_server_requests_seconds`（附带 method/uri/status 标签）
+
+**3.3 自定义业务指标**
+- `@Timed` 注解的使用
+- MeterRegistry 注入，手动注册 Counter/Timer/Gauge
+- 业务指标示例：`order_created_total`、`payment_processing_seconds`
+
+**3.4 潜在风险与优化**
+- **高基数灾难**：动态 URI path（如 `/api/user/12345`）作为 Label → OOM
+- **JVM Full GC 导致 scrape 超时**：应用暂停 → Prometheus 认为 DOWN
+- **Relabeling 防高基数**：`metric_relabel_configs` 正则泛化 URI
+- **Histogram Bucket 优化**：根据业务特征调整 bucket 边界
+
+**3.5 示例配置**
+```yaml
+# Prometheus relabeling 防止高基数
+metric_relabel_configs:
+  # 将 /api/user/12345/info 泛化为 /api/user/{id}/info
+  - source_labels: [__name__, uri]
+    regex: 'http_server_requests_seconds_count;/api/user/\d+.*'
+    target_label: uri
+    replacement: '/api/user/{id}/info'
+  # 丢弃 trace_id 等高基数标签
+  - regex: 'trace_id'
+    action: labeldrop
+```
+
+#### 实验环境
+
+```
+labs/ch03-springboot/
+├── docker-compose.yml
+├── README.md
+├── spring-boot-app/
+│   ├── Dockerfile
+│   ├── pom.xml
+│   ├── src/main/java/com/demo/
+│   │   ├── Application.java
+│   │   ├── controller/
+│   │   │   ├── UserController.java      # 含高基数风险的端点
+│   │   │   └── OrderController.java
+│   │   └── metrics/
+│   │       └── CustomMetricsConfig.java
+│   └── src/main/resources/
+│       └── application.yml
+├── prometheus/
+│   └── prometheus.yml                   # 含 relabeling 配置
+└── scripts/
+    └── generate-traffic.sh              # 模拟用户请求
+```
+
+**三个核心实验：**
+
+**实验 1：标准 JVM 指标采集**
+1. 启动 Spring Boot + Prometheus + Grafana
+2. 观察 `jvm_memory_used_bytes{area="heap"}`、`jvm_gc_pause_seconds`
+3. 导入 JVM (Micrometer) Dashboard
+
+**实验 2：高基数灾难 + Relabeling 防护**
+1. 通过 `generate-traffic.sh` 向 `UserController` 发送大量带动态 ID 的请求
+2. 观察 `http_server_requests_seconds_count` 的序列数膨胀
+3. 启用 `prometheus.yml` 中的 `metric_relabel_configs`
+4. 对比启用前后的序列数差异
+
+**实验 3：自定义业务指标**
+1. 验证 `order_created_total`、`payment_processing_seconds` 被 Prometheus 采集
+2. 在 Grafana 中创建业务指标面板
+
+### 第 4 章设计：Kubernetes 云原生监控体系
+
+#### 电子书大纲
+
+**4.1 Prometheus Operator 架构**
+- CRD 体系：Prometheus / ServiceMonitor / PodMonitor / PrometheusRule / Alertmanager
+- Operator 模式：自动管理 Prometheus 实例的创建、更新、销毁
+
+**4.2 核心组件协同**
+- **Node Exporter**：主机级指标，DaemonSet 部署
+- **cAdvisor**：内嵌在 Kubelet 中，`container_*` 指标
+- **kube-state-metrics**：K8s 对象状态指标
+- 三者的数据关联方式
+
+**4.3 潜在风险与优化**
+- API Server 压力：ServiceMonitor 数量过多导致频繁 reload
+- Pod 生命周期短：已销毁 Pod 的指标残留在 TSDB 中
+- 优化：调整 `scrape_interval`、RBAC 限制监听范围、`honor_labels` 的正确使用
+
+#### 实验环境
+
+提供两套方案：
+
+**方案 A：kind（推荐）**
+```
+labs/ch04-kubernetes/
+├── README.md
+├── kind/
+│   ├── kind-config.yaml         # 1 control + 1 worker
+│   ├── setup-cluster.sh         # 一键创建 kind 集群
+│   ├── teardown.sh
+│   └── deploy-all.sh            # 部署所有组件
+├── manifests/
+│   ├── namespace.yaml
+│   ├── prometheus/
+│   │   ├── operator.yaml        # Prometheus Operator
+│   │   ├── rbac.yaml
+│   │   ├── servicemonitor.yaml  # ServiceMonitor 定义
+│   │   └── prometheus.yaml      # Prometheus CR 实例
+│   ├── exporters/
+│   │   ├── node-exporter.yaml   # DaemonSet + Service + ServiceMonitor
+│   │   └── kube-state-metrics.yaml
+│   └── sample-app/
+│       ├── deployment.yaml      # 含 metrics 端点的演示应用
+│       └── service.yaml
+├── grafana/
+│   └── dashboards/
+│       ├── node-exporter-full.json
+│       └── k8s-cluster-monitoring.json
+└── scripts/
+    └── port-forward.sh          # kubectl port-forward 到 localhost
+```
+
+**方案 B：仅 Manifests**
+在已有 K8s 集群上直接 `kubectl apply -f manifests/` 即可。
+
+#### 四个核心实验
+
+**实验 1：Node Exporter 主机监控**
+- 使用 `rate(node_cpu_seconds_total[1m])` 计算 CPU 使用率
+- `node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100` 计算内存使用率
+- `node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100` 计算磁盘使用率
+
+**实验 2：cAdvisor 容器监控**
+- `container_cpu_usage_seconds_total{namespace="default"}` 容器 CPU
+- `container_memory_usage_bytes{namespace="default"}` 容器内存
+- `rate(container_cpu_usage_seconds_total[5m])` 容器 CPU 使用率
+
+**实验 3：kube-state-metrics 对象状态**
+- `kube_pod_status_phase{phase="Running"}` → 运行中的 Pod 数
+- `kube_deployment_status_replicas_available` → 可用副本数
+- `kube_node_status_condition{condition="Ready",status="true"}` → 节点健康
+
+**实验 4：ServiceMonitor 声明式服务发现**
+1. 部署 Sample App，查看没有 ServiceMonitor 时 Prometheus 是否抓取
+2. 创建 ServiceMonitor，确认 Prometheus 自动发现目标
+3. 删除 ServiceMonitor，确认 scrape 自动停止
+
+### 第 5 章设计：黑盒监控与 SLA 探测
+
+#### 电子书大纲
+
+**5.1 黑盒 vs 白盒监控**
+- 白盒：应用内部的 /metrics 端点，看到的是"我有什么"
+- 黑盒：从外部探测，看到的是"用户能访问吗"
+- 两者互补：白盒定位问题，黑盒感知影响
+
+**5.2 Blackbox Exporter 的探测协议**
+- **HTTP**：状态码、响应时间、SSL 证书信息、重定向追踪
+- **TCP**：端口可达性、连接延迟
+- **ICMP**：Ping 延迟、丢包率
+- **DNS**：域名解析时间、SOA 记录查询
+
+**5.3 模块化配置**
+```yaml
+modules:
+  http_2xx:
+    prober: http
+    http:
+      valid_status_codes: [200, 201, 302]
+      follow_redirects: true
+  tcp_connect:
+    prober: tcp
+  icmp:
+    prober: icmp
+  dns_query:
+    prober: dns
+    dns:
+      query_type: A
+```
+
+**5.4 SLA 计算 PromQL**
+```promql
+# 30 天滚动窗口 SLA
+avg_over_time(probe_success{job="blackbox-http"}[30d]) * 100
+
+# 99.9% 黄金指标告警
+avg_over_time(probe_success{job="blackbox-http"}[30d]) * 100 < 99.9
+```
+
+#### 实验环境
+
+```
+labs/ch05-blackbox/
+├── docker-compose.yml
+├── README.md
+├── blackbox-exporter/
+│   └── config.yml
+├── prometheus/
+│   ├── prometheus.yml
+│   └── rules/
+│       └── sla-rules.yml     # Recording Rules
+├── web-target/
+│   ├── Dockerfile
+│   └── default.conf
+└── scripts/
+    └── simulate-outage.sh
+```
+
+#### 三个核心实验
+
+**实验 1：多种协议探测**
+```bash
+curl 'http://localhost:9115/probe?module=http_2xx&target=http://web-target'
+curl 'http://localhost:9115/probe?module=icmp&target=8.8.8.8'
+curl 'http://localhost:9115/probe?module=dns_query&target=google.com'
+```
+
+**实验 2：证书过期监控**
+- `probe_ssl_earliest_cert_expiry` → Unix 时间戳
+- `probe_ssl_earliest_cert_expiry - time()` → 剩余秒数
+- `(probe_ssl_earliest_cert_expiry - time()) / 86400 < 30` → 30 天内过期告警
+
+**实验 3：SLA 可用性计算**
+- Recording Rule 预计算 30d / 7d / 24h 滚动 SLA
+- `simulate-outage.sh` 模拟目标宕机 → 观察 SLA 百分比下降
+
+### 第 6 章设计：PromQL 深度解析与性能调优
+
+#### 电子书大纲
+
+**6.1 向量类型与匹配机制**
+- Instant Vector vs Range Vector
+- `on()` 和 `ignoring()` 的语义
+- `group_left` 多对一 / `group_right` 一对多
+
+**6.2 rate() vs irate()**
+- `rate[1m]`：窗口内平均速率，平滑但有延迟
+- `irate[5m]`：最后两点的瞬时速率，敏感但锯齿
+- 适用场景：CPU 突刺用 irate，QPS 趋势用 rate
+
+**6.3 性能杀手排查**
+- 未限制的通配符：`sum(metric{})` → 扫描全量序列
+- Range Vector 时间窗口：窗口越长 → 内存越大
+- Subquery：`avg(rate(metric[5m])[30m:1m])` → 嵌套查询代价翻倍
+
+**6.4 Recording Rules**
+```yaml
+groups:
+  - name: default
+    rules:
+      - record: job:http_requests:rate5m
+        expr: sum(rate(http_requests_total[5m])) by (job)
+```
+
+#### 实验环境
+
+```
+labs/ch06-promql/
+├── docker-compose.yml
+├── README.md
+├── prometheus/
+│   ├── prometheus.yml
+│   └── rules/
+│       ├── recording-rules.yml
+│       └── demo-rules.yml
+├── promql-generator/
+│   ├── Dockerfile
+│   └── generator.py           # 多模式数据
+├── datasets/
+│   └── queries.md             # PromQL 练习集
+└── scripts/
+    ├── benchmark-query.sh
+    └── explain-vector.sh
+```
+
+#### 三个核心实验
+
+**实验 1：rate vs irate 对比**
+- 生成带瞬发突刺的指标
+- 同时在 Grafana 叠加 `rate[1m]` 和 `irate[5m]`
+- 观察差异
+
+**实验 2：Recording Rules 性能对比**
+- 不启用 recording rules → 记录查询耗时
+- 启用 recording rules → 查询预计算结果
+- 对比差异
+
+**实验 3：向量匹配练习**
+```promql
+# 每个 method 的请求数占比
+http_requests_total / on() group_left sum(http_requests_total) by (method)
+```
+
+## 文件与配置约定
+
+- Python 实验应用：统一使用 `prometheus_client` 库（`pip install prometheus-client`）
+- Docker Compose 版本：所有 Compose 文件使用 version '3.8'
+- 端口规划：每章递增：ch01→9091/3001/5001/8081, ch02→9092/3002/8083/8084, ch03→9093/3003/8085, ch04→9094/3004, ch05→9095/3005/9115/8086, ch06→9096/3006/8087
+- 数据持久化：命名 volume 如 `prometheus_data_ch0X`
+- 日志规范：所有实验附带 README.md，包含实验目的、步骤、预期结果和观察要点
