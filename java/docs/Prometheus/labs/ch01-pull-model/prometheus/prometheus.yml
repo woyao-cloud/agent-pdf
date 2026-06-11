@@ -1,0 +1,35 @@
+# prometheus.yml — 第1章 Pull 模型实验配置
+#
+# 配置说明：
+# - scrape pull-app: 展示 Pull 模型的正常工作方式
+# - scrape statsd-exporter: 展示 Push-to-Pull 桥接模式
+# - scrape push-server: 展示 Push 模型暴露的 /metrics（对比用）
+
+global:
+  scrape_interval: 10s      # 每 10s 拉取一次
+  evaluation_interval: 10s   # 每 10s 评估一次告警规则
+  scrape_timeout: 5s         # 拉取超时 5s
+
+scrape_configs:
+  # 演示 1：标准的 Pull 模型应用
+  - job_name: 'pull-app'
+    static_configs:
+      - targets: ['pull-app:8080']
+    metrics_path: '/metrics'
+
+  # 演示 2：StatsD Exporter（Push-to-Pull 桥接）
+  - job_name: 'statsd-exporter'
+    static_configs:
+      - targets: ['statsd-exporter:9102']
+    metrics_path: '/metrics'
+
+  # 演示 3：Push 服务器的 /metrics（展示 Push 也能被 Pull 采集）
+  - job_name: 'push-server'
+    static_configs:
+      - targets: ['push-server:5000']
+    metrics_path: '/metrics'
+
+  # Prometheus 自身健康指标
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

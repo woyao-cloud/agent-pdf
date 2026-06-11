@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # 模拟 Push 模型的指标接收服务器
+  push-server:
+    build: ./push-app
+    container_name: prom-push-server
+    ports:
+      - "5001:5000"
+    networks:
+      - prom-net
+
+  # 展示 Pull 模型的标准应用
+  pull-app:
+    build: ./pull-app
+    container_name: prom-pull-app
+    ports:
+      - "8081:8080"
+    networks:
+      - prom-net
+
+  # StatsD Exporter — Push-to-Pull 桥接演示
+  statsd-exporter:
+    image: prom/statsd-exporter:v0.22.8
+    container_name: prom-statsd-exporter
+    ports:
+      - "9102:9102"     # /metrics 端点
+      - "9125:9125/udp" # StatsD UDP 接收
+    networks:
+      - prom-net
+
+  # Prometheus 核心
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch01
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_ch01:/prometheus
+    ports:
+      - "9091:9090"
+    depends_on:
+      - pull-app
+      - push-server
+      - statsd-exporter
+    networks:
+      - prom-net
+
+  # Grafana 可视化
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch01
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana_data_ch01:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - prom-net
+
+networks:
+  prom-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch01:
+  grafana_data_ch01:

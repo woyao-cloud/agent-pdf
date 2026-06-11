@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # 正常指标生成器（低基数对照组）
+  data-generator:
+    build: ./data-generator
+    container_name: prom-data-gen
+    ports:
+      - "8083:8081"
+    networks:
+      - tsdb-net
+
+  # 高基数指标生成器（实验组）
+  high-card-gen:
+    build: ./high-card-gen
+    container_name: prom-high-card
+    ports:
+      - "8084:8082"
+    environment:
+      - CARD_ENDPOINT=5
+      - CARD_USER=100        # ← 修改这个值观察基数影响
+      - CARD_REGION=3
+      - CARD_VERSION=2
+      # 总序列数: 5 × 100 × 3 × 2 = 3000
+    networks:
+      - tsdb-net
+
+  # Prometheus（启用 Admin API 和短 retention）
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch02
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=1h'
+      - '--storage.tsdb.wal-compression'
+      - '--storage.tsdb.min-block-duration=5m'
+      - '--storage.tsdb.max-block-duration=30m'
+      - '--web.enable-admin-api'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_ch02:/prometheus
+    ports:
+      - "9092:9090"
+    depends_on:
+      - data-generator
+      - high-card-gen
+    networks:
+      - tsdb-net
+
+  # Promtool 工具容器（用于 TSDB 分析）
+  promtool:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch02-tool
+    entrypoint: ["/bin/sh"]
+    volumes:
+      - prometheus_data_ch02:/prometheus:ro
+      - ./scripts:/scripts
+    networks:
+      - tsdb-net
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch02
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=light
+    volumes:
+      - grafana_data_ch02:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - tsdb-net
+
+networks:
+  tsdb-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch02:
+  grafana_data_ch02:

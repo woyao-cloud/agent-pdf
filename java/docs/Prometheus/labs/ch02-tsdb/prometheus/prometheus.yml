@@ -1,0 +1,37 @@
+# prometheus.yml — 第2章 TSDB 存储引擎实验配置
+#
+# 特性配置：
+# - web.enable-admin-api: 启用 /api/v1/status/tsdb 等管理接口
+# - wal-compression: 启用 WAL 压缩
+# - retention.time=1h: 缩短保留时间，加速 Compaction 观察
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+  scrape_timeout: 4s
+
+scrape_configs:
+  # 正常的低基数应用指标
+  - job_name: 'data-generator'
+    static_configs:
+      - targets: ['data-generator:8081']
+
+  # 高基数演示应用
+  - job_name: 'high-card-gen'
+    scrape_interval: 5s
+    scrape_timeout: 4s
+    static_configs:
+      - targets: ['high-card-gen:8082']
+    # 实验观察点：取消注释下面的规则来演示高基数防护
+    # metric_relabel_configs:
+    #   # 丢弃 user_id 标签，将高基数指标降为低基数
+    #   - regex: 'user_id'
+    #     action: labeldrop
+    #   # 丢弃 version 标签
+    #   - regex: 'version'
+    #     action: labeldrop
+
+  # Prometheus 自身指标（包含 TSDB 统计信息）
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
