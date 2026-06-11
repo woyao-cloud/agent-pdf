@@ -1,0 +1,42 @@
+groups:
+  - name: demo
+    rules:
+      - alert: HighCPULoad
+        expr: demo_cpu_percent > 80
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} CPU > 80%"
+
+      - alert: HighMemoryLoad
+        expr: demo_memory_percent > 85
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Instance {{ $labels.instance }} Memory > 85%"
+
+      - alert: DatacenterDown
+        expr: demo_datacenter_down > 0
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Datacenter {{ $labels.datacenter }} is DOWN"
+
+      - alert: HostDown
+        expr: demo_host_down > 0
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host {{ $labels.instance }} in {{ $labels.datacenter }} is DOWN"
+
+      - alert: RequestErrorRate
+        expr: rate(demo_errors_total[5m]) / rate(demo_requests_total[5m]) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error rate > 5% on {{ $labels.instance }}"

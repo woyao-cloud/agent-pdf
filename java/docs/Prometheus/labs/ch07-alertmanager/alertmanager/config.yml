@@ -1,0 +1,47 @@
+route:
+  receiver: 'default'
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 4h
+  routes:
+    - match:
+        severity: critical
+      receiver: 'webhook-critical'
+      continue: true
+    - match:
+        severity: warning
+      receiver: 'email-warning'
+    - match:
+        severity: info
+      receiver: 'default'
+
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://webhook-receiver:5000/alert'
+        send_resolved: true
+
+  - name: 'webhook-critical'
+    webhook_configs:
+      - url: 'http://webhook-receiver:5000/alert'
+        send_resolved: true
+
+  - name: 'email-warning'
+    email_configs:
+      - to: 'dev-team@example.com'
+        from: 'alertmanager@example.com'
+        smarthost: 'mailhog:1025'
+        require_tls: false
+        send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'cluster']
+  - source_match:
+      alertname: DatacenterDown
+    target_match:
+      alertname: HostDown
+    equal: ['datacenter']

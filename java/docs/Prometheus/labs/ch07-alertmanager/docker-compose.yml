@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # 告警模拟数据生成器
+  alert-generator:
+    build: ./alert-generator
+    container_name: prom-alert-gen
+    ports:
+      - "8088:8088"
+    networks:
+      - alert-net
+
+  # Prometheus（含告警规则）
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prom-ch07
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
+      - prometheus_data_ch07:/prometheus
+    ports:
+      - "9097:9090"
+    depends_on:
+      - alert-generator
+    networks:
+      - alert-net
+
+  # Alertmanager
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: prom-am
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--log.level=debug'
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml
+    ports:
+      - "9093:9093"
+    depends_on:
+      - webhook-receiver
+    networks:
+      - alert-net
+
+  # Webhook 告警接收器
+  webhook-receiver:
+    build: ./webhook-receiver
+    container_name: prom-webhook
+    ports:
+      - "5002:5000"
+    networks:
+      - alert-net
+
+  # MailHog（SMTP 捕获）
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: prom-mailhog
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    networks:
+      - alert-net
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: prom-grafana-ch07
+    ports:
+      - "3007:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana_data_ch07:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - alert-net
+
+networks:
+  alert-net:
+    driver: bridge
+
+volumes:
+  prometheus_data_ch07:
+  grafana_data_ch07:

@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'demo-app'
+    static_configs:
+      - targets: ['localhost:9090']
+    # 模拟不同的指标值，使两个 Prometheus 的数据不同
+    metric_relabel_configs:
+      - source_labels: [instance]
+        regex: '.*'
+        target_label: region
+        replacement: 'us-east'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
