@@ -3,5 +3,20 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/java/andrej-karpathy-skills" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/aws-eks-devops" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/aws-eks-kubernetes-masterclass" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/aws-eks-master" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/helm-charts" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/helm-masterclass" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/terraform-aws-s3-website" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/terraform-on-aws-ec2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/terraform-on-aws-eks" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/google-cloud-certifications" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/google-kubernetes-engine" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/hashicorp-certified-terraform-associate" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/terraform-gcp-devops" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/terraform-gcp-gke-app-devops" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/terraform-on-google-cloud" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/stacksimplify/terraform-on-google-kubernetes-engine" vcs="Git" />
   </component>
 </project>
