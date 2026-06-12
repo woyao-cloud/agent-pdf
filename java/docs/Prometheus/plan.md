@@ -154,3 +154,5 @@
 * 附录 B：生产级 Prometheus + Thanos + Grafana Helm Chart 部署配置模板
 * 附录 C：Prometheus 常见报错日志字典与排查 Checklist
 * 附录 D：面试高频：时序数据库底层原理与 PromQL 陷阱面试题解析
+* 附录 E：从 Prometheus 到 OpenTelemetry 迁移指南
+* 附录 F：参考资料与推荐阅读

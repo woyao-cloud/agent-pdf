@@ -33,7 +33,7 @@
 | [第11章：自定义 Exporter 开发](PART5-Engineering/11-Custom-Exporter.md) | Go Collector 接口、Python 实现、异步缓存最佳实践 | [Exporter 实验](labs/ch11-custom-exporter/README.md) |
 | [第12章：可观测性三大支柱联动](PART5-Engineering/12-Observability.md) | Exemplars、Loki 集成、Metrics→Logs→Traces | [O11y 实验](labs/ch12-o11y/README.md) |
 | [第13章：监控体系工程化规范](PART5-Engineering/13-Engineering.md) | 命名规范、告警分级、RED/USE 方法论 | — |
-| [附录](PART5-Engineering/appendices/) | PromQL 速查表、Helm Chart、报错字典、面试题 | — |
+| [附录](PART5-Engineering/appendices/) | PromQL 速查表、Helm Chart、报错字典、面试题、OTel 迁移指南、参考资料 | — |
 
 ## 快速开始
 

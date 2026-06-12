@@ -78,6 +78,154 @@ thanos query \
   --store=prometheus-sidecar-2:10902
 ```
 
+### 完整 Docker Compose 部署
+
+```yaml
+# docker-compose-thanos.yml
+version: '3.8'
+services:
+  # Prometheus + Sidecar
+  prometheus-us:
+    image: prom/prometheus:v2.48.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      # 必须启用 Admin API 供 Sidecar 读取
+      - --web.enable-admin-api
+    volumes:
+      - prometheus-us-data:/prometheus
+
+  thanos-sidecar-us:
+    image: quay.io/thanos/thanos:v0.33.0
+    command:
+      - sidecar
+      - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/objstore.yml
+      - --prometheus.url=http://prometheus-us:9090
+      - --http-address=0.0.0.0:10902
+      - --grpc-address=0.0.0.0:10901
+    volumes:
+      - prometheus-us-data:/prometheus
+      - ./objstore.yml:/etc/thanos/objstore.yml
+    depends_on:
+      - prometheus-us
+
+  # 另一个集群
+  prometheus-eu:
+    image: prom/prometheus:v2.48.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-admin-api
+    volumes:
+      - prometheus-eu-data:/prometheus
+
+  thanos-sidecar-eu:
+    image: quay.io/thanos/thanos:v0.33.0
+    command:
+      - sidecar
+      - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/objstore.yml
+      - --prometheus.url=http://prometheus-eu:9090
+      - --http-address=0.0.0.0:10902
+      - --grpc-address=0.0.0.0:10901
+    volumes:
+      - prometheus-eu-data:/prometheus
+      - ./objstore.yml:/etc/thanos/objstore.yml
+    depends_on:
+      - prometheus-eu
+
+  # Store Gateway（从对象存储读取历史数据）
+  thanos-store:
+    image: quay.io/thanos/thanos:v0.33.0
+    command:
+      - store
+      - --data-dir=/data
+      - --objstore.config-file=/etc/thanos/objstore.yml
+      - --http-address=0.0.0.0:10906
+      - --grpc-address=0.0.0.0:10907
+    volumes:
+      - thanos-store-data:/data
+      - ./objstore.yml:/etc/thanos/objstore.yml
+
+  # Query（全局聚合查询）
+  thanos-query:
+    image: quay.io/thanos/thanos:v0.33.0
+    command:
+      - query
+      - --store=thanos-sidecar-us:10901
+      - --store=thanos-sidecar-eu:10901
+      - --store=thanos-store:10907
+      - --http-address=0.0.0.0:9090
+      - --query.replica-label=replica
+    ports:
+      - "9090:9090"
+
+  # Compactor（下采样和压缩）
+  thanos-compactor:
+    image: quay.io/thanos/thanos:v0.33.0
+    command:
+      - compact
+      - --data-dir=/data
+      - --objstore.config-file=/etc/thanos/objstore.yml
+      - --http-address=0.0.0.0:10910
+      - --retention.resolution-5m=30d
+      - --retention.resolution-1h=90d
+    volumes:
+      - thanos-compactor-data:/data
+      - ./objstore.yml:/etc/thanos/objstore.yml
+
+volumes:
+  prometheus-us-data:
+  prometheus-eu-data:
+  thanos-store-data:
+  thanos-compactor-data:
+```
+
+### 下采样策略
+
+Thanos Compactor 支持三档数据精度，显著降低历史数据的存储和查询成本：
+
+| 精度 | 数据点间隔 | 保留时间 | 存储占比 |
+|:----:|:---------:|:--------:|:--------:|
+| 原始 | 15s（取决于 scrape_interval） | 永久 | 100% |
+| 5m 下采样 | 每 5 分钟一个点 | 30 天 | ~5% |
+| 1h 下采样 | 每 1 小时一个点 | 90 天 | ~0.4% |
+
+```bash
+# 查看下采样状态
+thanos tools bucket inspect --objstore.config-file=objstore.yml
+
+# 手动触发压缩
+thanos compact --data-dir=/data --objstore.config-file=objstore.yml
+```
+
+### 对象存储配置
+
+```yaml
+# objstore.yml
+type: S3
+config:
+  bucket: thanos-metrics
+  endpoint: s3.amazonaws.com
+  region: us-east-1
+  access_key: ${AWS_ACCESS_KEY}
+  secret_key: ${AWS_SECRET_KEY}
+  # 可选：使用 MinIO（自建对象存储）
+  # endpoint: minio:9000
+  # insecure: true
+```
+
+Grafana 接入 Thanos Query：
+
+```
+数据源类型: Prometheus
+URL: http://thanos-query:9090
+Access: proxy
+```
+
 ## 8.3 VictoriaMetrics
 
 ### 单节点模式
@@ -96,11 +244,61 @@ remote_write:
 URL: http://victoriametrics:8428
 ```
 
+### Docker Compose 部署
+
+```yaml
+# docker-compose-vm.yml
+version: '3.8'
+services:
+  victoriametrics:
+    image: victoriametrics/victoriaMetrics:v1.95.0
+    command:
+      - -storageDataPath=/storage
+      - -httpListenAddr=:8428
+      - -retentionPeriod=90d        # 保留 90 天
+      - -search.maxQueryDuration=1m
+    ports:
+      - "8428:8428"
+    volumes:
+      - vm-data:/storage
+    restart: always
+
+  # 使用 vmagent 替代 Prometheus 抓取（推荐）
+  vmagent:
+    image: victoriametrics/vmagent:v1.95.0
+    command:
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+      - -promscrape.config=/etc/vmagent/scrape.yml
+    volumes:
+      - ./scrape.yml:/etc/vmagent/scrape.yml
+    restart: always
+
+volumes:
+  vm-data:
+```
+
 ### 优势
 
 - **更高的压缩率**：VictoriaMetrics 的磁盘占用通常只有 Prometheus TSDB 的 1/3 到 1/5
 - **更低的内存占用**：同样的数据量，VM 内存占用更低
 - **更快的查询速度**：特别是大时间范围的聚合查询
+
+### VictoriaMetrics 特有功能
+
+**MetricsQL**：VM 对 PromQL 的增强版本，支持更简洁的语法：
+
+```promql
+# 同环比（一行搞定）
+rate(http_requests_total[5m]) - rate(http_requests_total[5m] offset 1w)
+
+# 默认值填充（避免图表空洞）
+avg_over_time(probe_success[5m]) default 0
+
+# 自动分桶
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+# VM 还支持 share 函数查看占比
+share_gt(http_request_duration_seconds, 1)  # 耗时 > 1s 的请求占比
+```
 
 ## 8.4 架构选型指南
 
