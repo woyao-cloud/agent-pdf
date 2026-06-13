@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  cli-test-18:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: node /app/dist/cli.js --help
+
+  cli-test-20:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: node /app/dist/cli.js --help
