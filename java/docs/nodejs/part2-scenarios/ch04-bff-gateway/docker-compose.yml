@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    depends_on:
+      - downstream
+
+  downstream:
+    image: node:20-alpine
+    command: >
+      node -e "
+        const http = require('http');
+        const server = http.createServer((req, res) => {
+          const url = req.url;
+          if (url.startsWith('/users/')) {
+            if (url.includes('slow')) {
+              setTimeout(() => {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ id: '1', name: 'Slow User', email: 'slow@test.com' }));
+              }, 5000);
+              return;
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            if (url.includes('/orders')) {
+              res.end(JSON.stringify([
+                { id: 'o1', userId: '1', amount: 99.99, status: 'shipped' }
+              ]));
+            } else {
+              res.end(JSON.stringify({ id: '1', name: 'Mock User', email: 'test@test.com' }));
+            }
+          } else {
+            res.writeHead(404);
+            res.end('Not found');
+          }
+        });
+        server.listen(8080);
+        console.log('Downstream running on 8080');
+      "
+    ports:
+      - "8081:8080"

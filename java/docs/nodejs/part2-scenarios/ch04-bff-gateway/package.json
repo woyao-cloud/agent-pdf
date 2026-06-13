@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/app.ts",
     "start": "tsx src/app.ts",
+    "build": "tsc",
     "test": "jest --config jest.config.ts"
   },
   "dependencies": {
