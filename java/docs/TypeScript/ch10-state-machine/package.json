@@ -1,0 +1,17 @@
+{
+  "name": "state-machine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "jest --config jest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "expect-type": "^0.19.0",
+    "@types/node": "^20.14.0"
+  }
+}
