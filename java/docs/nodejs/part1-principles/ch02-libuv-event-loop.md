@@ -127,7 +127,7 @@ Node.js 中有两个微任务级别的队列，它们在事件循环的**每个�
 - 如果在回调中递归调用 `process.nextTick()`，nextTick 队列会不断增长，事件循环将一直停留在"清空 nextTick 队列"的步骤，永远无法进入 poll 阶段处理 I/O 事件。
 - 深层的 Promise 链也会产生同样的问题——微任务会持续执行，阻塞事件循环前进。
 
-Node.js 为此引入了一个内部保护机制：`process.nextTick` 的递归深度受 `process.maxTickDepth`（默认 1000）限制，但这仅是一个软限制，超过后输出警告而非抛出错误。
+Node.js 为此引入了一个内部保护机制：当 `process.nextTick` 的递归深度超过约 1000 层时，Node.js 会在 stderr 输出 `"recursive process.nextTick detected"` 警告，但这仅是一个软限制，不会抛出错误。
 
 ```typescript
 // 危险：无限递归 process.nextTick 会阻塞 I/O
@@ -146,7 +146,7 @@ function busyLoop() {
 
 如 2.3 节所述，递归的 `process.nextTick()` 是事件循环最常见的陷阱之一。假设一个日志库在每次 `nextTick` 中写日志并再次注册 `nextTick`，会导致文件描述符永远无法被读取或写入——因为事件循环永远无法进入 poll 阶段。
 
-**检测方式**：如果 Node.js 输出 `MaxListenersExceededWarning` 或应用响应缓慢但 CPU 使用率不高，可怀疑 nextTick 队列耗尽问题。
+**检测方式**：如果 Node.js 输出 `"recursive process.nextTick detected"` 警告或应用响应缓慢但 CPU 使用率不高，可检查事件循环延迟指标确认 nextTick 队列耗尽问题。
 
 ### 2.4.2 Promise 链导致微任务队列饥饿
 
@@ -259,14 +259,14 @@ UV_THREADPOOL_SIZE=128 node app.js
 ```typescript
 // 热路径上避免不必要的 await
 // 不推荐：每次调用都会产生微任务
-async function handleRequest(data: Buffer) {
+async function handleRequest(data: Buffer): Promise<Buffer> {
     const result = await transform(data);
     return result;
 }
 
-// 推荐：同步函数在热路径上更高效
-function handleRequest(data: Buffer): Buffer {
-    return transform(data); // 如果 transform 本身就是同步的
+// 推荐：如果 transform 本身就是同步的，不要用 async
+function handleRequestSync(data: Buffer): Buffer {
+    return transform(data);
 }
 ```
 
@@ -402,7 +402,7 @@ async function* pollingGenerator() {
 ```typescript
 // event-loop-monitor.ts
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { writeFileSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
 
 const histogram = monitorEventLoopDelay({ resolution: 20 });
 histogram.enable();
@@ -421,24 +421,23 @@ setInterval(() => {
 
     // 延迟过高时写入诊断日志
     if (histogram.percentile(99) / 1e6 > 100) {
-        writeFileSync(
+        await appendFile(
             'event-loop-alert.log',
             `${new Date().toISOString()} ${JSON.stringify(metrics)}\n`,
-            { flag: 'a' },
         );
     }
 }, 10000);
 
-// 模拟一些异步操作
 setInterval(async () => {
     // 模拟数据库查询
     await new Promise((resolve) => setTimeout(resolve, 50));
 }, 100);
 
-// 模拟文件 I/O
+// 模拟文件 I/O（使用异步版本避免阻塞事件循环）
 setInterval(() => {
-    const { execSync } = require('node:child_process');
-    execSync('node -e "setTimeout(() => {}, 10)"');
+    import('node:fs').then(({ readFile }) => {
+        readFile(__filename, () => {});
+    });
 }, 500);
 ```
 
@@ -515,8 +514,6 @@ describe('Event Loop Phase Order', () => {
 
     it('should prioritize setImmediate over setTimeout in I/O callback', (done) => {
         // 在 I/O 回调中，setImmediate 总是先于 setTimeout(fn, 0)
-        const fs = require('node:fs');
-        const path = require('node:path');
         const order: string[] = [];
 
         // 读取自身，触发 I/O 回调
