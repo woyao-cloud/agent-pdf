@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  node-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
+      - OTEL_SERVICE_NAME=node-app
+      - LOG_LEVEL=info
+    depends_on:
+      tempo:
+        condition: service_started
+      prometheus:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+  tempo:
+    image: grafana/tempo:2.4.0
+    ports:
+      - "4318:4318"   # OTLP HTTP
+    command:
+      - "--target=single"
+      - "--auth.enabled=false"
+      - "--storage.trace.backend=local"
+      - "--storage.trace.local.path=/var/tempo/traces"
+      - "--distributor.receiver.zipkin.disable=true"
+      - "--distributor.receiver.jaeger.disable=true"
+
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - "3100:3100"
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"

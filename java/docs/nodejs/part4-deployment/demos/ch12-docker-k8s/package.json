@@ -1,0 +1,27 @@
+{
+  "name": "docker-k8s-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "start": "node dist/app.js",
+    "build": "tsc",
+    "test": "jest --config jest.config.ts",
+    "docker:build": "docker build -t node-app:latest .",
+    "docker:run": "docker run -p 3000:3000 node-app:latest",
+    "pm2:start": "pm2 start ecosystem.config.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "pino": "^9.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "@types/node": "^20.14.0",
+    "@types/express": "^4.17.21"
+  }
+}

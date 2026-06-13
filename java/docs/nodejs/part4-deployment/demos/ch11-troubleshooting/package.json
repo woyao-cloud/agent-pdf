@@ -1,0 +1,28 @@
+{
+  "name": "troubleshooting-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "leak": "tsx src/leak-demo.ts",
+    "cpu": "tsx src/cpu-demo.ts",
+    "monitor": "tsx src/monitor.ts",
+    "build": "tsc",
+    "test": "jest --config jest.config.ts"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "heapdump": "^0.3.15",
+    "pino": "^9.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "@types/node": "^20.14.0",
+    "@types/express": "^4.17.21",
+    "@types/heapdump": "^0.3.6"
+  }
+}
