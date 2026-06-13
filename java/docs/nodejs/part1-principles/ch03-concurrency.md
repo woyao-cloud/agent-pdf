@@ -89,8 +89,8 @@ worker.postMessage(sharedBuffer); // 传递的是引用，不是副本
 结构化克隆算法的限制包括：
 - 不支持 `Function`、`Symbol`
 - 不支持 `WeakMap`、`WeakRef`
-- 不能克隆 `Error` 的完整堆栈信息
-- 循环引用会以 `null` 替代（不报错，但丢失数据）
+- `Error` 对象在克隆后堆栈信息可能被截断
+- 循环引用会抛出 `DataCloneError` 而非静默丢失数据
 
 ### 3.3.3 共享内存竞争条件
 
@@ -360,15 +360,21 @@ export class WorkerPool {
   private workers: Worker[] = [];
   private queue: Array<{ data: any; resolve: (v: any) => void; reject: (e: Error) => void }> = [];
   private busyWorkers: Set<Worker> = new Set();
+  private pendingTasks: Array<{ resolve: (v: any) => void; reject: (e: Error) => void }> = [];
 
   constructor(workerFile: string, poolSize = cpus().length) {
     for (let i = 0; i < poolSize; i++) {
       const worker = new Worker(workerFile);
       worker.on('message', (result) => {
+        // FIFO 顺序，取最早未完成的 Promise 并 resolve
+        const pending = this.pendingTasks.shift();
+        pending?.resolve(result);
         this.busyWorkers.delete(worker);
         this.processNext();
       });
       worker.on('error', (err) => {
+        const pending = this.pendingTasks.shift();
+        pending?.reject(err);
         this.busyWorkers.delete(worker);
         this.processNext();
       });
@@ -388,6 +394,7 @@ export class WorkerPool {
     if (!worker || this.queue.length === 0) return;
     this.busyWorkers.add(worker);
     const task = this.queue.shift()!;
+    this.pendingTasks.push({ resolve: task.resolve, reject: task.reject });
     worker.postMessage(task.data);
   }
 
