@@ -1,0 +1,83 @@
+<h2>Node.js 书籍 — 整体方案对比</h2>
+<p class="subtitle">基于你的需求：深度参考书 · TypeScript · 中文 · 每场景独立 Docker Compose</p>
+
+<div class="section">
+  <h3>📐 建议的目录结构</h3>
+  <pre style="background:#1a1a2e;padding:16px;border-radius:8px;font-size:13px;line-height:1.6">
+docs/nodejs/
+├── part1-principles/          # 底层原理
+│   ├── ch01-v8-libuv.md
+│   └── ch02-event-loop-cluster.md
+├── part2-scenarios/           # 四大场景
+│   ├── ch03-bff-gateway/
+│   │   ├── index.md
+│   │   ├── src/
+│   │   ├── docker-compose.yml
+│   │   └── tests/
+│   ├── ch04-realtime-im/
+│   ├── ch05-ssr/
+│   └── ch06-cli-tools/
+├── part3-testing/             # 测试工程化
+│   ├── ch07-jest-core.md
+│   ├── ch08-mock-art.md
+│   └── ch09-advanced-test.md
+├── part4-deployment/          # 部署与运维
+│   ├── ch10-troubleshooting.md
+│   ├── ch11-docker-k8s.md
+│   └── ch12-observability.md
+├── part5-advanced/            # 进阶与生态
+│   ├── ch13-typescript.md
+│   ├── ch14-native-binding.md
+│   └── ch15-edge-serverless.md
+└── appendices/
+    ├── appendix-a-core-modules.md
+    ├── appendix-b-jest-cheatsheet.md
+    ├── appendix-c-node-args.md
+    └── appendix-d-migration-guide.md
+  </pre>
+</div>
+
+<div class="section">
+  <h3>三种实现路径</h3>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>顺序逐章生成</h3>
+      <p>从 Part 1 → Part 5 逐章推进。每章独立成文，代码示例内嵌在 markdown 中，Docker Compose 文件随场景章节一起生成。</p>
+      <div class="pros-cons" style="margin-top:8px">
+        <div class="pros"><h4>优点</h4><ul><li>线性推进，逻辑连贯</li><li>每章可独立交付</li><li>前期即可产出高质量内容</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>代码示例不可直接运行</li><li>读者需手动复制代码</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>代码先行 + 文档引用</h3>
+      <p>先为每个场景创建完整的可运行项目（含 TypeScript 源码、Docker Compose、Jest 测试），再写文档引用这些代码。</p>
+      <div class="pros-cons" style="margin-top:8px">
+        <div class="pros"><h4>优点</h4><ul><li>所有代码可运行、可测试</li><li>文档与代码强关联</li><li>读者可 clone 即用</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>前期投入大，见效慢</li><li>代码和文档需同步维护</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>混合模式（推荐）</h3>
+      <p>Part 1（原理）以纯文档为主，代码片段内嵌。Part 2（场景）每个场景一个独立子目录，包含完整可运行项目 + 文档。Part 3-5 以文档为主，关键部分附可运行示例。</p>
+      <div class="pros-cons" style="margin-top:8px">
+        <div class="pros"><h4>优点</h4><ul><li>原理部分快速产出</li><li>场景部分可运行、可实验</li><li>测试部分有真实测试文件</li><li>最佳投入产出比</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>结构略复杂</li><li>需明确文档与代码的边界</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;padding:16px;background:#1a1a2e;border-radius:8px;border-left:4px solid #4fc3f7">
+  <p><strong>我的推荐：方案 C（混合模式）</strong></p>
+  <p>理由：Part 1 的 V8/Event Loop 原理适合深度文字 + 示意图，不需要可运行项目。Part 2 的四大场景是本书核心价值所在——每个场景都配有可运行的 TypeScript 项目、Docker Compose 环境和 Jest 测试，读者可以真正动手实验。Part 3-5 介于两者之间，关键部分提供可运行示例。</p>
+</div>

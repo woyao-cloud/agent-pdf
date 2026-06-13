@@ -1,397 +1,461 @@
-# 第4章 场景二：Kubernetes 云原生监控体系
+# 第4章 Kubernetes 监控：服务发现与 Operator
 
-## 4.1 Prometheus Operator 架构
+## 4.1 故事：K8s 节点宕机，30 个 Pod NotReady，告警风暴
 
-### 为什么需要 Operator？
+某 FinTech 公司使用 Kubernetes 管理生产环境，共 10 个节点、200 个 Pod。一天下午 2 点，其中一个节点因硬件故障宕机。
 
-在 Kubernetes 中手动部署 Prometheus 面临几个问题：
-1. Prometheus 配置（scrape targets）会随着 Pod 的创建和销毁频繁变化，手动维护不可能
-2. 每个团队的 Prometheus 实例需要隔离
-3. 告警规则、服务发现规则需要声明式管理
+**事件时间线**：
 
-Prometheus Operator 通过 Kubernetes 的 Operator 模式解决了这些问题：它引入了一组 CRD（Custom Resource Definition），将 Prometheus 的运维知识编码到 Kubernetes 原生资源中。
+```
+14:00:00 — 节点 node-03 硬件故障，彻底宕机
+14:00:15 — K8s 检测到节点 NotReady
+14:00:30 — 该节点上的 30 个 Pod 变为 Unknown 状态
+14:00:45 — Prometheus 首次抓取失败
+14:01:00 — 告警管理器开始发送告警
 
-### 核心 CRD
+告警风暴开始：
+  - 30 个 Pod 每个都触发了 "PodNotReady" 告警
+  - 15 个服务触发了 "ServiceDown" 告警
+  - 3 个数据库触发了 "NoMetrics" 告警
+  - 总共 48 条告警在 2 分钟内发出
 
-| CRD | 作用 |
-|-----|------|
-| `Prometheus` | 声明一个 Prometheus 实例（版本、资源、存储、ServiceMonitor 选择器等） |
-| `ServiceMonitor` | 定义如何发现和 scrape 一组 Service |
-| `PodMonitor` | 定义如何发现和 scrape 一组 Pod（适用于没有 Service 的场景） |
-| `PrometheusRule` | 定义告警规则和记录规则 |
-| `Alertmanager` | 声明一个 Alertmanager 实例 |
-
-### Operator 的工作循环
-
-1. Operator 持续监听 CRD 资源的变化
-2. 当 ServiceMonitor 被创建/更新/删除时，Operator 自动重写 Prometheus 的 scrape 配置
-3. Operator 通过 Prometheus Admin API 触发配置热重载（无需重启）
-4. 整个过程对用户完全透明
-
-## 4.2 核心组件协同
-
-K8s 监控体系由三个核心组件分工协作，分别覆盖不同粒度的指标：
-
-### Node Exporter（主机级）
-
-以 DaemonSet 部署在每个节点上，采集主机的 CPU、内存、磁盘、网络指标。
-
-**关键指标：**
-
-| 指标 | 说明 |
-|------|------|
-| `node_cpu_seconds_total{mode="..."}` | CPU 各模式耗时（user/system/idle/iowait） |
-| `node_memory_MemAvailable_bytes` | 可用内存 |
-| `node_memory_MemTotal_bytes` | 总内存 |
-| `node_filesystem_avail_bytes{mountpoint="/"}` | 磁盘可用空间 |
-| `node_filesystem_size_bytes{mountpoint="/"}` | 磁盘总空间 |
-| `node_network_receive_bytes_total` | 网络接收字节数 |
-| `node_load1` / `node_load5` / `node_load15` | 系统负载 |
-
-### cAdvisor（容器级）
-
-内嵌在 Kubelet 中，无需额外部署。采集每个容器的资源使用情况。
-
-**关键指标：**
-
-| 指标 | 说明 |
-|------|------|
-| `container_cpu_usage_seconds_total` | 容器 CPU 累计使用时间 |
-| `container_memory_usage_bytes` | 容器内存使用量 |
-| `container_network_receive_bytes_total` | 容器网络接收字节数 |
-| `container_fs_usage_bytes` | 容器文件系统使用量 |
-
-### kube-state-metrics（K8s 对象级）
-
-监听 Kubernetes API Server，将 K8s 对象的状态转化为指标。不采集"资源使用量"，而是采集"对象状态"。
-
-**关键指标：**
-
-| 指标 | 说明 |
-|------|------|
-| `kube_pod_status_phase{phase="Running"}` | 运行中的 Pod 数 |
-| `kube_deployment_status_replicas_available` | Deployment 可用副本数 |
-| `kube_node_status_condition{condition="Ready"}` | 节点 Ready 状态 |
-| `kube_pod_info` | Pod 元信息（所在节点等） |
-
-### 三者协同
-
-这三个组件覆盖了不同层次的监控需求：
-- Node Exporter：节点宕机 → 节点级别告警
-- cAdvisor：容器 OOM → 应用级别排查
-- kube-state-metrics：Pod 重启次数过多 → 发布回滚
-
-```promql
-# 组合使用的典型查询：
-# 查看某个 Pod 所在节点的 CPU 使用率
-node_cpu_seconds_total{instance="$(kube_pod_info{pod="myapp-xxx"})"}
+14:02:00 — 值班手机被 48 条短信轰炸
+14:02:30 — 运维工程师开始排查，但告警太多难以定位根因
+14:10:00 — 定位到节点宕机，但已被告警淹没
 ```
 
-## 4.3 完整 ServiceMonitor 配置实战
+**问题**：
+- 告警风暴掩盖了根因（节点宕机）
+- 每个 Pod 的告警是冗余的——根源都是同一个节点故障
+- 没有告警聚合和抑制机制
 
-### 监控自定义应用
+**事后改进**：
+1. 配置告警聚合：将同一个节点的告警合并为一条
+2. 配置告警抑制：节点宕机时，自动抑制该节点上 Pod 的告警
+3. 使用 Prometheus Operator 统一管理监控配置
 
-假设你在 default 命名空间部署了一个名为 `myapp` 的服务，暴露了 `/metrics` 端点：
+---
+
+## 4.2 原理比喻：Prometheus Operator = 管家
+
+### 没有 Operator 之前：手动管理 Prometheus
+
+想象一个大型酒店（K8s 集群），你需要手动管理：
+
+1. 每次有新客人入住（新 Pod 部署），你要手动更新宾客名单（scrape_configs）
+2. 每次有客人退房（Pod 销毁），你要手动删除名单
+3. 客人多了，名单变得又长又乱
+4. 稍微改错一个名字，整个监控就失效了
+
+这就像没有 Operator 的 Prometheus——每次 Pod 变化都要手动更新配置。
+
+### 有 Operator 之后：管家帮你打理
+
+Prometheus Operator 就像酒店的管家：
+
+```
+你（运维人员）          管家（Operator）              服务员（Prometheus）
+    │                       │                            │
+    │  "监控所有支付服务"    │                            │
+    │──────────────────────>│                            │
+    │                       │  创建 ServiceMonitor        │
+    │                       │  监听支付服务 Pod 变化       │
+    │                       │───────────────────────────>│
+    │                       │  自动更新抓取配置           │
+    │                       │  支付服务扩容→自动采集      │
+    │                       │  支付服务缩容→自动移除      │
+```
+
+**你只需要声明"我要监控什么"，Operator 负责"怎么监控"**。
+
+### ServiceMonitor = 采购清单
+
+ServiceMonitor 就是一张采购清单：
+
+```
+ServiceMonitor（采购清单）
+───────────────────────────────────────────
+  我要监控: 所有带有 app: payment 标签的服务
+  从哪个端口: web (8080)
+  走什么路径: /metrics
+  多久采购一次: 每 15 秒
+───────────────────────────────────────────
+
+管家（Operator）根据这张清单：
+1. 找到所有带有 app: payment 标签的 Pod
+2. 从它们的 8080 端口的 /metrics 路径拉取数据
+3. 每 15 秒执行一次
+4. Pod 变化时自动更新
+```
+
+---
+
+## 4.3 手把手：创建 ServiceMonitor 的完整步骤
+
+### 前置条件
+
+- 一个运行中的 K8s 集群（Minikube、Kind 或云厂商集群均可）
+- 已安装 Prometheus Operator（建议使用 kube-prometheus-stack Helm chart）
+- kubectl 已配置
+
+> 如果你还没有 Operator，快速安装命令：
+> ```bash
+> helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+> helm install prometheus prometheus-community/kube-prometheus-stack
+> ```
+
+### 步骤 1：部署一个示例应用
+
+首先创建一个带 Prometheus 指标的示例应用：
+
+```yaml
+# sample-app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  labels:
+    app: payment
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: payment
+  template:
+    metadata:
+      labels:
+        app: payment
+        version: v1
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+          name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  labels:
+    app: payment
+spec:
+  selector:
+    app: payment
+  ports:
+  - port: 80
+    targetPort: 80
+    name: http
+```
+
+```bash
+kubectl apply -f sample-app.yaml
+```
+
+### 步骤 2：创建 ServiceMonitor
 
 ```yaml
 # service-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: myapp-monitor
+  name: payment-service-monitor
+  # 注意：namespace 必须与 Prometheus Operator 所在 namespace 一致
+  # 或者配置了 allowCrossNamespace 访问
   namespace: default
   labels:
-    release: prometheus  # 必须匹配 Prometheus CR 的 serviceMonitorSelector
+    # 这个标签很重要：Prometheus 通过它找到 ServiceMonitor
+    release: prometheus  # 对应 Helm release 名称
 spec:
   # 选择要监控的 Service
   selector:
     matchLabels:
-      app: myapp
-      release: prod
-  # 监控的命名空间
+      app: payment  # 匹配 payment-service 的标签
+
+  # 指定 endpoints（对应 Service 的端口）
+  endpoints:
+  - port: http     # Service 中定义的端口名称
+    interval: 15s  # 抓取间隔
+    path: /metrics # 指标路径
+
+  # namespace 选择器
   namespaceSelector:
     matchNames:
-      - default
-  endpoints:
-    - port: metrics          # Service 中定义的端口名
-      path: /metrics         # 指标路径
-      interval: 15s          # 抓取间隔
-      timeout: 10s           # 超时时间
-      # Relabeling 配置
-      relabelings:
-        - sourceLabels: [__meta_kubernetes_pod_name]
-          targetLabel: pod
-          action: replace
-      metricRelabelings:
-        # 丢弃高基数标签
-        - regex: 'trace_id|user_id'
-          action: labeldrop
+    - default      # 只监控 default namespace
 ```
 
-### 监控 Node Exporter
+```bash
+kubectl apply -f service-monitor.yaml
+```
+
+### 步骤 3：验证 ServiceMonitor 是否生效
+
+```bash
+# 查看 ServiceMonitor 列表
+kubectl get servicemonitor -n default
+
+# 查看 ServiceMonitor 详细信息
+kubectl describe servicemonitor payment-service-monitor
+
+# 查看 Prometheus 是否识别了 ServiceMonitor
+kubectl get prometheus -n default
+```
+
+### 步骤 4：检查 Prometheus 目标
+
+```bash
+# 端口转发到 Prometheus UI
+kubectl port-forward svc/prometheus-operated 9090:9090 -n default
+```
+
+打开浏览器访问 `http://localhost:9090/targets`，你应该能看到：
+
+```
+payment-service-monitor/0 (3/3 up)  ← 3 个 Pod 都正常采集
+```
+
+### 步骤 5：验证指标数据
+
+访问 `http://localhost:9090/graph`，查询：
+
+```promql
+up{job="payment-service-monitor"}
+```
+
+应该返回 3 条记录，值都为 1（表示 UP）。
+
+### 常见问题排查
+
+| 现象 | 原因 | 解决方法 |
+|------|------|---------|
+| ServiceMonitor 已创建但 targets 为空 | Prometheus 找不到 ServiceMonitor | 检查 ServiceMonitor 的 `release` 标签是否匹配 |
+| targets 显示 0/3 up | 网络不通或端口错误 | 检查 Service 的端口名称是否匹配 |
+| 指标路径 404 | path 配置错误 | 确认应用的 metrics 路径 |
+| Pod 重启后 target 消失 | Pod 标签变化 | 检查 Pod 是否保留了监控标签 |
+
+---
+
+## 4.4 真实案例：ServiceMonitor selector 写错导致采集不到
+
+### 案例背景
+
+某电商公司部署了新的订单服务，但 Prometheus 始终采集不到该服务的指标。
+
+### 问题描述
 
 ```yaml
-# node-exporter-service-monitor.yaml
+# 错误的 ServiceMonitor
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: node-exporter
-  namespace: monitoring
+  name: order-service-monitor
+  labels:
+    release: prometheus
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: exporter
-      app.kubernetes.io/name: node-exporter
+      app: order
+      version: v1         # ← 问题在这里！
   endpoints:
-    - port: http-metrics
-      interval: 30s          # 节点指标变化慢，降低频率
-      scrapeTimeout: 10s
-  namespaceSelector:
-    matchNames:
-      - monitoring
+  - port: metrics
 ```
 
-### 监控 kube-state-metrics
+Service 的标签：
 
 ```yaml
-# kube-state-metrics-service-monitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+apiVersion: v1
+kind: Service
 metadata:
-  name: kube-state-metrics
-  namespace: monitoring
+  name: order-service
+  labels:
+    app: order
+    version: v2        # ← 版本是 v2，不是 v1！
+spec:
+  selector:
+    app: order
+  ports:
+  - port: 8080
+    name: metrics
+```
+
+**根因**：ServiceMonitor 的 `selector` 要求 `version: v1`，但 Service 的标签是 `version: v2`。不匹配，所以 ServiceMonitor 找不到目标。
+
+### 排查过程
+
+```bash
+# 1. 检查 ServiceMonitor
+kubectl get servicemonitor order-service-monitor -o yaml
+
+# 2. 检查 Service 标签
+kubectl get svc order-service --show-labels
+
+# 3. 对比发现：ServiceMonitor 要求 version=v1，但 Service 是 version=v2
+
+# 4. 修复方案：去掉 version 匹配条件
+kubectl edit servicemonitor order-service-monitor
+# 将 matchLabels 改为只匹配 app: order
+```
+
+### 修复后的配置
+
+```yaml
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-state-metrics
+      app: order          # 只匹配 app 标签，不限制版本
   endpoints:
-    - port: http-metrics
-      interval: 30s
-      scrapeTimeout: 10s
-      relabelings:
-        # 添加集群名称标签（多集群场景下区分）
-        - targetLabel: cluster
-          replacement: prod-cluster-1
+  - port: metrics
+    interval: 15s
 ```
 
-### 完整的 Prometheus CR 实例
+### 经验教训
+
+1. **ServiceMonitor 的 selector 不要过度约束**——只匹配必要标签即可
+2. **版本升级时不改变 Service 标签**——或者使用 `matchExpressions` 匹配多个版本
+3. **创建 ServiceMonitor 后立即检查 targets**——不要等告警才发现
+
+---
+
+## 4.5 真实案例：告警风暴的解决方案
+
+### 场景复现
+
+回顾开篇的故事，节点宕机导致 48 条告警的问题可以通过以下配置解决：
+
+### 方案一：告警聚合（Grouping）
 
 ```yaml
-# prometheus-instance.yaml
+# alertmanager.yml
+route:
+  group_by: ['alertname', 'node']  # 按告警名+节点聚合
+  group_wait: 30s                   # 等待 30s，收集同组告警
+  group_interval: 5m               # 同组告警每 5 分钟发送一次
+  repeat_interval: 4h              # 已发送的告警每 4 小时重复一次
+
+  # 接收者配置
+  receiver: 'team-page'
+```
+
+效果：48 条告警被聚合为 2 条通知（节点宕机 + 建议检查该节点上的 Pod）。
+
+### 方案二：告警抑制（Inhibition）
+
+```yaml
+# alertmanager.yml
+inhibit_rules:
+  # 如果节点宕机，抑制该节点上所有 Pod 的告警
+  - source_match:
+      severity: 'critical'
+      alertname: 'NodeNotReady'
+    target_match:
+      severity: 'warning'
+    equal: ['node']  # 当 source 和 target 的 node 标签值相同时抑制
+```
+
+效果：节点宕机告警发出后，该节点上的 Pod 告警全部被抑制，不再发送。
+
+### 方案三：使用 PrometheusRule
+
+```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: Prometheus
+kind: PrometheusRule
 metadata:
-  name: k8s
-  namespace: monitoring
+  name: k8s-rules
+  labels:
+    release: prometheus
 spec:
-  version: v2.48.0
-  # 选择 ServiceMonitor（按 Label）
-  serviceMonitorSelector:
-    matchLabels:
-      release: prometheus
-  # 选择 PodMonitor
-  podMonitorSelector:
-    matchLabels:
-      release: prometheus
-  # 资源限制
-  resources:
-    requests:
-      memory: 4Gi
-    limits:
-      memory: 8Gi
-  # 存储
-  storage:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: standard
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 100Gi
-  # 保留期
-  retention: 15d
-  # 告警配置
-  alerting:
-    alertmanagers:
-      - namespace: monitoring
-        name: alertmanager
-        port: http-web
-  # 额外配置
-  additionalScrapeConfigs:
-    name: additional-scrape-configs
-    key: prometheus-additional.yaml
-```
-
-## 4.4 潜在风险与优化
-
-### API Server 压力
-
-每个 Prometheus 实例定期调用 K8s API Server 进行服务发现。当 ServiceMonitor 数量多或 scrape_interval 很小时，API Server 可能负载过高。
-
-**优化方案：**
-1. 适当延长 scrape interval（默认 30s，可调至 60s）
-2. 限制 kube-state-metrics 的监听范围（`--resources` 参数只监听需要的资源）
-3. 使用 `--kubelet-node-name-prefix` 过滤节点范围
-
-### Pod 生命周期短导致的高基数
-
-Job 或短任务 Pod 可能在几分钟内完成并销毁。虽然 Pod 不在了，但它的指标仍会保留在 TSDB 中直到 retention 期满。
-
-**优化方案：**
-1. 不用 `pod` 标签做精细化区分（除非必要）
-2. 调整 `honor_labels: false`（默认），让 Prometheus 自动补全的标签优先级高于目标自身标签
-
-### 推荐的生产级 scrape 配置
-
-```yaml
-scrape_configs:
-  - job_name: 'kubernetes-nodes'
-    scrape_interval: 30s  # 节点指标变化慢，30s 足矣
-    kubernetes_sd_configs:
-      - role: node
-
-  - job_name: 'kubernetes-pods'
-    scrape_interval: 15s  # Pod 指标需要更精细的粒度
-    kubernetes_sd_configs:
-      - role: pod
-```
-
-## 4.5 实战：关键 Dashboard 查询
-
-### 节点资源概览
-
-```promql
-# 节点 CPU 使用率（排除 idle）
-100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
-
-# 节点内存使用率
-(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
-
-# 节点磁盘使用率
-(1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100
-
-# 节点 Load 与 CPU 核数的比值（饱和度）
-node_load1 / count by (instance) (node_cpu_seconds_total{mode="idle"})
-```
-
-### Pod 资源使用
-
-```promql
-# Pod CPU 使用率（相对于 request）
-rate(container_cpu_usage_seconds_total{container!=""}[5m]) /
-  sum by (pod, namespace) (kube_pod_container_resource_requests{resource="cpu"})
-
-# Pod 内存使用率（相对于 request）
-container_memory_usage_bytes{container!=""} /
-  sum by (pod, namespace) (kube_pod_container_resource_requests{resource="memory"})
-
-# Pod 网络吞吐（字节/秒）
-sum by (pod) (rate(container_network_receive_bytes_total[5m]))
-sum by (pod) (rate(container_network_transmit_bytes_total[5m]))
-```
-
-### Deployment 健康状态
-
-```promql
-# 可用副本 vs 期望副本
-kube_deployment_status_replicas_available / kube_deployment_spec_replicas
-
-# Pod 重启次数
-sum by (pod, namespace) (rate(kube_pod_container_status_restarts_total[5m]))
-
-# Pod 状态分布
-count by (phase) (kube_pod_status_phase)
-```
-
-### 成本监控（按命名空间拆分）
-
-```promql
-# 每个命名空间的 CPU 使用量（核·秒）
-sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=""}[5m]))
-
-# 每个命名空间的内存使用量
-sum by (namespace) (container_memory_usage_bytes{container!=""})
-```
-
-## 4.6 实战：告警规则
-
-```yaml
-groups:
-  - name: kubernetes-node-alerts
+  groups:
+  - name: node.rules
     rules:
-      - alert: NodeNotReady
-        expr: kube_node_status_condition{condition="Ready", status="true"} == 0
-        for: 5m
-        labels: { severity: critical, pager: p0 }
-        annotations:
-          summary: "Node {{ $labels.node }} is NotReady"
+    - alert: NodeNotReady
+      expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "节点 {{ $labels.node }} 不可用"
+        description: "节点已宕机 5 分钟"
 
-      - alert: NodeDiskPressure
-        expr: kube_node_status_condition{condition="DiskPressure", status="true"} == 1
-        for: 5m
-        labels: { severity: warning, pager: p1 }
-        annotations:
-          summary: "Node {{ $labels.node }} has disk pressure"
-
-  - name: kubernetes-pod-alerts
+  - name: pod.rules
     rules:
-      - alert: PodCrashLooping
-        expr: rate(kube_pod_container_status_restarts_total[10m]) > 1
-        for: 5m
-        labels: { severity: warning, pager: p1 }
-        annotations:
-          summary: "Pod {{ $labels.pod }} is crash looping"
-
-      - alert: PodNotReady
-        expr: kube_pod_status_phase{phase="Running"} and
-          on(pod, namespace) (kube_pod_status_ready{condition="true"} == 0)
-        for: 5m
-        labels: { severity: warning, pager: p2 }
-        annotations:
-          summary: "Pod {{ $labels.pod }} is running but not ready"
-
-  - name: kubernetes-cluster-alerts
-    rules:
-      - alert: PersistentVolumeUsage
-        expr: (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.1
-        for: 5m
-        labels: { severity: warning, pager: p2 }
-        annotations:
-          summary: "PVC {{ $labels.persistentvolumeclaim }} usage > 90%"
+    - alert: PodNotReady
+      expr: kube_pod_status_ready{condition="true"} == 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod {{ $labels.pod }} 未就绪"
+        description: "Pod 已处于 NotReady 状态超过 5 分钟"
 ```
 
-## 4.7 PromQL 速查
+---
 
-```promql
-# 节点 CPU 使用率（排除 idle）
-100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+## 4.6 手把手：部署完整的 K8s 监控栈
 
-# 节点内存使用率
-(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+### 使用 kube-prometheus-stack 一键部署
 
-# 节点磁盘使用率
-(1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100
+```bash
+# 添加 Helm 仓库
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 
-# 容器 CPU 使用率
-rate(container_cpu_usage_seconds_total{namespace="default"}[5m])
+# 安装 kube-prometheus-stack
+helm install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace
 
-# 容器内存使用量
-container_memory_usage_bytes{namespace="default"}
-
-# 可用副本数 vs 期望副本数
-kube_deployment_status_replicas_available / kube_deployment_spec_replicas
-
-# Pod 重启次数
-sum by (pod) (rate(kube_pod_status_phase{phase="Running"}[5m]))
+# 等待所有 Pod 就绪
+kubectl wait --for=condition=Ready pods --all -n monitoring --timeout=300s
 ```
 
-## 本章小结
+### 验证安装
 
-- Prometheus Operator 通过 CRD 实现了声明式的监控管理
-- ServiceMonitor / PodMonitor 是 K8s 监控的核心抽象
-- Node Exporter / cAdvisor / kube-state-metrics 三者互相补充
-- API Server 压力和 Pod 生命周期短是 K8s 监控的两个主要风险
-- 关键告警包括：节点 NotReady、Pod CrashLoop、PVC 磁盘满
-- 按命名空间聚合的监控可以实现成本拆分和资源治理
-- kind 工具可以在本地快速搭建实验环境
-- 实践：[Kubernetes 监控实验](../labs/ch04-kubernetes/README.md)
+```bash
+# 查看所有组件
+kubectl get pods -n monitoring
+# prometheus-prometheus-0         2/2  Running
+# alertmanager-prometheus-0       2/2  Running
+# prometheus-grafana-xxxxxxxxx    2/2  Running
+# prometheus-kube-state-metrics   1/1  Running
+# prometheus-operator-xxxxxxxxx   1/1  Running
+```
+
+### 访问 Grafana
+
+```bash
+# 获取 Grafana 密码
+kubectl get secret prometheus-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 --decode
+
+# 端口转发
+kubectl port-forward svc/prometheus-grafana 3000:80 -n monitoring
+```
+
+打开浏览器访问 `http://localhost:3000`，用户名 `admin`，密码为上一步获取的值。
+
+### 内置 Dashboard
+
+kube-prometheus-stack 自带多个 K8s Dashboard：
+
+| Dashboard | ID | 说明 |
+|-----------|-----|------|
+| Kubernetes Cluster | 315 | 集群整体状态 |
+| Kubernetes Pods | 6417 | Pod 级别的指标 |
+| Kubernetes Node | 11074 | 节点资源使用 |
+| Namespace by Pod | 6879 | Namespace 维度 |
+
+---
+
+## 4.7 小结
+
+- **Prometheus Operator** 是 K8s 监控的标配——它让 Prometheus 具备自动发现 K8s 资源变化的能力
+- **ServiceMonitor** 声明"要监控什么"，Operator 负责"怎么监控"
+- **告警聚合**防止告警风暴——把 48 条告警变成 2 条通知
+- **告警抑制**消除冗余告警——节点宕机时自动抑制 Pod 告警
+- **kube-prometheus-stack** 一键部署完整的 K8s 监控栈
+- **常见陷阱**：ServiceMonitor selector 过于严格导致采集不到、缺少告警聚合导致告警风暴
+
+---
+
+**下一步**：学习了 K8s 集群监控，接下来看第 5 章——如何使用 Blackbox Exporter 监控外部服务的可用性（黑盒监控）。

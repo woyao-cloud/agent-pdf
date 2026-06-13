@@ -1,418 +1,526 @@
-# 第12章 可观测性三大支柱联动（Metrics + Logs + Traces）
+# 第12章 可观测性联动：指标、追踪、日志的三位一体
 
-## 12.1 Exemplars：将 TraceID 嵌入指标
+---
 
-### 什么是 Exemplar？
+## 场景故事：一次诡异的 P99 突刺排查
 
-Exemplar 是 Prometheus 在 TSDB 中引入的一个概念：它为 Histogram 的每个 bucket 附加一个"样本数据点"，包含一个具体的 TraceID 和 SpanID。
+周五下午 4 点，某电商平台正在准备周末大促。突然，监控大屏上的 P99 延迟曲线像被针扎了一样——从平稳的 200ms 飙升到 2s，又迅速回落。
 
-它的作用是在指标图上看到突刺时，**一键跳转到对应的链路追踪详情**，而不用靠"猜"哪条 Trace 导致了这次延迟突刺。
-
-```promql
-# 查询 P99 延迟时，Exemplar 会显示具体的 TraceID
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
-# 在 Grafana 中点击数据点 → 自动跳转到 Tempo/Jaeger 查看 Trace 详情
-```
-
-### 配置方式
-
-Prometheus 需要在启动时启用 Exemplar 存储：
-
-```bash
---enable-feature=exemplar-storage
-```
-
-Grafana 侧需要配置 Trace 数据源关联：
-1. 添加 Tempo/Jaeger 数据源
-2. 在 Prometheus 数据源中配置 Exemplars 关联
-
-### 应用端生成 Exemplar
-
-**Go 版本：**
-```go
-import "github.com/prometheus/client_golang/prometheus"
-
-histogram.With(prometheus.Labels{"service": "api"}).
-    ObserveWithExemplar(duration, prometheus.Labels{"traceID": traceID})
-```
-
-**Python 版本：**
-```python
-from prometheus_client import Histogram
-
-h = Histogram('request_duration_seconds', 'Request duration', ['service'])
-h.labels(service='api').observe(duration, exemplar={'TraceID': trace_id})
-```
-
-## 12.2 Loki 集成：Metrics → Logs 联动
-
-### 为什么需要联动？
-
-光看指标只能知道"有什么问题"，看日志才知道"为什么有问题"。Grafana 提供了从指标图表直接跳转到相关日志的能力。
-
-### 配置方式
-
-在 Grafana 的 Prometheus 数据源中配置 Derived Fields（衍生字段）：
-
-1. 在 Prometheus 数据源 → Derived Fields 中添加：
-   - Field name: `traceID`
-   - URL: `${__value.raw} → ${dataSource.loki}`
-2. 在 Loki 数据源中，日志也应该包含 `traceID` 字段
-3. 点击指标图上的数据点 → 自动跳转到对应时间段的 Loki 日志
-
-### 效果
+值班工程师小王看到了 Grafana 上的告警：
 
 ```
-Grafana Dashboard
-│
-├── 面板 1：错误率趋势（Prometheus）
-│   │  点击 15:30 的突刺点
-│   │  │
-│   │  ├── 跳转到 Tempo：查看该时间点的 Trace 详情
-│   │  └── 跳转到 Loki：查看该时间点的 Error 日志
-│   │
-├── 面板 2：P99 延迟（Prometheus）
-│   │  点击 15:30 的突刺点
-│   │  │
-│   │  └── 跳转到 Loki：查看慢请求的日志
-│
-└── 面板 3：Loki 日志流
-    实时展示 Error 级别日志
+http_request_duration_seconds{p99="2.0"} > 1.0
 ```
 
-### 实战：Grafana 配置步骤
+但问题来了——**告警只告诉他"P99 变高了"，却没有告诉他"为什么"**。
 
-**Step 1：添加 Prometheus 数据源**
+小王开始了一场艰难的排障之旅：
 
-```yaml
-# grafana/datasources/datasources.yml
-apiVersion: 1
-datasources:
-  - name: Prometheus
-    type: prometheus
-    url: http://prometheus:9090
-    access: proxy
-    isDefault: true
-    # 配置 Exemplars 关联
-    exemplar: true
-    # 配置 Derived Fields（Metrics → Logs 跳转）
-    derivedFields:
-      - name: traceID
-        type: field
-        datasourceUid: tempo
-        matcherRegex: "traceID=(\\w+)"
-        url: "$${__value.raw}"
-      - name: TraceID
-        type: field
-        datasourceUid: loki
-        matcherRegex: "traceID=(\\w+)"
-        url: "$${__value.raw}"
-```
+1. **看指标**：CPU、内存、网络都正常，没有明显的资源瓶颈
+2. **看日志**：业务日志没有 ERROR 级别输出，只有一些 INFO 级别的慢请求日志
+3. **看追踪**：公司虽然有链路追踪（Tracing），但指标和追踪是两套系统，没有打通
 
-**Step 2：添加 Tempo 数据源**
+小王花了 **3 个小时**，最后通过手动比对时间戳，才找到根因——一个数据库慢查询。
 
-```yaml
-  - name: Tempo
-    type: tempo
-    uid: tempo
-    url: http://tempo:3200
-    access: proxy
-```
+**"如果指标能直接告诉我对应哪个 Trace，我 5 分钟就能定位问题！"** 小王感叹道。
 
-**Step 3：添加 Loki 数据源**
+这正是本章要解决的问题：**Exemplar（样本）**——在指标中嵌入追踪 ID，让指标和追踪可以互相跳转，实现真正的可观测性联动。
 
-```yaml
-  - name: Loki
-    type: loki
-    uid: loki
-    url: http://loki:3100
-    access: proxy
-    jsonData:
-      derivedFields:
-        - name: traceID
-          datasourceUid: tempo
-          matcherRegex: "traceID=(\\w+)"
-          url: "$${__value.raw}"
-```
+---
 
-### 实战：Docker Compose 一键启动 O11y 栈
+## 12.1 可观测性的三大支柱
 
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  # Metrics
-  prometheus:
-    image: prom/prometheus:v2.48.0
-    command:
-      - --enable-feature=exemplar-storage   # 必须启用 Exemplar
-      - --config.file=/etc/prometheus/prometheus.yml
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+### 原理比喻：侦探破案
 
-  # Traces
-  tempo:
-    image: grafana/tempo:2.3.0
-    command: [-config.file=/etc/tempo.yaml]
-    volumes:
-      - ./tempo.yaml:/etc/tempo.yaml
+想象你是侦探，要调查一起案件：
 
-  # Logs
-  loki:
-    image: grafana/loki:2.9.0
-    command: [-config.file=/etc/loki/config.yaml]
-    volumes:
-      - ./loki:/etc/loki
+| 可观测性支柱 | 比喻 | 回答的问题 |
+|-------------|------|-----------|
+| **Metrics（指标）** | 犯罪统计报告 | "案发频率是多少？集中在哪个区域？" |
+| **Logging（日志）** | 目击者口供 | "每个案件的具体细节是什么？" |
+| **Tracing（追踪）** | 监控录像回放 | "一个请求从入口到出口经过了哪些地方？" |
 
-  # 日志采集器
-  promtail:
-    image: grafana/promtail:2.9.0
-    command: [-config.file=/etc/promtail/config.yml]
-    volumes:
-      - ./logs:/var/log
-      - ./promtail.yml:/etc/promtail/config.yml
-
-  # 可视化
-  grafana:
-    image: grafana/grafana:10.2.0
-    environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources
-
-  # 示例应用（自动生成 Trace、Metrics、Logs）
-  app:
-    image: grafana/otel-app:latest
-    environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-    ports:
-      - "8080:8080"
-```
-
-```bash
-# 一键启动
-docker compose up -d
-
-# 访问 Grafana
-open http://localhost:3000
-
-# 访问示例应用（产生遥测数据）
-curl http://localhost:8080/hello
-curl http://localhost:8080/error
-```
-
-### 实战：从指标突刺到根因定位
-
-以下是一个完整的排障工作流：
+### 三者的关系
 
 ```
-1. 发现异常
-   Grafana 错误率面板显示 15:30 有突刺
-   
-2. Metrics → Traces（通过 Exemplar）
-   点击突刺点 → 自动跳转到 Tempo
-   查看该时间点最慢的 Trace
-   
-3. Trace → Logs（通过 traceID）
-   在 Trace 详情中点击 span → 跳转到 Loki
-   查看该 Trace 对应的应用日志
-   
-4. 定位根因
-   日志显示 "database connection timeout"
-   结论：数据库连接池耗尽导致请求超时
+                    ┌──────────────────┐
+                    │    Metrics       │
+                    │  (统计报表)       │
+                    └────────┬─────────┘
+                             │ Exemplar 关联
+                             ▼
+┌──────────────────┐    ┌──────────────────┐
+│    Logging       │◄──►│    Tracing       │
+│  (目击者口供)     │    │  (监控录像回放)   │
+└──────────────────┘    └──────────────────┘
 ```
 
-## 12.3 实战：完整的 O11y 栈
+在过去，这三者是割裂的：
+- 指标告诉你"P99 延迟突刺了"
+- 追踪告诉你"请求 A 在数据库阶段花了 1.5 秒"
+- 日志告诉你"数据库连接池满了"
 
-### 推荐的技术选型
+你需要**手动**将这三者关联起来。
 
-| 支柱 | 推荐方案 | 备选 |
-|------|---------|------|
-| Metrics | Prometheus + Grafana | VictoriaMetrics |
-| Logs | Loki + Promtail | Elasticsearch + Filebeat |
-| Traces | Tempo | Jaeger, Zipkin |
-| 统一协议 | OpenTelemetry Collector | — |
+**Exemplar** 的出现改变了这一切——它在指标中嵌入一个"样本"（包含 Trace ID），让你可以从指标的突刺直接跳转到对应的追踪。
 
-### 集成配置要点
+---
 
-1. 所有组件共享同一个 `traceID`
-2. 日志中始终包含 `traceID` 字段
-3. 指标中通过 Exemplar 携带 `traceID`
-4. Grafana 中配置好各数据源之间的关联关系
+## 12.2 Exemplar 是什么？
 
-## 12.4 实战：应用端集成 OpenTelemetry
+### 定义
 
-### Go 应用示例
+Exemplar 是 Prometheus 的一个特性，允许在指标的时间序列数据中附加一个**样本值**——通常是某个高延迟请求的 Trace ID。
+
+```
+http_request_duration_seconds_bucket{le="0.1"} 100
+http_request_duration_seconds_bucket{le="0.5"} 200
+http_request_duration_seconds_bucket{le="1.0"} 250
+http_request_duration_seconds_bucket{le="+Inf"} 300
+http_request_duration_seconds_count 300
+http_request_duration_seconds_sum 45.0
+
+# Exemplar 嵌入在直方图桶中：
+http_request_duration_seconds_bucket{le="1.0"} 250
+  # {trace_id="abc123", span_id="def456"} 0.95  ← 这个请求耗时 0.95s
+```
+
+### 原理比喻：在统计报表上贴便利贴
+
+想象你是一家超市的经理，每周查看销售统计报表：
+
+- **指标** = 报表上的数字："本周销售额 10 万元，客单价 50 元"
+- **Exemplar** = 在报表上贴一张便利贴："这笔 9999 元的订单——顾客是 VIP，买了高端家电"
+
+便利贴让你能从统计数字**追溯到具体的交易详情**。
+
+### Exemplar 的数据模型
+
+```
+┌────────────────────────────────────────┐
+│            Metric                       │
+│  Name: http_request_duration_seconds   │
+│  Labels: {service="api", method="POST"}│
+│  Value: 0.95                           │
+│  Timestamp: 2024-01-15T10:30:00Z       │
+│  ┌─────────────────────────────────┐   │
+│  │ Exemplar                        │   │
+│  │   TraceID: "abc123def456"       │   │ ← 关键：追踪 ID
+│  │   SpanID:  "789012"             │   │
+│  │   Value: 0.95                   │   │ ← 这个请求的实际耗时
+│  │   Timestamp: 2024-01-15T10:30:00│   │
+│  └─────────────────────────────────┘   │
+└────────────────────────────────────────┘
+```
+
+---
+
+## 12.3 手把手：配置 Prometheus Exemplar + Grafana 关联 Tempo
+
+### 架构概览
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐
+│ 应用服务   │───►│Prometheus │───►│  Grafana  │
+│ (埋点)    │    │ (存储)    │    │ (展示)    │
+└────┬─────┘    └──────────┘    └──────────┘
+     │ Exemplar (trace_id)
+     │
+     ▼
+┌──────────┐    ┌──────────┐
+│  Tempo    │    │  Jaeger  │
+│ (追踪存储) │    │ (追踪存储) │
+└──────────┘    └──────────┘
+```
+
+### 第一步：应用代码埋点（Go 示例）
+
+在应用中注入 Exemplar 信息：
 
 ```go
 package main
 
 import (
-    "context"
-    "log"
     "net/http"
     "time"
-
+    "math/rand"
+    
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "go.opentelemetry.io/otel/sdk/resource"
-    sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
     "go.opentelemetry.io/otel/trace"
 )
 
-// 初始化 OTel SDK
-func initOTel() {
-    exporter, _ := otlptracegrpc.New(context.Background(),
-        otlptracegrpc.WithEndpoint("otel-collector:4317"),
-        otlptracegrpc.WithInsecure(),
+var (
+    // 定义一个直方图，记录 HTTP 请求耗时
+    httpDuration = prometheus.NewHistogramVec(
+        prometheus.HistogramOpts{
+            Name:    "http_request_duration_seconds",
+            Help:    "HTTP 请求耗时（秒）",
+            Buckets: prometheus.DefBuckets, // 默认桶：[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+        },
+        []string{"method", "path", "status"},
     )
-    tp := sdktrace.NewTracerProvider(
-        sdktrace.WithBatcher(exporter),
-        sdktrace.WithResource(resource.NewWithAttributes(
-            semconv.SchemaURL,
-            semconv.ServiceNameKey.String("order-service"),
-            semconv.ServiceVersionKey.String("1.0.0"),
-        )),
-    )
-    otel.SetTracerProvider(tp)
-}
-
-func orderHandler(w http.ResponseWriter, r *http.Request) {
-    tracer := otel.Tracer("order-service")
-    ctx, span := tracer.Start(r.Context(), "create-order")
-    defer span.End()
-
-    // 模拟业务逻辑
-    time.Sleep(50 * time.Millisecond)
-
-    // 记录 Span 属性
-    span.SetAttributes(
-        attribute.String("order.id", "12345"),
-        attribute.Float64("order.amount", 99.9),
-    )
-
-    // 记录日志（traceID 自动传播）
-    log.Printf("[traceID=%s] order created successfully",
-        trace.SpanContextFromContext(ctx).TraceID().String())
-
-    w.Write([]byte("ok"))
-}
-```
-
-### Python 应用示例
-
-```python
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-import logging
-import flask
-
-# 初始化 OTel
-resource = Resource(attributes={
-    SERVICE_NAME: "order-service-python"
-})
-provider = TracerProvider(resource=resource)
-exporter = OTLPSpanExporter(endpoint="otel-collector:4317", insecure=True)
-provider.add_span_processor(BatchSpanProcessor(exporter))
-trace.set_tracer_provider(provider)
-
-app = flask.Flask(__name__)
-FlaskInstrumentor().instrument_app(app)  # 自动埋点
-
-# 配置日志（traceID 自动注入）
-logging.basicConfig(
-    format='%(asctime)s [traceID=%(otelTraceID)s] %(message)s',
-    level=logging.INFO
 )
 
-@app.route('/order')
-def create_order():
-    current_span = trace.get_current_span()
-    current_span.set_attribute("order.id", "12345")
-    logging.info("order created")
-    return "ok"
+func init() {
+    prometheus.MustRegister(httpDuration)
+}
+
+// middleware 是一个 HTTP 中间件，自动记录请求耗时
+// 为什么这样写：中间件模式可以自动捕获所有请求，无需每个 handler 单独埋点
+func middleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        
+        // 包装 ResponseWriter 以获取状态码
+        sw := &statusWriter{ResponseWriter: w}
+        next.ServeHTTP(sw, r)
+        
+        duration := time.Since(start).Seconds()
+        
+        // 从请求上下文中获取 Trace ID
+        // 为什么这样写：OpenTelemetry 会自动传播 Trace 上下文
+        // 如果请求包含 W3C Trace-Context 头，span 会自动关联
+        span := trace.SpanFromContext(r.Context())
+        spanContext := span.SpanContext()
+        
+        // 创建观测值，并附加 Exemplar
+        // Exemplar 包含 Trace ID，Grafana 可以用它跳转到 Tempo
+        //
+        // 为什么这样写：只对慢请求附加 Exemplar
+        // 避免每个请求都生成 Exemplar，减少存储开销
+        if duration > 0.5 {  // 只对耗时 > 500ms 的请求记录 Exemplar
+            // 创建带 Exemplar 的观测值
+            httpDuration.WithLabelValues(
+                r.Method, r.URL.Path, strconv.Itoa(sw.status),
+            ).(prometheus.ExemplarObserver).ObserveWithExemplar(
+                duration,
+                prometheus.Labels{
+                    "trace_id": spanContext.TraceID().String(),
+                    "span_id":  spanContext.SpanID().String(),
+                },
+            )
+        } else {
+            // 普通请求不记录 Exemplar
+            httpDuration.WithLabelValues(
+                r.Method, r.URL.Path, strconv.Itoa(sw.status),
+            ).Observe(duration)
+        }
+    })
+}
+
+type statusWriter struct {
+    http.ResponseWriter
+    status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+    w.status = status
+    w.ResponseWriter.WriteHeader(status)
+}
 ```
 
-## 12.5 最佳实践与注意事项
+### 第二步：配置 Prometheus 启用 Exemplar 存储
+
+```yaml
+# prometheus.yml
+# 为什么这样写：Exemplar 需要显式启用，默认不存储
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Exemplar 存储配置
+# 为什么这样写：Exemplar 使用独立的存储配置
+# 可以单独控制保留时间和存储大小
+storage:
+  exemplar:
+    # 每个序列最多保留 3 个 Exemplar
+    # 为什么是 3：太多会增加存储和查询开销
+    # 太少可能导致 Exemplar 被快速覆盖
+    max_exemplars: 3
+
+scrape_configs:
+  - job_name: 'my-app'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:8080']
+```
+
+### 第三步：配置 Grafana 数据源关联
+
+1. **添加 Prometheus 数据源**
+   - URL: `http://prometheus:9090`
+   - 开启 Exemplar 支持（在数据源设置中）
+
+2. **添加 Tempo 数据源**
+   - URL: `http://tempo:3200`
+   - 配置 Trace to Logs（可选）
+
+3. **配置 Exemplar 跳转**
+
+在 Grafana 的 Prometheus 数据源配置中：
+
+```
+# 在 Prometheus 数据源的 "Exemplars" 配置中：
+Internal link: Tempo
+Data source: Tempo
+Trace ID field: trace_id  # 与代码中的 Exemplar label 名称一致
+```
+
+### 第四步：验证配置
+
+```bash
+# 查询验证 Exemplar 是否已存储
+curl -g 'http://localhost:9090/api/v1/query?query=http_request_duration_seconds_bucket&exemplar=1'
+
+# 返回结果示例
+{
+  "data": {
+    "result": [
+      {
+        "metric": { "__name__": "http_request_duration_seconds_bucket", "le": "1.0" },
+        "value": [1705310400, "250"],
+        "exemplars": [
+          {
+            "labels": {
+              "trace_id": "abc123def456",
+              "span_id": "789012"
+            },
+            "value": 0.95,
+            "timestamp": 1705310400
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 12.4 真实案例：Exemplar 定位慢 SQL，P99 从 2s 降到 200ms
+
+### 事故背景
+
+某金融科技公司的核心交易系统，每天处理 500 万笔交易。某次上线后，P99 延迟从 200ms 飙升至 2s，但常规手段无法定位根因。
+
+### 传统排障流程（无 Exemplar）
+
+```
+1. 看到 P99 突刺告警                   耗时：0 秒（立即发现）
+2. 检查 CPU、内存、网络指标            耗时：5 分钟（都正常）
+3. 查看业务日志                        耗时：15 分钟（只有 INFO 级别慢请求，无 ERROR）
+4. 随机抽样几个慢请求的 Trace ID       耗时：10 分钟（手工提取）
+5. 在 Jaeger 中查询这些 Trace          耗时：5 分钟（找到几个慢 Trace）
+6. 分析慢 Trace 中的 Span              耗时：10 分钟（发现数据库 Span 耗时高）
+7. 手动复现慢 SQL                      耗时：20 分钟（找到慢查询）
+总耗时：约 65 分钟
+```
+
+### Exemplar 排障流程
+
+```
+1. 看到 P99 突刺告警                   耗时：0 秒
+2. 在 Grafana 面板上点击突刺点          耗时：10 秒
+   → 自动跳转到 Tempo，查看对应 Trace
+3. 在 Trace 中发现数据库 Span 耗时 1.5s 耗时：30 秒
+4. 直接查看慢 SQL 语句                  耗时：10 秒
+5. 优化 SQL（加索引）                   耗时：10 分钟
+总耗时：约 11 分钟
+```
+
+### 根因分析
+
+```sql
+-- Before: 没有索引的全表扫描
+SELECT * FROM orders 
+WHERE status = 'PENDING' 
+  AND created_at > NOW() - INTERVAL 7 DAY
+ORDER BY amount DESC;
+
+-- 执行计划显示：Type=ALL（全表扫描），rows=5000000
+-- 耗时：1.5秒
+
+-- After: 添加联合索引
+ALTER TABLE orders ADD INDEX idx_status_created (status, created_at);
+
+-- 执行计划显示：Type=ref（索引查找），rows=1000
+-- 耗时：50毫秒
+```
+
+### Before/After 对比
+
+| 指标 | Before | After |
+|------|--------|-------|
+| P99 延迟 | 2.0 秒 | 200 毫秒 |
+| 慢查询占比 | 15% | 0.1% |
+| 排障时间 | 65 分钟 | 11 分钟 |
+| 数据库 CPU | 85% | 30% |
+
+---
+
+## 12.5 进阶：日志与追踪的联动
+
+除了指标与追踪的联动，日志与追踪的关联同样重要。
+
+### 在日志中注入 Trace ID
+
+```go
+import (
+    "go.uber.org/zap"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/trace"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    // 从请求上下文中提取 Trace ID
+    span := trace.SpanFromContext(r.Context())
+    traceID := span.SpanContext().TraceID().String()
+    
+    // 在日志中注入 Trace ID
+    // 为什么这样写：将 Trace ID 注入日志后，
+    // 在 Grafana 中可以从日志直接跳转到 Tempo
+    logger.Info("处理用户请求",
+        zap.String("trace_id", traceID),
+        zap.String("user_id", r.Header.Get("X-User-ID")),
+        zap.String("path", r.URL.Path),
+    )
+    
+    // 处理业务逻辑...
+}
+```
+
+### Grafana 配置：日志 → 追踪跳转
+
+在 Loki 数据源中配置：
+
+```
+Derived fields:
+  Name: Trace ID
+  Regex: trace_id=(\w+)
+  URL: ${Tempo_URL}/trace/${value}
+```
+
+这样在 Grafana Explore 的日志中，点击高亮的 Trace ID 就能直接跳转到 Tempo。
+
+---
+
+## 12.6 完整联动链路
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Grafana                                 │
+│  ┌─────────────────┐    ┌──────────────┐    ┌──────────┐  │
+│  │  Metrics Panel  │    │  Log Panel   │    │ Trace    │  │
+│  │  (P99 延迟)      │◄──►│ (ERROR 日志)  │◄──►│ (Span)   │  │
+│  │                 │    │              │    │          │  │
+│  │  点击突刺点      │    │ 点击 TraceID │    │ 查看详情 │  │
+│  │  → 跳转 Trace   │    │ → 跳转 Trace │    │          │  │
+│  └────────┬────────┘    └──────┬───────┘    └────┬─────┘  │
+└───────────┼────────────────────┼─────────────────┼────────┘
+            │                    │                  │
+            ▼                    ▼                  ▼
+    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+    │  Prometheus   │    │    Loki      │    │    Tempo     │
+    │  (指标存储)    │    │  (日志存储)   │    │  (追踪存储)  │
+    │  + Exemplar   │    │  + TraceID   │    │              │
+    └──────────────┘    └──────────────┘    └──────────────┘
+            ▲                    ▲                  ▲
+            │                    │                  │
+            └────────────────────┼──────────────────┘
+                                 │
+                          ┌──────┴──────┐
+                          │   应用服务    │
+                          │ (埋点 + 日志) │
+                          └─────────────┘
+```
+
+### 排障场景演练
+
+假设现在 P99 又突刺了，你的排障流程应该是：
+
+```
+1. 收到告警：P99 = 2.5s
+2. 在 Grafana 面板上点击突刺点
+   → 自动跳转到 Tempo，显示对应的慢 Trace
+3. 在 Trace 中发现：
+   - API Gateway Span: 100ms
+   - Auth Service Span: 50ms
+   - Order Service Span: 2.3s ← 瓶颈在这里
+   - Database Span: 2.0s ← 真正的问题
+4. 点击数据库 Span，查看详情：
+   - SQL: SELECT * FROM orders WHERE ...
+   - 耗时: 2.0s
+5. 使用 Trace ID 搜索关联日志：
+   - 发现在同一时间段，数据库连接池告警
+   - 连接池使用率 100%
+6. 定位根因：慢 SQL 占满了连接池
+7. 优化：加索引 + 连接池扩容
+```
+
+---
+
+## 12.7 最佳实践
 
 ### 1. 采样策略
 
-Trace 全量采集会产生巨大的存储开销。推荐按以下策略采样：
-
-| 策略 | 适用场景 | 配置方式 |
-|------|---------|---------|
-| 概率采样 | 高流量服务 | 10% 采样率，保留 100% 错误 Trace |
-| 速率限制 | 稳定流量的服务 | 每秒最多采集 100 条 Trace |
-| 头部采样 | 需要完整 Trace 的场景 | 在入口处决定是否采样 |
-
-```yaml
-# OTel Collector 采样配置
-processors:
-  tail_sampling:
-    policies:
-      # 错误 Trace 100% 保留
-      - name: errors-policy
-        type: status_code
-        config:
-          status_code: ERROR
-      # 慢请求 Trace 100% 保留
-      - name: slow-policy
-        type: latency
-        config:
-          threshold_ms: 500
-      # 其他 Trace 10% 采样
-      - name: probabilistic-policy
-        type: probabilistic
-        config:
-          sampling_percentage: 10
+```go
+// 只对慢请求记录 Exemplar
+// 为什么：Exemplar 有存储成本，对所有请求都记录没有意义
+if duration > threshold {
+    observeWithExemplar(duration, traceID)
+} else {
+    observe(duration)
+}
 ```
 
-### 2. 避免指标基数爆炸
+### 2. Exemplar 保留策略
 
-OTel 自动埋点会采集丰富的属性（如 HTTP Headers），可能导致基数爆炸：
-
-```yaml
-# OTel Collector 丢弃高基数属性
-processors:
-  attributes:
-    actions:
-      - key: http.request.header.user_agent
-        action: delete
-      - key: http.request.header.cookie
-        action: delete
-      - key: net.peer.name
-        action: delete
+```
+# 根据场景调整 max_exemplars
+storage:
+  exemplar:
+    max_exemplars: 3  # 默认值，适合大多数场景
+    # 如果是低流量服务，可以设大一些
+    # 如果是高流量服务，3 已经足够
 ```
 
-### 3. Exemplar 的注意事项
+### 3. 标签命名一致性
 
-- Exemplar 只在 Histogram 指标中生效（Counter/Gauge 不支持）
-- 每个 bucket 最多保留 20 个 Exemplar
-- Exemplar 会占用额外的磁盘空间（约 10% 开销）
-- 需要在 Prometheus 启动时开启 `--enable-feature=exemplar-storage`
+```go
+// 确保所有组件使用相同的标签名
+// Prometheus Exemplar label: trace_id
+// Tempo 查询字段: trace_id
+// Loki derived field: trace_id=(\w+)
+```
 
-### 4. 成本控制
+### 4. 避免 Exemplar 过载
 
-| 组件 | 存储成本 | 优化建议 |
-|------|---------|---------|
-| Prometheus | 指标数量决定 | 控制 Label 基数，设置 Retention |
-| Loki | 日志压缩比高 | 设置保留期，使用结构化元数据 |
-| Tempo | Trace 存储量大 | 启用采样，设置 Retention |
+```
+# 在 Prometheus 中监控 Exemplar 数量
+prometheus_storage_exemplars_exemplars_loaded
+prometheus_storage_exemplars_series_with_exemplars
+```
+
+---
 
 ## 本章小结
 
-- Exemplars 将 TraceID 嵌入 Histogram 指标，实现 Metrics → Traces 跳转
-- Loki 集成实现 Metrics → Logs 跳转
-- 完整 O11y 栈需要 Metrics + Logs + Traces 三者互通
-- 关键是统一 traceID 贯穿所有数据
-- OTel SDK 自动管理 trace 上下文传播和 Exemplar 注入
-- 采样策略需要在"数据完整性"和"存储成本"之间权衡
-- 实践：[O11y 实验](../labs/ch12-o11y/README.md)
+| 概念 | 要点 |
+|------|------|
+| **Exemplar** | 在指标中嵌入追踪 ID，实现指标到追踪的跳转 |
+| **三大支柱联动** | 指标发现问题，追踪定位问题，日志分析根因 |
+| **配置步骤** | 应用埋点 -> Prometheus 启用 Exemplar -> Grafana 配置数据源关联 |
+| **排障效率** | Exemplar 可将排障时间从小时级降到分钟级 |
+| **采样策略** | 只对慢请求或错误请求记录 Exemplar，控制存储成本 |
+
+---
+
+## 扩展阅读
+
+- [Prometheus Exemplar 文档](https://prometheus.io/docs/prometheus/latest/feature_flags/#exemplars-storage)
+- [Grafana Exemplar 配置](https://grafana.com/docs/grafana/latest/fundamentals/exemplars/)
+- [OpenTelemetry Go SDK](https://pkg.go.dev/go.opentelemetry.io/otel)
+- [Tempo 文档](https://grafana.com/docs/tempo/latest/)

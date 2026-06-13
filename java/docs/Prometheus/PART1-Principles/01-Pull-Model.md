@@ -1,261 +1,271 @@
-# 第1章 监控哲学的重塑：Pull 模型与多维数据模型
+# 第1章 Pull 模型：Prometheus 的核心设计哲学
 
-## 1.1 Push vs Pull：为什么 Prometheus 选择了"拉"？
+## 1.1 故事：Zabbix 监控 1000 台服务器的雪崩
 
-### 传统 Push 模型的架构
+某电商公司在 2022 年双十一前一周，运维团队遇到了一个噩梦。他们使用 Zabbix 监控约 1000 台服务器，所有 Agent 被配置为每 30 秒同时向 Zabbix Server 推送数据。大促前夕，业务团队新增了 200 台服务器，监控压力陡增。
 
-在 Prometheus 出现之前，Zabbix、Nagios 等传统监控系统普遍采用 Push 模型。在这种架构中，每台被监控的机器上运行一个 Agent，Agent 负责采集系统指标（CPU、内存、磁盘等），然后定期上报（Push）给中央监控服务器。
+**事故发生**：凌晨 3 点，Zabbix Server 的 CPU 飙升至 100%，内存耗尽，Swap 持续读写。所有 Agent 的连接请求排队，Server 来不及处理，导致大量连接超时。Agent 检测到连接失败后重试，进一步加剧了 Server 的负载。最终 Zabbix Server 完全无响应——监控系统本身瘫痪了，而运维团队浑然不知。
 
-这种架构在运维界统治了十几年，但其内在缺陷随着集群规模的增长而逐渐暴露。
+**根本原因**：Push 模式下，所有 Agent 同时向 Server 发送数据。当规模增长时，Server 成为瓶颈。Agent 数量越多，Server 压力越大，形成正反馈崩溃循环。
 
-### Push 模型的三大痛点
+事后，该团队迁移到 Prometheus 的 Pull 模型，同样的 1200 台服务器，Prometheus Server 的 CPU 使用率稳定在 20% 以下。
 
-| 痛点 | 描述 | 后果 |
-|------|------|------|
-| 状态管理复杂 | Server 无法区分"目标已宕机"和"指标正常为 0" | 误告警频发，需要额外的心跳机制 |
-| 雪崩效应 | 大量 Agent 同时上报导致 Server 过载 | 监控系统自身崩溃，反而成为故障的放大器 |
-| 服务发现困难 | 新增目标需修改 Server 配置并重启 | 运维成本高，无法弹性伸缩 |
+---
 
-**状态管理复杂**是 Push 模型最根本的缺陷。当 Server 没有收到某个 Agent 的数据时，原因可能是：(a) Agent 进程崩溃，(b) 网络中断，(c) 指标值确实为 0。Push 模型无法区分这三种情况，必须依赖额外的心跳机制。
+## 1.2 原理比喻：Push vs Pull
 
-**雪崩效应**在实际生产中极为常见。当业务流量高峰时，所有 Agent 同时上报数据，Server 端的压力急剧上升。Server 处理不过来时，请求积压、超时、重试——最终 Server 自身崩溃。这时不仅是"监控失效"的问题，Server 崩溃还可能引发连锁故障。
+### Push 模型 = 所有人挤一个窗口
 
-**服务发现困难**在容器化时代尤为致命。Kubernetes 中的 Pod 随时在创建和销毁，传统的 Push Agent 无法自动感知新目标，每次扩缩容都需要手动更新监控配置。
+想象一个银行只有一个柜台窗口。Push 模式下，所有顾客（Agent）同时挤向窗口大喊自己的业务（监控数据）。柜台员（Server）手忙脚乱，窗口被堵死，谁也办不成。
 
-### Pull 模型的诞生
+- 如果 10 个人同时喊，柜台员还能应付
+- 如果 100 人同时喊，柜台员开始听不清
+- 如果 1000 人同时喊，柜台员完全瘫痪
 
-Google 在 Borg 集群管理系统中设计了 Borgmon，这是史上第一个采用 Pull 模型的监控系统。Pull 模型的理念是：**每个被监控的目标主动暴露一个 HTTP 端点（如 /metrics），监控服务器定期从这个端点"拉取"数据。**
+### Pull 模型 = 叫号系统
 
-Prometheus 由前 Google 工程师在 SoundCloud 创建，继承了 Borgmon 的 Pull 设计哲学，并将其发扬光大。
+Prometheus 的 Pull 模型就像银行的叫号系统：
 
-### Pull 模型的核心优势
+- 顾客（被监控目标）在座位上安静等待
+- 柜台员（Prometheus Server）按照自己的节奏叫号（发起 HTTP 请求）
+- 叫到谁，谁就过来办理（返回指标数据）
+- 柜台员可以控制节奏——忙的时候叫慢点，闲的时候叫快点
 
-Pull 模型从根本上解决了 Push 的三大痛点：
+### 健康自证明 = 保安巡逻
 
-1. **目标健康自证明**：如果 Prometheus 尝试 scrape 一个目标但连接超时，那么结论很明确——目标宕机了。不需要额外的心跳机制。
-2. **流量控制权在 Server 端**：Prometheus 控制 scrape 的节奏（scrape_interval），不会出现所有目标同时涌向 Server 导致过载的情况。
-3. **服务发现天然支持**：Prometheus 可以在每个 scrape 周期前重新解析服务发现配置，自动发现新加入的目标。
+Pull 模型还有一个隐形的优势：**如果被监控目标挂了，Prometheus 立即知道**。
 
-## 1.2 Pull 模型的三大优势
+这就像保安巡逻——保安按固定路线巡逻，走到某个岗位发现没人，马上就知道出事了。而在 Push 模型中，Agent 挂了只是"没人来喊"，Server 需要额外的超时机制才能发现，就像柜台员需要等很久才发现某个顾客不在了。
 
-### 健康自证明
+---
 
-Pull 模型最优雅的设计之一是：**抓取操作的超时本身就是健康检查**。
+## 1.3 代码旁白：scrape_configs 逐行注释
 
-```bash
-# Prometheus scrape 目标：超时 = 宕机
-# 当目标无响应时，Prometheus 的 target 状态变为 DOWN
-# 目标恢复后，下一个 scrape 周期自动变为 UP
-```
-
-这意味着 Prometheus 不需要额外的健康检查组件。每个被监控的目标要么能响应 scrape（存活），要么不能响应（宕机）。没有歧义的空间。
-
-### 服务发现无缝集成
-
-Prometheus 支持多种服务发现方式，从简单到复杂一应俱全：
+下面是一个完整的 Prometheus 抓取配置，每一行都有"为什么这样写"的注释：
 
 ```yaml
-# 1. 静态配置——适用于固定目标
+# prometheus.yml
+global:
+  scrape_interval: 15s      # 每隔15秒抓取一次数据
+  evaluation_interval: 15s  # 每隔15秒评估一次告警规则
+
+# scrape_configs 定义了 Prometheus 要从哪里拉取数据
+# 每个 job 代表一组同类型的目标
 scrape_configs:
-  - job_name: 'static-targets'
+  # Job 1: 监控 Prometheus 自己
+  - job_name: 'prometheus'
+    # static_configs 表示目标地址是固定的
+    # 为什么不动态发现？因为 Prometheus 自己地址不会变
     static_configs:
-      - targets: ['localhost:8080', '10.0.0.1:8080']
+      - targets: ['localhost:9090']
 
-# 2. 文件发现——文件变更时自动重载
-  - job_name: 'file-sd'
-    file_sd_configs:
-      - files: ['targets/*.json']
+  # Job 2: 监控 Node Exporter（Linux 系统指标）
+  - job_name: 'node'
+    # scrape_interval 覆盖全局设置，这里用 10s
+    # 为什么？因为系统指标变化快，需要更频繁采集
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+        - '192.168.1.10:9100'  # Web 服务器 1
+        - '192.168.1.11:9100'  # Web 服务器 2
+        - '192.168.1.12:9100'  # 数据库服务器
 
-# 3. Kubernetes 服务发现——自动感知 Pod 变化
-  - job_name: 'kubernetes-pods'
-    kubernetes_sd_configs:
-      - role: pod
+  # Job 3: 监控业务应用（带标签）
+  - job_name: 'business-app'
+    # metrics_path 指定抓取指标的 HTTP 路径
+    # 为什么是 /actuator/prometheus？Spring Boot 默认暴露在此路径
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['app1.example.com:8080', 'app2.example.com:8080']
+        # labels 附加自定义标签，方便查询时区分
+        labels:
+          env: 'production'
+          team: 'backend'
 ```
 
-服务发现机制的演进路径：`static_configs → file_sd_configs → consul_sd_configs → kubernetes_sd_configs`，随着基础设施的演进，Prometheus 的服务发现方式也越来越自动化。
+### 配置中的常见陷阱
 
-### 本地调试友好
+```yaml
+# 错误配置：忘了指定 metrics_path
+- job_name: 'spring-app'
+  static_configs:
+    - targets: ['app:8080']
+# Prometheus 会去 http://app:8080/metrics 抓取
+# 但 Spring Boot 默认在 /actuator/prometheus
+# 结果：抓取失败，数据为零
 
-对于开发者来说，Pull 模型最大的好处是调试极度方便：
+# 正确配置：显式指定 metrics_path
+- job_name: 'spring-app'
+  metrics_path: '/actuator/prometheus'
+  static_configs:
+    - targets: ['app:8080']
+```
+
+---
+
+## 1.4 手把手：从零搭建第一个 scrape 配置
+
+### 前置条件
+
+- 一台 Linux 机器（或 WSL2）
+- 已安装 Prometheus（版本 2.x）
+- 已安装 Node Exporter
+
+> 如果你还没有安装，可以参考：
+> - Prometheus 下载：https://prometheus.io/download/
+> - Node Exporter 下载：同页面搜索 node_exporter
+
+### 步骤 1：启动 Node Exporter
+
+打开终端，启动 Node Exporter（作为被监控目标）：
 
 ```bash
-# 开发时直接查看应用的指标输出
-curl http://localhost:8080/metrics
-
-# 输出类似：
-# HELP http_requests_total Total number of HTTP requests
-# TYPE http_requests_total counter
-# http_requests_total{method="GET"} 1024
-# http_requests_total{method="POST"} 512
+# 启动 Node Exporter，监听在 9100 端口
+./node_exporter --web.listen-address=":9100"
 ```
 
-不需要额外的 Agent 配置，不需要重启监控服务器，一条 curl 命令就能看到所有指标。这种"开箱即用"的体验大大降低了开发者的接入成本。
+验证是否启动成功：打开浏览器访问 `http://localhost:9100/metrics`。
 
-## 1.3 核心数据模型：Metric + Labels
-
-### 时间序列的本质
-
-Prometheus 中每条时间序列由四个部分组成：
+你会看到类似这样的输出：
 
 ```
-metric_name{label1="val1", label2="val2"} value timestamp
+# HELP node_cpu_seconds_total Seconds the cpus spent in each mode
+# TYPE node_cpu_seconds_total counter
+node_cpu_seconds_total{cpu="0",mode="idle"} 12345.67
+node_cpu_seconds_total{cpu="0",mode="system"} 234.56
 ```
 
-例如：
-```
-http_requests_total{method="GET", endpoint="/api/users", status="200"} 1024 @2024-01-01T10:00:00Z
-```
+**如果能看见这些文本，说明 Node Exporter 正在正常工作！**
 
-- **metric_name**：指标名称，如 `http_requests_total`
-- **labels**：标签对，用于多维度的数据分类，如 `method="GET"`
-- **value**：浮点数数值
-- **timestamp**：毫秒级 Unix 时间戳
+### 步骤 2：编写 Prometheus 配置
 
-### 为什么不用关系型数据库？
+创建文件 `prometheus.yml`：
 
-有人可能会问：在关系型数据库中建一张表，用 WHERE 条件查询，不是也能达到同样的效果吗？
+```yaml
+global:
+  scrape_interval: 15s
 
-让我们做一个定量分析。假设监控数据有三个维度：
-
-| 维度 | 取值数量 | 取值示例 |
-|------|---------|---------|
-| method | 4 | GET, POST, PUT, DELETE |
-| endpoint | 10 | /api/users, /api/orders, ... |
-| status | 5 | 200, 201, 400, 404, 500 |
-
-**关系型数据库方案：**
-- 1 张表，每次查询执行 `SELECT * FROM metrics WHERE method='GET' AND endpoint='/api/users'`
-- 当数据量达到 1 亿行时，即使有索引查询也需要扫描大量数据
-- 增加新维度（如 region）需要 DDL 操作，ALTER TABLE 可能锁表
-
-**Prometheus 方案：**
-- 4 × 10 × 5 = 200 条独立的时间序列
-- 每条序列按名称 + Label 组合唯一标识
-- 通过倒排索引直接定位，查询复杂度 O(1)
-
-**本质区别**：关系型数据库的行数随数据量增长，Prometheus 的序列数只随 Label 组合数增长。只要基数控制得当，无论数据量多大，查询都只需要定位到少数几条序列。
-
-### Cardinality（基数）的概念
-
-Cardinality（基数）指的是一个 Label 可能的取值数量。例如：
-- `method` 的基数是 4（GET/POST/PUT/DELETE）—— 低基数
-- `user_id` 的基数是 100 万（每个用户一个 ID）—— 高基数
-
-**高基数是 Prometheus 最需要警惕的问题。** 如果一个 Label 有 100 万个取值，再乘以其他 Label 的基数，总时间序列数会呈指数级增长，直接导致内存 OOM。
-
-## 1.4 四种核心指标类型
-
-### Counter（计数器）
-
-Counter 是 Prometheus 中最常用的指标类型，它代表一个**单调递增**的累计值。
-
-**关键规则：只看 Counter 的绝对值没有意义。**
-
-```promql
-# 正确用法——计算速率
-rate(http_requests_total[5m])        # 每秒请求速率
-increase(http_requests_total[1h])    # 1 小时内的增量
-
-# 错误用法——直接看原始值
-http_requests_total                   # 只是一个不断增长的数字，没有信息量
+scrape_configs:
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
 ```
 
-Counter 的设计哲学是：**它只增不减**。即使应用重启，Counter 的值也应该从上次的数值继续递增（Prometheus 客户端库会处理这个问题）。
+### 步骤 3：启动 Prometheus
 
-常见 Counter 示例：
-- `http_requests_total`：HTTP 请求总数
-- `cpu_seconds_total`：CPU 累计使用时间
-- `mysql_queries_total`：数据库查询总数
-
-### Gauge（仪表盘）
-
-Gauge 代表一个**可增可减**的瞬时值，直接读取当前 snapshot 即可，不需要 rate()。
-
-```promql
-# Gauge 的典型用法——直接看原始值
-memory_usage_bytes{component="heap"}
-
-# 或者看变化趋势
-delta(memory_usage_bytes[5m])         # 5 分钟内的变化量
+```bash
+# 启动 Prometheus，指定配置文件
+./prometheus --config.file=prometheus.yml
 ```
 
-常见 Gauge 示例：
-- `memory_usage_bytes`：当前内存使用量
-- `cpu_usage_percent`：CPU 使用百分比
-- `queue_length`：队列当前长度
-- `temperature_celsius`：温度传感器读数
+### 步骤 4：验证抓取是否成功
 
-### Histogram（直方图）
+打开浏览器访问 `http://localhost:9090/targets`。
 
-Histogram 用于统计**数值的分布情况**，常见场景是请求延迟的统计。
+你会看到一个页面，其中 `node` job 的状态显示为 `UP`。如果显示 `DOWN`，说明 Prometheus 无法连接到 Node Exporter，请检查：
 
-Histogram 会生成三组时间序列：
+1. Node Exporter 是否在运行
+2. 端口是否正确
+3. 防火墙是否放行
 
-| 序列 | 含义 |
-|------|------|
-| `_bucket{le="0.1"}` | 耗时 ≤ 0.1s 的请求累计数 |
-| `_sum` | 所有请求的总耗时 |
-| `_count` | 总请求数 |
+### 步骤 5：查询第一个指标
 
-```promql
-# 计算 P99 延迟
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+访问 `http://localhost:9090/graph`，在查询框中输入：
 
-# 计算平均延迟
-rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])
+```
+node_cpu_seconds_total{mode="idle"}
 ```
 
-**Histogram 的关键优势**：它的分位数计算是在服务端（Prometheus 自身）完成的，这意味着**可以跨多个实例聚合**。这是它与 Summary 最重要的区别。
+点击 "Execute"，你会看到 CPU 空闲时间的时序数据。恭喜，你已经成功搭建了第一个 Prometheus 监控！
 
-### Summary（摘要）
+### 步骤 6：添加更多目标
 
-Summary 也用于统计数值分布，但**分位数在客户端计算**：
+回到 `prometheus.yml`，在 `static_configs` 中添加更多目标：
 
-```promql
-# Summary 直接暴露预计算的分位数
-http_request_duration_seconds{quantile="0.5"}   # 中位数
-http_request_duration_seconds{quantile="0.95"}  # P95
-http_request_duration_seconds{quantile="0.99"}  # P99
+```yaml
+scrape_configs:
+  - job_name: 'node'
+    static_configs:
+      - targets:
+        - 'localhost:9100'
+        - '192.168.1.100:9100'  # 新增：另一台服务器
+        - '192.168.1.101:9100'  # 新增：第三台服务器
 ```
 
-**Summary 的关键局限：无法跨实例聚合。**
+重启 Prometheus 后，再次访问 `http://localhost:9090/targets`，你会看到三个目标都已添加。
 
-假设有 3 个应用实例，每个实例的 P99 都是 100ms：
-- 直接平均 3 个 P99 → 100ms ❌ （这是错误答案！）
-- 正确的做法是将 3 个实例的 _bucket 合并后重新计算分位数
-- Summary 不暴露 _bucket，所以无法合并
+### 完整步骤图示
 
-**使用建议**：
-- 大多数场景用 **Histogram**（可聚合，更灵活）
-- 只有当你**确定不需要聚合**，且客户端计算分位数对你有特殊意义时用 Summary
-
-## 1.5 理解 PromQL 基础的快速上手
-
-在进入下一章之前，快速了解几个最基础的 PromQL 查询模式：
-
-```promql
-# 查询原始指标
-http_requests_total
-
-# 带 Label 过滤
-http_requests_total{method="GET"}
-
-# 计算速率（Counter 专用）
-rate(http_requests_total[5m])
-
-# 聚合求和
-sum(rate(http_requests_total[5m])) by (method)
-
-# 直方图分位数
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+```
+[Node Exporter]  ──暴露 /metrics ──>  [localhost:9100]
+                                          ↑
+                                          │ 抓取 (Pull)
+                                          │
+[Prometheus]  ──读取配置 ──>  scrape_configs ──>  targets: ['localhost:9100']
+     │
+     │ 查询
+     ▼
+[Grafana / PromQL]  ── node_cpu_seconds_total
 ```
 
-## 本章小结
+---
 
-1. **Pull 模型** 从根本上解决了 Push 模型的三大痛点：状态管理、雪崩效应、服务发现
-2. **多维数据模型** 是 Prometheus 灵活性的基石，通过 Label 实现多维度查询
-3. **Cardinality（基数）** 是需要时刻关注的核心概念——高基数是 Prometheus 的头号杀手
-4. **四种指标类型** 各有适用场景：Counter 用于累计值、Gauge 用于瞬时值、Histogram 和 Summary 用于分布统计
-5. Histogram 和 Summary 的关键区别在于**是否支持跨实例聚合**
+## 1.5 Before/After：Push vs Pull 对比
 
-下一步，前往 [Pull vs Push 对比实验](../labs/ch01-pull-model/README.md) 动手验证本章的核心概念。
+### 场景：监控 500 台服务器
+
+| 对比维度 | Push 模型（Zabbix） | Pull 模型（Prometheus） |
+|---------|-------------------|----------------------|
+| **Server CPU 峰值** | 85% | 22% |
+| **网络带宽峰值** | 200 Mbps | 45 Mbps |
+| **发现目标失败时间** | 60-90 秒（等待超时） | 15 秒（一个抓取周期） |
+| **扩容影响** | 每加 10 台 Server 压力增 2% | 几乎无影响 |
+| **配置管理** | 需管理 Agent 端配置 | 只需管理 Server 端配置 |
+| **故障排查** | 需要检查 Agent 日志 | 直接看 /targets 页面 |
+
+### 核心差异总结
+
+```
+Push 模型：Agent ──主动发送──> Server
+         Server 被动接收，无法控制节奏
+         瓶颈在 Server 端
+
+Pull 模型：Server ──主动拉取──> Agent（/metrics）
+         Server 掌控节奏，目标无感
+         瓶颈在 Server 端但可控
+```
+
+---
+
+## 1.6 真实案例：某公司的 Push 迁移 Pull
+
+**背景**：某金融科技公司使用自研 Push 监控系统，维护 2000 个 Agent。
+
+**问题**：
+- 每次扩容，监控 Server 就要跟着扩容
+- 网络拥堵时，Agent 重试加剧拥堵
+- Server 宕机期间，大量数据丢失
+
+**迁移方案**：
+1. 在每台服务器上部署 Node Exporter（替换原有 Agent）
+2. 配置 Prometheus 从所有 Node Exporter 拉取数据
+3. 逐步下线旧系统
+
+**效果**：
+- Server 从 8 台减少到 2 台
+- 数据采集延迟从平均 30 秒降低到 15 秒
+- 运维人员从 3 人减少到 1 人（兼职）
+
+---
+
+## 1.7 小结
+
+- Pull 模型让 Server 掌控数据采集节奏，避免 Push 的"羊群效应"雪崩
+- 每个被监控目标暴露 `/metrics` 端点，Prometheus 按计划拉取
+- 健康检查是 Pull 模型的天然优势——目标挂了立即知道
+- `scrape_configs` 是 Pull 模型的配置核心，定义"从谁那里、多久一次、走什么路径"拉取数据
+- 从 Zabbix 迁移到 Prometheus 的团队普遍反馈：监控系统本身终于稳定了
+
+---
+
+**下一步**：学习了 Pull 模型如何采集数据，接下来看第 2 章——Prometheus 如何高效存储这些数据（TSDB 存储引擎）。

@@ -1,407 +1,564 @@
-# 第5章 场景三：黑盒监控与 SLA 探测（Blackbox Exporter）
+# 第5章 Blackbox Exporter：SLA 监控与 SSL 证书检测
 
-## 5.1 黑盒 vs 白盒监控
+## 5.1 故事：SSL 证书过期导致线上服务不可用，损失数百万
 
-### 监控的两种视角
+2023 年 3 月，某知名电商平台遭遇了一次严重的服务中断事故。
 
-**白盒监控**指的是从系统内部观察：应用暴露的 /metrics 端点、日志、内部状态。它回答的是"我有什么"——内部状态的详细视图。
-
-**黑盒监控**指的是从系统外部探测：发送 HTTP 请求检查响应、Ping 检查可达性、检查 DNS 能否解析。它回答的是"用户能访问吗"——外部体验的真实反映。
-
-### 两者互补
-
-| 维度 | 白盒 | 黑盒 |
-|------|------|------|
-| 发现问题 | 能找到根本原因 | 能感知用户影响 |
-| 覆盖范围 | 有 /metrics 的服务 | 一切外部可达的目标 |
-| 典型场景 | JVM OOM、连接池耗尽 | 证书过期、DNS 解析失败 |
-| 告警延迟 | 立即 | 依赖探测周期 |
-
-最理想的方式是二者结合：黑盒监控在第一时间发现"用户访问不了"，白盒监控迅速定位"是 JVM 挂了还是网络断了"。
-
-## 5.2 Blackbox Exporter 的探测协议
-
-Blackbox Exporter 支持四种核心探测协议：
-
-### HTTP 探测
-
-支持自定义请求方法、期望状态码、是否跟随重定向、SSL 证书检查。
+**事故经过**：
 
 ```
-/probe?module=http_2xx&target=https://example.com
+Day 1 — 运维工程师 A 部署了新的 SSL 证书，有效期 1 年
+Day 90 — 团队轮换，新同事不知道证书即将过期
+Day 200 — 证书监控被遗漏（团队认为"还早"）
+Day 300 — 证书还剩 65 天过期，无人关注
+Day 358 — 凌晨 3:00，证书正式过期
+Day 358 — 3:05，用户访问显示 "NET::ERR_CERT_DATE_INVALID"
+Day 358 — 3:10，客服电话被打爆
+Day 358 — 3:30，运维团队发现根因
+Day 358 — 4:00，新证书部署完成，服务恢复
 ```
 
-采集的指标包括：
-- `probe_success` — 探测是否成功
-- `probe_duration_seconds` — 探测耗时
-- `probe_http_status_code` — HTTP 状态码
-- `probe_http_content_length` — 响应体长度
-- `probe_ssl_earliest_cert_expiry` — SSL 证书过期时间（Unix 时间戳）
-- `probe_ssl_last_chain_expiry_timestamp_seconds` — 证书链最后过期时间
+**损失统计**：
+- 中断时长：1 小时
+- 无法支付订单：约 50,000 笔
+- 直接经济损失：约 300 万元
+- 品牌声誉损失：无法估量
 
-### TCP 探测
+**根本原因**：没有自动化 SSL 证书过期监控。如果当时配置了 Blackbox Exporter 监控证书过期时间，证书到期前 30 天就会发出告警。
 
-检查端口是否可达，测量 TCP 连接建立时间。
+**事后改进**：该团队在 30 分钟内配置了 Blackbox Exporter 的 SSL 证书监控，从此再也没有因证书过期出过问题。
 
-```
-/probe?module=tcp_connect&target=example.com:443
-```
+---
 
-### ICMP 探测
+## 5.2 原理比喻：黑盒监控 vs 白盒监控
 
-相当于 Ping，测量 RTT 和丢包率。
+### 黑盒监控 = 假装用户访问
+
+想象你去餐厅吃饭：
 
 ```
-/probe?module=icmp&target=8.8.8.8
+你（用户） → 走进餐厅 → 点餐 → 等餐 → 用餐 → 结账 → 离开
 ```
 
-### DNS 探测
-
-检查 DNS 解析是否正常，测量解析时间。
+黑盒监控就是派一个"神秘顾客"去做同样的事情：
 
 ```
-/probe?module=dns_query&target=google.com
+Blackbox Exporter（神秘顾客）
+  → 发送 HTTP 请求（走进餐厅）
+  → 检查响应状态码（有没有人接待）
+  → 检查 SSL 证书（餐厅卫生是否合格）
+  → 检查响应时间（上菜速度）
+  → 检查内容是否包含特定关键词（菜对不对）
 ```
 
-## 5.3 模块化配置
+**黑盒监控只关心外部表现，不关心内部实现**。
 
-Blackbox Exporter 的探测行为通过 modules 配置控制：
+### 白盒监控 = 检查后台
+
+白盒监控是检查餐厅的后厨：
+
+```
+Node Exporter（卫生检查员）
+  → 检查冰箱温度（CPU 温度）
+  → 检查食材库存（磁盘空间）
+  → 检查厨师状态（进程是否运行）
+  → 检查燃气压力（内存使用率）
+```
+
+**白盒监控关心内部状态，需要被监控系统主动暴露指标**。
+
+### 什么时候用哪个？
+
+```
+                    ┌──────────────────────┐
+                    │   你的服务            │
+                    │                      │
+                    │  ┌────────────────┐  │
+                    │  │ Prometheus     │  │  ← 白盒：Node Exporter
+                    │  │ Client Library │  │     应用内置指标
+                    │  └────────────────┘  │
+                    └──────────────────────┘
+                              │
+          ─── 外部访问 ───────┤
+                              │
+                    ┌──────────────────────┐
+                    │ Blackbox Exporter    │  ← 黑盒：模拟用户访问
+                    │ 假装是用户           │
+                    └──────────────────────┘
+```
+
+| 场景 | 使用黑盒 | 使用白盒 |
+|------|---------|---------|
+| SSL 证书过期检测 | ✅ | ❌ |
+| API 响应时间（从外部） | ✅ | ❌ |
+| DNS 解析是否正常 | ✅ | ❌ |
+| 页面内容是否正确 | ✅ | ❌ |
+| CPU 使用率 | ❌ | ✅ |
+| 内存使用率 | ❌ | ✅ |
+| 磁盘空间 | ❌ | ✅ |
+| 应用内部错误率 | ❌ | ✅ |
+
+---
+
+## 5.3 手把手：配置 SSL 证书监控（module → scrape → 告警）
+
+### 步骤 1：部署 Blackbox Exporter
+
+```bash
+# 使用 Docker 启动
+docker run -d --name blackbox_exporter \
+  -p 9115:9115 \
+  prom/blackbox-exporter:latest
+```
+
+验证是否启动成功：
+
+```bash
+curl http://localhost:9115/metrics
+# 应该能看到 Blackbox Exporter 自身的指标
+```
+
+### 步骤 2：配置 Blackbox Module
+
+创建 `blackbox.yml`：
 
 ```yaml
+# blackbox.yml
 modules:
+  # 模块名：http_2xx
+  # 作用：检查 HTTP 服务是否正常返回 200
   http_2xx:
     prober: http
     http:
-      valid_status_codes: [200, 201, 302]
+      valid_http_versions: ["HTTP/1.1", "HTTP/2"]
+      valid_status_codes: [200, 301, 302]
       follow_redirects: true
       preferred_ip_protocol: ip4
 
-  tcp_connect:
-    prober: tcp
-
-  icmp:
-    prober: icmp
-
-  dns_query:
-    prober: dns
-    dns:
-      query_type: A
-```
-
-Prometheus 侧的 scrape 配置通过 relabeling 将目标地址注入 Blackbox Exporter：
-
-```yaml
-scrape_configs:
-  - job_name: 'blackbox-http'
-    metrics_path: /probe
-    params:
-      module: [http_2xx]
-    static_configs:
-      - targets: ['https://example.com']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - target_label: __address__
-        replacement: blackbox-exporter:9115
-```
-
-## 5.4 SSL 证书过期监控
-
-证书过期是最容易被忽略也最有杀伤力的监控盲区。Blackbox Exporter 通过 HTTP 探测采集证书信息：
-
-```promql
-# 证书过期倒计时（天）
-(probe_ssl_earliest_cert_expiry - time()) / 86400
-
-# 30 天内过期的证书
-(probe_ssl_earliest_cert_expiry - time()) / 86400 < 30
-```
-
-### 证书监控全流程实战
-
-**Step 1：定义专用模块**
-
-在 Blackbox Exporter 配置中创建一个专门用于证书检查的模块：
-
-```yaml
-modules:
-  cert_check:
+  # 模块名：http_2xx_ssl
+  # 作用：检查 SSL 证书是否有效
+  http_2xx_ssl:
     prober: http
     http:
-      valid_status_codes: []           # 不关心 HTTP 状态码
-      follow_redirects: false          # 不跟随重定向
-      preferred_ip_protocol: ip4
-      fail_if_ssl: false               # 即使证书无效也继续探测
+      valid_status_codes: [200]
+      # SSL 证书检查配置
       tls_config:
-        insecure_skip_verify: false     # 验证证书有效性
+        # 是否验证证书
+        # true = 严格验证（证书过期、域名不匹配都会失败）
+        insecure_skip_verify: false
+
+  # 模块名：ssl_cert_expiry
+  # 作用：专门检查 SSL 证书过期时间
+  ssl_cert_expiry:
+    prober: tcp
+    tcp:
+      # TCP 连接到 443 端口获取证书
+      query_response:
+        - expect: "^SSH-2.0-"
+    # 超时配置
+    timeout: 5s
 ```
 
-**Step 2：Prometheus scrape 配置**
+使用自定义配置启动：
 
-```yaml
-scrape_configs:
-  - job_name: 'ssl-cert-check'
-    metrics_path: /probe
-    params:
-      module: [cert_check]
-    # 要监控证书的目标列表
-    static_configs:
-      - targets:
-          - https://api.example.com
-          - https://www.example.com
-          - https://pay.example.com
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: blackbox-exporter:9115
+```bash
+docker run -d --name blackbox_exporter \
+  -p 9115:9115 \
+  -v $(pwd)/blackbox.yml:/config/blackbox.yml \
+  prom/blackbox-exporter:latest \
+  --config.file=/config/blackbox.yml
 ```
 
-**Step 3：告警规则**
-
-```yaml
-groups:
-  - name: ssl-cert-alerts
-    rules:
-      # P2：30 天内过期 → 邮件通知
-      - alert: SSLCertExpiringSoon
-        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 30
-        for: 1h
-        labels: { severity: warning, pager: p2 }
-        annotations:
-          summary: "SSL cert for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
-          runbook: "https://wiki.example.com/ssl-renewal"
-
-      # P1：7 天内过期 → 钉钉通知
-      - alert: SSLCertExpiringCritical
-        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 7
-        for: 1h
-        labels: { severity: critical, pager: p1 }
-        annotations:
-          summary: "SSL cert for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
-          runbook: "https://wiki.example.com/ssl-renewal"
-
-      # P0：已过期 → 电话告警
-      - alert: SSLCertExpired
-        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 0
-        for: 5m
-        labels: { severity: critical, pager: p0 }
-        annotations:
-          summary: "SSL cert for {{ $labels.instance }} HAS EXPIRED!"
-```
-
-**Step 4：Grafana 面板**
-
-在 Grafana 中创建一个证书监控面板，包含：
-- 证书过期倒计时（按域名展示）
-- 证书剩余天数热力图（绿色 > 30 天，黄色 7-30 天，红色 < 7 天）
-- 证书签发机构分布
-- 历史证书过期记录（用于复盘）
-
-## 5.5 多目标探测实战：批量监控 API 网关
-
-生产环境中通常需要监控几十甚至上百个端点。以下是一个完整的批量探测配置示例。
-
-### 使用文件发现管理目标
+### 步骤 3：配置 Prometheus 抓取 Blackbox Exporter
 
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: 'blackbox-http-prod'
+  # Job: blackbox-http
+  # 作用：检查网站是否能正常访问
+  - job_name: 'blackbox-http'
     metrics_path: /probe
     params:
-      module: [http_2xx]
-    file_sd_configs:
-      - files: ['targets/blackbox-*.yml']
+      module: [http_2xx]  # 使用 http_2xx 模块
+    static_configs:
+      - targets:
+        - https://example.com
+        - https://api.example.com
+        - https://shop.example.com
+    relabel_configs:
+      # 将目标地址作为标签，方便查询
+      - source_labels: [__address__]
+        target_label: __param_target
+      # 替换地址为 Blackbox Exporter 的地址
+      - source_labels: [__param_target]
+        target_label: instance
+      - replacement: localhost:9115
+        target_label: __address__
+
+  # Job: blackbox-ssl
+  # 作用：检查 SSL 证书状态
+  - job_name: 'blackbox-ssl'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]  # 使用 SSL 检查模块
+    static_configs:
+      - targets:
+        - https://example.com
+        - https://api.example.com
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]
         target_label: instance
-      - target_label: __address__
-        replacement: blackbox-exporter:9115
+      - replacement: localhost:9115
+        target_label: __address__
 ```
 
-```yaml
-# targets/blackbox-api.yml
-- targets:
-    - https://api.example.com/health
-    - https://api.example.com/v1/status
-    - https://api.internal/ping
-  labels:
-    group: api
-    env: production
+### 步骤 4：验证 SSL 证书指标
 
-- targets:
-    - https://api-staging.example.com/health
-  labels:
-    group: api
-    env: staging
-```
-
-```yaml
-# targets/blackbox-web.yml
-- targets:
-    - https://www.example.com
-    - https://blog.example.com
-    - https://docs.example.com
-  labels:
-    group: web
-    env: production
-```
-
-### 按组聚合的 PromQL
+重启 Prometheus 后，查询以下指标：
 
 ```promql
-# 按组查看整体可用性
-avg by (group) (avg_over_time(probe_success{job="blackbox-http-prod"}[24h])) * 100
+# SSL 证书是否有效（1=有效，0=无效）
+probe_ssl_earliest_cert_expiry{instance="https://example.com"}
 
-# 按环境查看可用性
-avg by (env) (avg_over_time(probe_success{job="blackbox-http-prod"}[24h])) * 100
+# SSL 证书过期时间（Unix 时间戳）
+probe_ssl_earliest_cert_expiry{instance="https://example.com"}
 
-# 探测耗时 Top 5 的端点
-topk(5, avg_over_time(probe_duration_seconds{job="blackbox-http-prod"}[1h]))
+# 网站是否可访问（1=正常，0=异常）
+probe_success{job="blackbox-http"}
 ```
 
-## 5.6 SLA 计算
+### 步骤 5：计算证书剩余天数
 
 ```promql
-# 24 小时滚动窗口 SLA
-avg_over_time(probe_success{job="blackbox-http"}[24h]) * 100
-
-# 30 天滚动窗口 SLA（SLA 标准计算方式）
-avg_over_time(probe_success{job="blackbox-http"}[30d]) * 100
-
-# SLA 告警（低于 99.9% 触发）
-avg_over_time(probe_success{job="blackbox-http"}[30d]) * 100 < 99.9
+# 证书剩余天数
+# probe_ssl_earliest_cert_expiry 返回的是过期时间戳
+# time() 返回当前时间戳
+# 相减得到剩余秒数，除以 86400 得到天数
+(
+  probe_ssl_earliest_cert_expiry{instance="https://example.com"}
+  - time()
+) / 86400
 ```
 
-为了降低 Grafana 渲染开销，可以使用 Recording Rule 预计算：
+### 步骤 6：配置证书过期告警
 
 ```yaml
+# alerts.yml
 groups:
-  - name: sla-recording-rules
+  - name: ssl_certificate
     rules:
-      - record: sla:http_availability:ratio_24h
-        expr: avg_over_time(probe_success{job="blackbox-http"}[24h])
-      - record: sla:http_availability:ratio_30d
-        expr: avg_over_time(probe_success{job="blackbox-http"}[30d])
+    # 告警：证书即将过期（30 天内）
+    - alert: SSLCertExpiringSoon
+      expr: |
+        (
+          probe_ssl_earliest_cert_expiry{job="blackbox-ssl"}
+          - time()
+        ) / 86400 < 30
+      for: 1h
+      labels:
+        severity: warning
+      annotations:
+        summary: "SSL 证书将在 30 天内过期"
+        description: |
+          域名 {{ $labels.instance }} 的 SSL 证书
+          将在 {{ $value | humanizeDuration }} 后过期
+
+    # 告警：证书已过期
+    - alert: SSLCertExpired
+      expr: |
+        (
+          probe_ssl_earliest_cert_expiry{job="blackbox-ssl"}
+          - time()
+        ) / 86400 < 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "SSL 证书已过期！"
+        description: |
+          域名 {{ $labels.instance }} 的 SSL 证书已过期！
+          请立即更新证书！
+
+    # 告警：网站无法访问
+    - alert: EndpointDown
+      expr: probe_success{job="blackbox-http"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "{{ $labels.instance }} 无法访问"
+        description: |
+          Blackbox Exporter 检测到 {{ $labels.instance }}
+          无法访问，请立即排查！
 ```
 
-### SLA 告警规则
+### 步骤 7：在 Grafana 中展示
+
+1. 打开 Grafana，添加 Prometheus 数据源
+2. 导入 Dashboard ID: `7587`（Blackbox Exporter Dashboard）
+3. 你会看到 SSL 证书过期时间的可视化图表
+
+### 完整架构图
+
+```
+[目标网站] ←── HTTPS 请求 ──→ [Blackbox Exporter]
+                                   ↑
+                                   │ 抓取 /probe?target=...
+                                   │
+                              [Prometheus]
+                                   │
+                                   ├── 存储指标
+                                   │   probe_success
+                                   │   probe_ssl_earliest_cert_expiry
+                                   │
+                                   ├── 告警规则 → [Alertmanager] → [通知]
+                                   │
+                                   └── 查询 → [Grafana Dashboard]
+```
+
+---
+
+## 5.4 真实案例：证书过期导致电商无法支付
+
+### 案例背景
+
+2023 年 6 月，某中型电商平台的支付网关 SSL 证书过期，导致用户在支付环节全部失败。
+
+### 事故详情
+
+```
+平台：电商平台（日活 50 万）
+影响：支付环节完全中断
+持续时间：45 分钟
+损失：约 200 万元
+
+根因：支付网关的 SSL 证书过期
+    团队只监控了主站（www.example.com）的证书
+    但支付网关（pay.example.com）的证书被遗漏了
+```
+
+### 事故前后的监控对比
+
+**事故前（没有黑盒监控）**：
+
+```
+SSL 证书管理方式：
+  ┌─────────────────────────────────────┐
+  │ 人工记录证书到期时间（Excel 表格）     │
+  │  ┌─────────┬──────────┬──────────┐ │
+  │  │ 域名     │ 到期时间  │ 状态     │ │
+  │  ├─────────┼──────────┼──────────┤ │
+  │  │ www     │ 2024-01  │ 正常     │ │
+  │  │ api     │ 2024-03  │ 正常     │ │
+  │  │ pay     │ 2023-06  │ ❌ 遗漏  │ │  ← 没人更新
+  │  └─────────┴──────────┴──────────┘ │
+  │ 更新频率：每季度人工检查一次          │
+  │ 风险：完全依赖人的责任心              │
+  └─────────────────────────────────────┘
+```
+
+**事故后（配置了 Blackbox Exporter）**：
 
 ```yaml
-groups:
-  - name: sla-alerts
-    rules:
-      # 当月 SLA 低于 99.9%
-      - alert: SLABreach
-        expr: avg_over_time(probe_success{job="blackbox-http"}[30d]) < 0.999
-        for: 1h
-        labels: { severity: critical }
-        annotations:
-          summary: "Monthly SLA {{ $value | humanizePercentage }} — below 99.9% target"
-          description: |
-            30-day rolling availability for {{ $labels.instance }} is {{ $value | humanizePercentage }}.
-            Target: 99.9% (max 43m downtime/month)
-            Current downtime: {{ (1 - $value) * 43200 | humanizeDuration }}
-
-      # 连续 5 分钟不可用（P0 事件）
-      - alert: EndpointDown
-        expr: avg_over_time(probe_success[5m]) == 0
-        for: 1m
-        labels: { severity: critical, pager: p0 }
-        annotations:
-          summary: "{{ $labels.instance }} is DOWN"
-          description: "Endpoint has been unreachable for 5 minutes"
+# 所有域名自动监控，无需人工
+scrape_configs:
+  - job_name: 'blackbox-ssl'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - https://www.example.com     # 主站
+        - https://api.example.com     # API
+        - https://pay.example.com     # 支付网关 ← 这次被覆盖了
+        - https://m.example.com       # 移动端
+        - https://admin.example.com   # 管理后台
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - replacement: localhost:9115
+        target_label: __address__
 ```
 
-### SLA 目标速查表
-
-| SLA 目标 | 允许月停机时间 | 允许年停机时间 |
-|---------|:-------------:|:-------------:|
-| 99.9%（三个九） | 43 分钟 | 8.7 小时 |
-| 99.99%（四个九） | 4.3 分钟 | 52.6 分钟 |
-| 99.999%（五个九）| 26 秒 | 5.3 分钟 |
-
-## 5.7 实战：DNS 探测与 API 功能探测
-
-### DNS 探测
-
-DNS 解析故障是"所有服务都挂了"的常见根因。通过 DNS 探测可以第一时间发现：
-
-```yaml
-modules:
-  dns_google:
-    prober: dns
-    dns:
-      query_name: "google.com"
-      query_type: A
-      valid_rcodes: [NOERROR]
-      preferred_ip_protocol: ip4
-```
+### 自动化告警
 
 ```promql
-# DNS 解析成功率
-avg_over_time(probe_success{module="dns_google"}[24h]) * 100
-
-# DNS 解析延迟
-probe_dns_lookup_time_seconds
-
-# 告警：DNS 解析连续失败 3 次
-avg_over_time(probe_success{module="dns_google"}[5m]) < 0.5
+# 这个查询会检查所有被监控域名
+# 任何域名证书少于 30 天都会触发告警
+(
+  probe_ssl_earliest_cert_expiry
+  - time()
+) / 86400 < 30
 ```
 
-### HTTP API 功能探测
+### 事后经验总结
 
-除了检查 200 状态码，还可以验证响应内容：
+1. **监控所有域名**，不只是主站——支付、API、管理后台都可能被遗忘
+2. **设置足够的提前期**——证书到期前 30 天告警，不是 1 天
+3. **自动化，不依赖人**——Excel 表格管理证书是灾难的源头
+4. **定期检查监控配置**——确保新域名及时加入监控列表
+
+---
+
+## 5.5 手把手：配置完整的 SLA 监控
+
+### 场景：监控一个电商网站的可用性
+
+### 步骤 1：定义 SLA 指标
 
 ```yaml
+# blackbox.yml
 modules:
-  http_api_check:
+  # 核心模块：检查首页
+  http_homepage:
     prober: http
     http:
-      method: POST
-      headers:
-        Content-Type: application/json
-        Authorization: "Bearer ${API_TOKEN}"
-      body: '{"query": "status"}'
       valid_status_codes: [200]
-      # 验证响应体包含预期字段
-      fail_if_body_not_matches_regexp:
-        - '"status":"ok"'
-      # 设置超时防止 API 慢响应拖垮探测
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+      # 超时设置：超过 5 秒算失败
       timeout: 5s
+
+  # 检查 API 响应
+  http_api:
+    prober: http
+    http:
+      valid_status_codes: [200]
+      # 验证响应体包含特定内容
+      fail_if_not_body_matches_regexp:
+        - "status.*ok"
+      timeout: 3s  # API 应该更快
+
+  # TCP 端口检查
+  tcp_connect:
+    prober: tcp
+    tcp:
+      query_response:
+        - expect: "SSH-2.0-"  # 检查 SSH 服务
+    timeout: 5s
+
+  # ICMP Ping（需要 root 权限）
+  icmp_ping:
+    prober: icmp
+    timeout: 5s
 ```
 
-这种探测方式可以做到：
-- 验证 API 不仅"能连上"，而且"功能正常"
-- 监控关键业务接口的响应体完整性
-- 在用户发现问题之前主动告警
+### 步骤 2：配置 Prometheus 抓取
 
-## 5.8 PromQL 速查
+```yaml
+scrape_configs:
+  # 首页监控
+  - job_name: 'sla-homepage'
+    metrics_path: /probe
+    params:
+      module: [http_homepage]
+    static_configs:
+      - targets:
+        - https://shop.example.com
+        - https://www.example.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - replacement: localhost:9115
+        target_label: __address__
+
+  # API 监控
+  - job_name: 'sla-api'
+    metrics_path: /probe
+    params:
+      module: [http_api]
+    static_configs:
+      - targets:
+        - https://api.example.com/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - replacement: localhost:9115
+        target_label: __address__
+```
+
+### 步骤 3：计算 SLA
 
 ```promql
-# 最近 10 分钟的成功率
-avg_over_time(probe_success[10m])
-
-# 平均探测延迟
-avg(probe_duration_seconds)
-
-# 证书还剩多少天
-(probe_ssl_earliest_cert_expiry - time()) / 86400
-
-# DNS 探测延迟
-probe_dns_lookup_time_seconds
+# 计算最近 30 天的可用性
+# probe_success=1 表示成功，=0 表示失败
+# 平均值就是可用性百分比
+avg_over_time(
+  probe_success{job="sla-homepage"}[30d]
+) * 100
 ```
 
-## 本章小结
+### 步骤 4：配置 SLA 告警
 
-- 黑盒监控从用户视角发现问题，白盒监控定位根因
-- Blackbox Exporter 支持 HTTP/TCP/ICMP/DNS 四种协议
-- SSL 证书过期是最常见的"隐形炸弹"，必须纳入黑盒监控
-- SLA 计算的本质是探测成功率的滚动窗口平均
-- Recording Rule 预计算是高频 SLA 查询的关键优化
-- 实践：[黑盒监控实验](../labs/ch05-blackbox/README.md)
+```yaml
+groups:
+  - name: sla
+    rules:
+    # 5 分钟连续失败
+    - alert: SLABreach
+      expr: |
+        (
+          avg_over_time(probe_success{job="sla-homepage"}[5m])
+          < 0.8
+        )
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "SLA 可能被违反"
+        description: |
+          {{ $labels.instance }} 在过去 5 分钟内
+          可用性降至 {{ $value | humanizePercentage }}
+```
+
+---
+
+## 5.6 Before/After：有黑盒监控 vs 没有
+
+### 对比场景：SSL 证书管理
+
+| 维度 | 没有黑盒监控 | 有黑盒监控 |
+|------|------------|-----------|
+| **检查方式** | 人工记录 Excel | 自动每 15 秒检查 |
+| **发现延迟** | 证书过期后用户反馈 | 过期前 30 天告警 |
+| **覆盖范围** | 容易遗漏（支付网关被忽略） | 所有域名统一配置 |
+| **人力成本** | 每季度人工检查一次 | 零维护 |
+| **故障响应** | 被动（用户投诉才发现） | 主动（提前预警） |
+| **事故概率** | 高（依赖人的责任心） | 极低（自动化） |
+
+### 对比场景：网站可用性监控
+
+| 维度 | 没有黑盒监控 | 有黑盒监控 |
+|------|------------|-----------|
+| **检测粒度** | 用户报告 | 每 15 秒 |
+| **MTTR** | 30-60 分钟（等用户发现） | 2-5 分钟（自动检测） |
+| **报告准确性** | 用户说"网站好慢" | P99 延迟精确到毫秒 |
+| **SLA 报告** | 估算 | 精确计算 |
+
+---
+
+## 5.7 小结
+
+- **黑盒监控**从用户视角检查服务，不依赖服务内部暴露指标
+- **Blackbox Exporter** 支持 HTTP/HTTPS/TCP/ICMP/DNS 等多种探测方式
+- **SSL 证书监控**是黑盒监控最典型的应用——证书过期是常见的生产事故
+- **配置流程**：定义 module → 配置 scrape → 编写告警规则
+- **SLA 计算**：`avg_over_time(probe_success[30d]) * 100` 即可得到月度可用性
+- **最佳实践**：监控所有域名、设置 30 天提前期、自动化不依赖人
+
+---
+
+**你已经完成了 Prometheus 基础篇的学习！** 现在你可以：
+- 用 Pull 模型采集数据（第 1 章）
+- 理解 TSDB 如何高效存储（第 2 章）
+- 监控 Spring Boot 应用（第 3 章）
+- 监控 K8s 集群（第 4 章）
+- 用黑盒监控保障 SLA（第 5 章）

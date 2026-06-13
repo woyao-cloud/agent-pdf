@@ -1,269 +1,583 @@
-# 第13章 监控体系工程化规范
+# 第13章 工程化规范：让监控成为可维护的系统
 
-## 13.1 命名规范
+---
 
-### 指标命名
+## 场景故事：命名混乱之殇
 
-Prometheus 社区推荐的命名格式：
+某创业公司的监控系统经历了三个工程师的维护：
+
+- **第一位工程师**（2022 年）：用 Python 写了一些脚本，指标命名风格是 `get_requests`
+- **第二位工程师**（2023 年）：从 Java 背景来，习惯用 `getRequests`
+- **第三位工程师**（2024 年）：前端出身，指标名用 `get-requests`
+
+于是，Prometheus 中出现了这样的景象：
 
 ```
-namespace_subsystem_name_unit
+# 同一个业务含义，三种不同的命名！
+get_requests_total{service="auth"} 1000
+getRequests_total{service="auth"} 500
+get-requests_total{service="auth"} 200
 ```
 
-| 部分 | 说明 | 示例 |
-|------|------|------|
-| namespace | 命名空间/应用名 | `http`, `jvm`, `mysql` |
-| subsystem | 子系统名 | `server`, `pool`, `cache` |
-| name | 指标名 | `requests`, `connections` |
-| unit | 单位（可选） | `seconds`, `bytes`, `total` |
+当新来的 SRE 小李想要写一个"统计所有认证服务请求量"的告警规则时，他崩溃了——**他不得不 sum 三个不同的指标**，而且每次新增服务都要问"该用哪种命名风格"。
 
-**正确示例：**
-- `http_requests_total` — HTTP 请求总数
-- `node_cpu_seconds_total` — CPU 累计秒数
-- `jvm_memory_used_bytes` — JVM 已用内存字节数
-- `container_memory_usage_bytes` — 容器内存使用字节数
+更糟糕的是：
+- 有人把单位写在名字里（`request_duration_ms`），有人写在标签里（`request_duration_seconds{unit="ms"}`）
+- 有人用 `service` 标签，有人用 `app`，有人用 `application`
+- 有人用 `http_status`，有人用 `status_code`，有人用 `code`
 
-**错误示例：**
-- `myapp.metric.1` — 不应使用点分隔符
-- `GetRequests` — 不应使用驼峰命名
-- `total_http_requests_count_of_app` — 不应过长
+**监控系统从"帮助工具"变成了"混乱之源"。**
 
-### Label 命名
+### 原理比喻：公司文件命名规范
 
-| 推荐 | 不推荐 |
-|------|--------|
-| `method`, `endpoint`, `status` | `Method`, `Endpoint`（驼峰）|
-| `region`, `zone` | `RegionName`（过长）|
-| `service`, `version` | `service_name`（下划线过多）|
+想象一下你在一家没有文件命名规范的公司工作：
 
-### 单位约定
+```
+项目方案-v1-final-真的最终版.pptx
+项目方案-v2-最终版-改.pptx
+项目方案-2023-最终版.pptx
+项目方案-真的不改了.pptx
+```
 
-| 单位 | 后缀 | 示例 |
-|------|------|------|
-| 秒 | `_seconds` | `http_request_duration_seconds` |
-| 字节 | `_bytes` | `memory_usage_bytes` |
-| 总数 | `_total` | `http_requests_total` |
-| 比率 | `_ratio` | `cpu_usage_ratio` |
-| 百分比 | `_percent` | `disk_usage_percent` |
+找文件时你会疯掉。这和没有监控命名规范是一个道理——**短期内每个人都很自由，长期来看整个系统无法维护**。
 
-## 13.2 告警分级与响应 SLA
+这就是本章要解决的问题：**建立工程化规范，让监控系统可维护、可扩展、可理解**。
 
-### 告警级别定义
+---
 
-| 级别 | 名称 | 响应时间 | 通知渠道 | 示例场景 |
-|------|------|---------|---------|---------|
-| P0 | 核心链路中断 | 5 分钟 | 电话 + 钉钉 | 支付接口不可用、数据库宕机 |
-| P1 | 严重问题 | 15 分钟 | 钉钉 + 邮件 | 错误率 > 5%、P99 延迟 > 1s |
-| P2 | 警告 | 1 小时 | 邮件 | 磁盘使用率 > 80%、证书 30 天内过期 |
-| P3 | 通知 | 24 小时 | 邮件周报 | 版本发布后的性能变化 |
+## 13.1 指标命名规范
 
-### 告警规则示例
+### Prometheus 官方规范
+
+```
+namespace_subsystem_unit_suffix
+  ────────  ────────  ────  ─────
+    │          │       │      └── 类型后缀（_total, _count, _sum, _bucket）
+    │          │       └── 单位（_seconds, _bytes, _ratio）
+    │          └── 子系统（http, db, cache, queue）
+    └── 命名空间（prometheus, node, mysql, app）
+```
+
+### 代码旁白：命名规范的逐行解释
 
 ```yaml
-# P0：核心链路中断 — 5 分钟无数据直接电话
-- alert: PaymentServiceDown
-  expr: absent(up{job="payment-service"} == 1)
-  for: 5m
-  labels: { severity: critical, pager: p0 }
-  annotations:
-    summary: "Payment service is DOWN (P0)"
+# 指标命名规范示例
 
-# P1：错误率飙升
-- alert: HighErrorRate
-  expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
-  for: 3m
-  labels: { severity: warning, pager: p1 }
-  annotations:
-    summary: "Error rate > 5% on {{ $labels.instance }}"
+# 正确命名
+# ──────────
+# 格式：app_http_requests_total
+# 解释：app=命名空间，http=子系统，requests=指标名，_total=Counter 后缀
+app_http_requests_total{method="GET", path="/api/users", status="200"} 1024
 
-# P2：磁盘即将满
-- alert: DiskSpaceLow
-  expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.2
-  for: 10m
-  labels: { severity: warning, pager: p2 }
-  annotations:
-    summary: "Disk space < 20% on {{ $labels.instance }}"
+# 格式：app_db_query_duration_seconds
+# 解释：_seconds 表示单位是秒
+app_db_query_duration_seconds{db="users", query="select_by_id"} 0.025
+
+# 格式：app_cache_hit_ratio
+# 解释：_ratio 表示这是一个比率（0-1）
+app_cache_hit_ratio{cache="user_session"} 0.95
+
+# 格式：app_queue_size_bytes
+# 解释：_bytes 表示单位是字节
+app_queue_size_bytes{queue="order_processing"} 20480
+
+# 错误命名
+# ──────────
+# 错误 1：命名空间缺失
+http_requests_total{...}                     # 谁的 http？
+# 错误 2：单位不一致
+request_duration_ms{...}                     # 有人用 ms，有人用 seconds
+request_duration_seconds{...}
+# 错误 3：类型后缀错误
+app_http_request_count{...}                  # Counter 应该用 _total
+app_http_errors{...}                         # 缺少 _total
+# 错误 4：命名风格混乱
+app.http.requests.total{...}                 # 使用了点号
+appHttpRequestsTotal{...}                    # 使用了驼峰
 ```
 
-## 13.3 RED 与 USE 方法论
-
-### RED 方法（微服务）
-
-RED 是微服务监控的黄金方法论，由 Tom Wilkie 提出：
-
-| 维度 | 含义 | 指标示例 |
-|------|------|---------|
-| **R**ate | 请求率 | `rate(http_requests_total[5m])` |
-| **E**rrors | 错误率 | `rate(http_requests_total{status=~"5.."}[5m])` |
-| **D**uration | 耗时 | `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))` |
-
-**每个微服务都至少需要这三个维度。** 无论服务是什么语言、什么框架，RED 都是必须覆盖的基础指标。
-
-### USE 方法（基础设施）
-
-USE 由 Brendan Gregg 提出，适用于基础设施（服务器、数据库、网络设备）：
-
-| 维度 | 含义 | 指标示例 |
-|------|------|---------|
-| **U**tilization | 利用率 | `avg by(instance)(rate(node_cpu_seconds_total[5m]))` |
-| **S**aturation | 饱和度 | `node_load1 / count by(instance)(node_cpu_seconds_total)` |
-| **E**rrors | 错误数 | `rate(node_network_receive_errors_total[5m])` |
-
-### 方法论对照
-
-| 场景 | 方法 | 覆盖范围 |
-|------|------|---------|
-| 微服务 | RED | Rate / Errors / Duration |
-| 基础设施 | USE | Utilization / Saturation / Errors |
-| 批处理 | 4 Golden Signals | Latency / Traffic / Errors / Saturation |
-
-## 13.4 指标上线 Review 流程
-
-新指标的上线应该有规范的审批流程，防止高基数指标流入生产环境：
-
-```
-申请 → Review → 测试 → 上线 → 观察
-```
-
-### 指标 Review 检查清单
-
-- [ ] 指标命名是否符合 `namespace_subsystem_name_unit` 规范？
-- [ ] 所有 Label 的预期基数是否 < 100？
-- [ ] 是否使用了动态值（user_id、order_id、trace_id）作为 Label？
-- [ ] 指标类型选择是否正确（Counter vs Gauge vs Histogram）？
-- [ ] Histogram 的 Bucket 边界是否符合业务特征？
-- [ ] 指标是否已有对应的 Grafana Dashboard 面板？
-- [ ] 是否需要配置 Recording Rule 预计算？
-- [ ] 是否需要配置告警规则？
+### 标签命名规范
 
 ```yaml
-# 指标注册模板
-metric_name: http_request_duration_seconds
-type: histogram
-description: "HTTP request duration in seconds"
-labels:
-  - name: method
-    cardinality: 5        # GET/POST/PUT/DELETE/PATCH
-  - name: endpoint
-    cardinality: 20       # 最多 20 个端点
-  - name: status
-    cardinality: 10       # 2xx/3xx/4xx/5xx
-total_cardinality: 1000   # 5 × 20 × 10 = 1000 ✅ < 10000
-histogram_buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+# 标签命名规范
+
+# 正确标签
+# ──────────
+method: "GET"              # 小写 + 下划线
+status: "200"              # 小写 + 下划线
+service: "auth"            # 小写 + 下划线
+db_name: "users"           # 小写 + 下划线
+
+# 错误标签
+# ──────────
+Method: "GET"              # 大写开头（大小写敏感）
+statusCode: "200"          # 驼峰命名
+service-name: "auth"       # 连字符
+DB Name: "users"           # 包含空格
 ```
 
-## 13.5 Grafana Dashboard 规范
+---
 
-### 面板布局规范
+## 13.2 指标类型选择规范
 
-```
-Row 1: 全局概览（QPS、错误率、P99 延迟）→ 时间序列图
-Row 2: 按维度拆分（按 method、endpoint、status）→ 堆叠图
-Row 3: 详细指标（GC、内存、线程）→ 时间序列图
-Row 4: 事件标记（发布、扩缩容）→ 注释标记
-```
-
-### 最佳实践
-
-1. **模板化变量**：使用 Grafana 的模板变量（$job、$instance、$method）让面板可复用
-2. **一致的色系**：错误用红色、正常用绿色、警告用黄色
-3. **单位标注**：延迟用 ms、内存用 GB、QPS 用 req/s
-4. **阈值线**：在图上标注 SLA 阈值（红色虚线），一眼看出是否超标
-5. **链接面板**：配置面板间的跳转链接，从概览到详情
-
-```json
-// Grafana 模板变量配置示例
-{
-  "templating": {
-    "list": [
-      {
-        "name": "service",
-        "type": "query",
-        "query": "label_values(up, job)",
-        "refresh": 1,
-        "includeAll": true
-      },
-      {
-        "name": "instance",
-        "type": "query",
-        "query": "label_values(up{job=\"$service\"}, instance)",
-        "refresh": 1
-      }
-    ]
-  }
-}
-```
-
-### Dashboard 命名规范
-
-```
-[层级] [组件] [指标类型] - [团队]
-示例：
-K8s Node CPU Usage - Platform
-App Order P99 Latency - OrderTeam
-Infra MySQL Connections - DBA
-```
-
-## 13.6 On-Call 轮值规范
-
-### 告警响应流程
-
-```
-告警触发
-  │
-  ├── P0: 立即响应（5 分钟内确认）
-  │     ├── 确认告警（Acknowledge）
-  │     ├── 排查根因
-  │     ├── 执行恢复操作（回滚/扩容/切流）
-  │     └── 通知升级（15 分钟未解决 → 联系 TL）
-  │
-  ├── P1: 快速响应（15 分钟内确认）
-  │     ├── 确认告警
-  │     ├── 评估影响范围
-  │     └── 决定是否需要紧急修复
-  │
-  ├── P2: 工作时间内处理（1 小时内）
-  │     └── 创建 Jira Ticket，排期修复
-  │
-  └── P3: 周报汇总（24 小时内）
-        └── 记录到周报，持续跟进
-```
-
-### 轮值制度要点
-
-1. **主备机制**：每班次 1 主 1 备，主负责处理，备负责兜底
-2. **交接清单**：交班时确认未关闭告警、进行中的变更、已知问题
-3. **事后复盘**：P0/P1 事件需要在 48 小时内完成 5W1H 复盘（What/When/Where/Who/Why/How）
-4. **免打扰时段**：非 P0 告警在夜间自动静默，次日早晨通知
-
-### 告警疲劳防范
+### 代码旁白：类型选择指南
 
 ```yaml
-# 告警疲劳信号
-# 如果某个告警在一周内触发了 10 次以上但从未被确认 → 阈值不合理
-# 如果某个告警被持续静默超过 7 天 → 应该修复而不是静默
-# 如果某个告警恢复通知无人关注 → 降低级别或删除
+# 指标类型选择规范
+
+# Counter：只增不减的累积值
+# 适用场景：请求总数、错误总数、任务完成数
+# 为什么：Counter 的值永远不会减少，适合"统计发生了多少次"
+app_http_requests_total        # 正确：请求总数只增不减
+app_errors_total               # 正确：错误总数只增不减
+app_active_users               # 错误：活跃用户数会减少，应该用 Gauge
+
+# Gauge：可增可减的当前值
+# 适用场景：内存使用量、并发连接数、队列大小、温度
+# 为什么：Gauge 的值可以上升也可以下降，适合"当前状态"
+app_memory_usage_bytes         # 正确：内存使用量可增可减
+app_concurrent_requests        # 正确：并发连接数可增可减
+app_total_requests             # 错误：总请求数只增不减，应该用 Counter
+
+# Histogram：对观测值进行分桶统计
+# 适用场景：请求延迟、响应大小
+# 为什么：Histogram 可以计算 P50/P90/P99 分位数
+app_request_duration_seconds   # 正确：需要计算 P99 延迟
+app_request_size_bytes         # 正确：需要分析请求体大小分布
+app_response_status            # 错误：状态码是枚举值，应该用 GaugeVec 或 Info
+
+# Summary：预计算的分位数
+# 适用场景：已知分位数需求、无法汇总的指标
+# 为什么：Summary 在客户端计算分位数，无法从多个实例汇总
+app_request_latency_seconds    # 正确：需要精确的 P99（但不能汇总）
+app_queue_size                 # 错误：不需要分位数，应该用 Gauge
 ```
 
-## 13.7 监控成熟度模型
+### Before/After：类型选择对比
 
-| 级别 | 名称 | 特征 | 评估标准 |
-|:----:|------|------|---------|
-| L0 | 无监控 | 系统崩溃了才知道 | 无指标采集、无告警 |
-| L1 | 基础监控 | 有 CPU/内存/磁盘告警 | 只有基础设施指标，无业务指标 |
-| L2 | 应用监控 | 有 QPS/错误率/延迟 | RED 方法覆盖，有自定义指标 |
-| L3 | 可观测性 | Metrics + Logs + Traces 联动 | Exemplar、Loki、Tempo 集成 |
-| L4 | 智能化 | 自动根因分析、容量预测 | 基于 ML 的异常检测、自动扩缩容 |
+**场景：监控数据库连接池**
 
-**当前大多数团队处于 L1-L2 之间。** 本书的目标是帮助读者达到 L3 水平。 |
+| 维度 | Before（错误） | After（正确） | 原因 |
+|------|---------------|--------------|------|
+| 连接总数 | Counter | **Gauge** | 连接数可增可减 |
+| 获取连接次数 | Gauge | **Counter** | 累积事件，只增不减 |
+| 等待时间 | Gauge | **Histogram** | 需要分析 P50/P99 |
+| 活跃连接数 | Histogram | **Gauge** | 当前状态值 |
+
+---
+
+## 13.3 告警规则规范
+
+### 代码旁白：告警规则 YAML 逐行解释
+
+```yaml
+# alerting-rules.yml
+# 告警规则规范
+# 每一条规则都应该能回答 5W1H：
+# - What（什么问题）
+# - Who（谁负责）
+# - Where（哪个系统）
+# - When（何时触发）
+# - Why（为什么）
+# - How（如何解决）
+
+groups:
+  - name: application_alerts
+    # 为什么这样写：按团队或子系统分组
+    # 便于管理，不同团队负责不同告警组
+    
+    rules:
+      # ──────────────────────────────────────────────
+      # 规则 1：高错误率告警
+      # ──────────────────────────────────────────────
+      - alert: HighErrorRate
+        # 为什么这样写：使用 PromQL 计算 5 分钟内的错误率
+        # rate() 函数计算每秒增长率，然后除以总请求率
+        expr: |
+          rate(app_http_requests_total{status=~"5.."}[5m])
+          /
+          rate(app_http_requests_total[5m])
+          > 0.05
+        # 解释：错误率 > 5% 触发告警
+        # 选择 5% 作为阈值的原因：
+        # - 对于核心交易系统，SLA 要求 99.9% 可用性 = 错误率 < 0.1%
+        # - 对于一般 Web 服务，5% 错误率已经是严重问题
+        # - 建议根据业务 SLA 调整
+        
+        for: 5m
+        # 解释：持续 5 分钟才触发，避免偶发抖动误告警
+        # 为什么是 5 分钟：大多数网络抖动在 1-2 分钟内恢复
+        
+        labels:
+          severity: critical
+          # 解释：严重级别用于告警路由
+          # critical -> 立即电话通知值班人员
+          # warning -> 工作时间处理
+          # info -> 可忽略
+          team: "backend"
+          # 解释：负责人团队，便于告警自动分配给正确的 On-Call 人员
+        
+        annotations:
+          summary: "{{ $labels.service }} 服务错误率超过 5%"
+          # 解释：告警摘要，显示在告警通知的第一行
+          # 使用模板变量动态填充服务名
+          
+          description: |
+            服务 {{ $labels.service }} 在 {{ $labels.instance }} 实例上的
+            HTTP 5xx 错误率达到了 {{ printf "%.2f" $value }}%，
+            已持续 5 分钟。
+          # 解释：详细描述，包含实例信息、具体数值
+          # 让值班人员不看 Grafana 也能了解基本情况
+          
+          runbook_url: "https://wiki.company.com/runbooks/high-error-rate"
+          # 解释：故障处理手册链接
+          # 值班人员点击即可查看标准处理流程
+          # 包括：排查步骤、回滚方案、相关联系人
+          
+          dashboard: "https://grafana.company.com/d/app-overview"
+          # 解释：相关 Grafana 面板链接
+          # 方便值班人员快速查看上下文
+
+      # ──────────────────────────────────────────────
+      # 规则 2：P99 延迟告警
+      # ──────────────────────────────────────────────
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            rate(app_request_duration_seconds_bucket[5m])
+          ) > 2.0
+        # 解释：P99 延迟超过 2 秒
+        # histogram_quantile(0.99, ...) 计算 P99 分位数
+        # 为什么关注 P99：P99 代表最慢的 1% 请求
+        # 用户体验的"长尾"问题往往在 P99 中暴露
+        
+        for: 10m
+        # 解释：延迟告警需要持续更长时间
+        # 因为延迟偶尔突刺可能是 GC 或网络抖动
+        
+        labels:
+          severity: warning
+          team: "backend"
+        
+        annotations:
+          summary: "{{ $labels.service }} P99 延迟超过 2 秒"
+          description: |
+            {{ $labels.service }} 的 P99 延迟达到 {{ printf "%.2f" $value }}秒，
+            超过阈值 2 秒。
+            当前 P50={{ $labels.p50 }}，P90={{ $labels.p90 }}
+          # 解释：同时提供 P50 和 P90 作为上下文
+          # 帮助判断是整体变慢还是只有长尾变慢
+
+      # ──────────────────────────────────────────────
+      # 规则 3：实例宕机告警
+      # ──────────────────────────────────────────────
+      - alert: InstanceDown
+        expr: up{job="app-backend"} == 0
+        # 解释：up 指标是 Prometheus 自动生成的
+        # up == 0 表示 scrape 失败，实例可能宕机
+        
+        for: 1m
+        # 解释：宕机告警要快速响应
+        # 1 分钟确认时间，避免短暂重启造成误告
+        
+        labels:
+          severity: critical
+          team: "infra"
+        
+        annotations:
+          summary: "实例 {{ $labels.instance }} 宕机"
+          description: |
+            {{ $labels.job }} 任务的实例 {{ $labels.instance }} 
+            已经宕机超过 1 分钟。
+            请立即检查服务状态。
+          runbook_url: "https://wiki.company.com/runbooks/instance-down"
+```
+
+### 告警规则编写原则
+
+| 原则 | 说明 | 错误示例 | 正确示例 |
+|------|------|---------|---------|
+| **可操作性** | 收到告警后能采取行动 | `cpu_usage > 0`（永远触发） | `cpu_usage > 0.9 for 10m` |
+| **避免抖动** | 使用 for 语句确认持续时长 | `error_rate > 0.05` | `error_rate > 0.05 for 5m` |
+| **有文档** | 提供 runbook 链接 | 无 annotations | `runbook_url: "..."` |
+| **有上下文** | 告警信息包含关键数据 | "错误率过高" | "错误率 15.3%，持续 5 分钟" |
+| **分级明确** | 按严重程度分级 | 全部 critical | critical / warning / info |
+
+---
+
+## 13.4 真实案例：RED 方法论落地
+
+### 从 200 个指标到 9 个关键指标
+
+某公司在推行 RED 方法论前，每个微服务暴露了 30-50 个指标。一个 5 个服务的系统就有 200+ 个指标。问题是：
+
+1. **没人知道哪些指标真正重要**
+2. **告警规则写了 100 多条，每天都在响**
+3. **值班人员告警疲劳，开始忽略告警**
+
+### RED 方法论
+
+RED 是 Google SRE 提出的监控方法论，每个服务只需要关注三个维度：
+
+```
+R - Rate（速率）：每秒请求数
+E - Errors（错误）：失败的请求数
+D - Duration（持续时间）：请求耗时
+```
+
+对于每个维度，再细分：
+
+```yaml
+# 每个服务只需要 3 个核心指标
+# ────────────────────────────────
+
+# R - Rate：每秒请求数
+app_http_requests_total{service="auth"}      # Counter -> rate() 计算 QPS
+
+# E - Errors：错误数
+app_http_requests_total{service="auth", status=~"5.."}  # Counter -> 错误率
+
+# D - Duration：请求耗时
+app_request_duration_seconds{service="auth"}  # Histogram -> P50/P90/P99
+```
+
+### 落地效果
+
+| 指标 | 方法论前 | 方法论后 |
+|------|---------|---------|
+| 每个服务的指标数 | 30-50 | **3** |
+| 总指标数 | 200+ | **9**（5 个服务 x 3 - 部分共享） |
+| 告警规则数 | 100+ | **15** |
+| 误告警率 | 80% | **5%** |
+| MTTR（平均修复时间） | 60 分钟 | **15 分钟** |
+| 新成员上手时间 | 2 周 | **2 天** |
+
+### Before/After：告警规则
+
+**Before**：100 条告警规则，互相重叠，值班人员每天收到 50+ 告警
+
+```yaml
+# Before：混乱的告警规则
+- alert: CPULoadHigh
+  expr: cpu_load > 0.7
+- alert: CPULoadCritical
+  expr: cpu_load > 0.9
+- alert: MemoryUsage
+  expr: memory_usage > 0.8
+- alert: DiskUsage
+  expr: disk_usage > 0.85
+- alert: ErrorCount
+  expr: error_count > 100
+# ... 还有 95 条类似的规则
+```
+
+**After**：15 条规则，每个服务 3 条核心规则
+
+```yaml
+# After：基于 RED 的告警规则
+# 每个服务只需要 3 条核心告警规则
+# 再加上基础设施层的通用规则
+
+groups:
+  - name: service_auth
+    rules:
+      - alert: AuthHighErrorRate
+        expr: rate(app_http_requests_total{service="auth", status=~"5.."}[5m]) 
+             / rate(app_http_requests_total{service="auth"}[5m]) > 0.05
+        for: 5m
+        
+      - alert: AuthHighLatency
+        expr: histogram_quantile(0.99, 
+             rate(app_request_duration_seconds_bucket{service="auth"}[5m])) > 2.0
+        for: 10m
+        
+      - alert: AuthZeroTraffic
+        expr: rate(app_http_requests_total{service="auth"}[5m]) == 0
+        for: 5m
+```
+
+---
+
+## 13.5 完整的工程化规范清单
+
+### 13.5.1 指标命名规范
+
+```yaml
+# 必须遵守的规范
+
+# 1. 命名格式
+# ──────────
+# 正确：app_http_requests_total
+# 错误：app.http.requests.total, appHttpRequestsTotal
+pattern: "^[a-z]+(_[a-z]+)*$"
+
+# 2. 标签命名
+# ──────────
+# 正确：method, status_code, db_name
+# 错误：Method, statusCode, DB Name
+pattern: "^[a-z][a-z0-9_]*$"
+
+# 3. 标签值
+# ──────────
+# 正确：enum 值用小写（get, post, put）
+# 正确：UUID/TraceID 用原始值
+# 错误：避免高基数标签（user_id, email, ip）
+cardinality_limit: 100  # 每个标签值数量不超过 100
+
+# 4. 单位后缀
+# ──────────
+# 时间：_seconds（统一用秒，不要用 ms）
+# 字节：_bytes
+# 比率：_ratio（0-1 之间）
+# 百分比：_percent（0-100 之间）
+```
+
+### 13.5.2 采集配置规范
+
+```yaml
+# scrape-config.yml
+# Prometheus 采集配置规范
+
+global:
+  scrape_interval: 15s      # 默认采集间隔
+  evaluation_interval: 15s  # 默认规则评估间隔
+  scrape_timeout: 10s       # 默认采集超时
+
+scrape_configs:
+  # 每个 job 代表一个逻辑服务或组件
+  - job_name: 'app-backend'
+    # 为什么这样写：使用服务发现而非静态配置
+    # 静态配置在微服务环境下无法扩展
+    consul_sd_configs:
+      - server: 'consul:8500'
+        tags: ['backend']
+    
+    # 采集间隔：根据服务重要性调整
+    scrape_interval: 10s     # 核心服务，更频繁采集
+    scrape_timeout: 5s       # 超时控制，避免挂起
+    
+    # 指标 relabel：统一标签规范
+    metric_relabel_configs:
+      # 删除不符合规范的指标
+      - source_labels: [__name__]
+        regex: '^[a-z]+(_[a-z]+)*$'
+        action: keep
+```
+
+### 13.5.3 仪表盘规范
+
+```yaml
+# Grafana 仪表盘规范
+
+# 1. 命名
+# ──────────
+# 格式：[团队] 服务名 - 面板类型
+# 示例：[Backend] Auth Service - Overview
+# 示例：[Infra] Kubernetes - Cluster Overview
+
+# 2. 布局
+# ──────────
+# 第一行：RED 核心指标（Rate, Errors, Duration）
+# 第二行：资源指标（CPU, Memory, Disk）
+# 第三行：依赖指标（DB, Cache, Queue）
+
+# 3. 颜色
+# ──────────
+# 绿色：正常（0-70%）
+# 黄色：警告（70-90%）
+# 红色：危险（90-100%）
+```
+
+---
+
+## 13.6 规范落地的步骤
+
+### 第一步：制定规范文档
+
+```markdown
+# 团队监控规范 v1.0
+
+## 指标命名
+- 格式：app_{subsystem}_{metric_name}_{unit}
+- 标签：全部小写 + 下划线
+- 避免：驼峰、连字符、点号
+
+## 指标类型
+- 累积值用 Counter（后缀 _total）
+- 当前值用 Gauge
+- 延迟用 Histogram（后缀 _seconds）
+- 预计算分位数用 Summary
+
+## 标签设计
+- 必选标签：service, instance
+- 可选标签：method, status, db_name
+- 禁止标签：user_id, email, ip（高基数）
+```
+
+### 第二步：CI 检查
+
+```yaml
+# .github/workflows/metric-lint.yml
+# 在 CI 中自动检查指标命名规范
+
+name: Metric Lint
+on: [pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check metric naming
+        run: |
+          # 检查 Go 代码中的指标命名
+          grep -r 'prometheus\.New' --include='*.go' | \
+            grep -E 'Name:\s+"[^"]*"' | \
+            while read line; do
+              name=$(echo $line | grep -oP 'Name:\s+"\K[^"]+')
+              if [[ ! $name =~ ^[a-z]+(_[a-z]+)*$ ]]; then
+                echo "ERROR: Invalid metric name: $name"
+                exit 1
+              fi
+            done
+```
+
+### 第三步：定期审查
+
+```bash
+# 每月审查一次指标使用情况
+# 找出不再使用的指标
+# 找出基数过高的标签
+
+# 查询 Prometheus 中的指标数量
+curl -s 'http://prometheus:9090/api/v1/label/__name__/values' | \
+  jq '.data | length'
+# > 期望值：根据服务数量，应该在 50-100 之间
+
+# 找出基数最高的标签
+curl -s 'http://prometheus:9090/api/v1/status/tsdb' | \
+  jq '.data.labelValuesCountByLabelName'
+# > 检查是否有异常高基数的标签
+```
+
+---
 
 ## 本章小结
 
-- 命名规范遵循 `namespace_subsystem_name_unit` 格式
-- 告警分级 P0-P3 对应不同的响应 SLA 和通知渠道
-- RED 方法适用于微服务，USE 方法适用于基础设施
-- 指标上线应有 Review 流程，从源头控制基数
-- Grafana Dashboard 应遵循一致的布局和命名规范
-- On-Call 轮值制度保障告警有人响应、有流程可循
-- 监控成熟度从 L0 到 L4，本书目标是帮助读者达到 L3（可观测性）
-- 无论哪种方法论，核心都是"用最少的指标覆盖最关键的信息"
+| 规范领域 | 核心原则 | 落地方法 |
+|---------|---------|---------|
+| **指标命名** | `命名空间_子系统_指标名_单位` | CI 自动检查 |
+| **标签设计** | 小写 + 下划线，控制基数 | 定期审查 |
+| **指标类型** | Counter/Gauge/Histogram/Summary 选型指南 | Code Review |
+| **告警规则** | 5W1H、可操作、避免抖动 | Runbook 配套 |
+| **仪表盘** | RED 方法论，三层布局 | 模板标准化 |
+| **RED 方法论** | Rate/Errors/Duration，从 200 到 9 | 核心指标提炼 |
+
+---
+
+## 扩展阅读
+
+- [Prometheus Metric Naming Best Practices](https://prometheus.io/docs/practices/naming/)
+- [Google SRE Book - Monitoring Distributed Systems](https://sre.google/sre-book/monitoring-distributed-systems/)
+- [RED Method by Tom Wilkie](https://grafana.com/blog/2018/08/02/the-red-method-how-to-instrument-your-services/)
+- [Prometheus Alerting Rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)

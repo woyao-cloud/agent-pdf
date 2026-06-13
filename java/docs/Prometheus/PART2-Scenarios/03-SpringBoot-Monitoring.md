@@ -1,220 +1,502 @@
-# 第3章 场景一：微服务应用级监控（以 Spring Boot 为例）
+# 第3章 Spring Boot 监控：从应用到生产
 
-## 3.1 Micrometer 门面模式
+## 3.1 故事：URI 包含动态用户 ID，序列数从 100 涨到 10 万
 
-### Micrometer 是什么？
-
-Micrometer 是 Java 生态中最流行的指标采集门面（Facade）库，其定位类似于 SLF4J 在日志领域的角色。它定义了一套统一的 API，开发者通过这套 API 采集指标，而具体的"后端"（Prometheus、Datadog、InfluxDB 等）由运行时绑定的依赖决定。
-
-这种门面模式带来的好处是显而易见的：**你的业务代码只需要依赖 Micrometer 的抽象 API，更换监控后端时无需修改一行业务代码。**
-
-### 核心概念
-
-| 概念 | 说明 | 类比 |
-|------|------|------|
-| MeterRegistry | 指标注册中心，管理所有 Meter | LoggerFactory |
-| Meter | 所有指标的父接口 | Logger |
-| Counter | 单调递增计数器 | 计数器 |
-| Timer | 耗时统计 | 秒表 |
-| Gauge | 瞬时值快照 | 仪表盘指针 |
-| DistributionSummary | 分布统计（不含时间） | 无需时间维度的 Histogram |
-
-### Spring Boot 自动装配
-
-Spring Boot 3.x 通过 `io.micrometer:micrometer-registry-prometheus` 依赖自动完成以下配置：
-
-1. 创建 `PrometheusMeterRegistry` 实例并将其注册为 `MeterRegistry` Bean
-2. 自动绑定 JVM、Tomcat、数据源等内置指标的 Meter
-3. 在 `/actuator/prometheus` 端点暴露 Prometheus 格式的指标
-
-有了这些自动配置，一个最简单的 Spring Boot + Prometheus 监控只需要三步：
-
-1. 引入 `spring-boot-starter-actuator` 和 `micrometer-registry-prometheus`
-2. 在 `application.yml` 中暴露 prometheus 端点
-3. 在 Prometheus 中配置 scrape 目标
-
-## 3.2 Spring Boot 内置指标详解
-
-### JVM 指标
-
-| 指标名 | 类型 | 说明 |
-|--------|------|------|
-| `jvm_memory_used_bytes{area="heap"}` | Gauge | 堆内存已用量 |
-| `jvm_memory_used_bytes{area="nonheap"}` | Gauge | 非堆内存已用量 |
-| `jvm_memory_max_bytes` | Gauge | JVM 最大内存 |
-| `jvm_gc_pause_seconds` | Timer | GC 暂停时间（含 _count / _sum / _max） |
-| `jvm_threads_live_threads` | Gauge | 活跃线程数 |
-| `jvm_classes_loaded_classes` | Gauge | 已加载类数量 |
-
-```bash
-# 在 Spring Boot 应用启动后查看 JVM 指标
-curl http://localhost:8085/actuator/prometheus | grep jvm_
-```
-
-### Tomcat 指标
-
-| 指标名 | 说明 |
-|--------|------|
-| `tomcat_sessions_active_current_sessions` | 当前活跃 Session 数 |
-| `tomcat_sessions_created_sessions_total` | 累计创建的 Session 数 |
-| `tomcat_sessions_expired_sessions_total` | 累计过期的 Session 数 |
-
-### 数据源指标（HikariCP）
-
-| 指标名 | 说明 |
-|--------|------|
-| `hikaricp_connections_active` | 活跃连接数 |
-| `hikaricp_connections_idle` | 空闲连接数 |
-| `hikaricp_connections_pending` | 等待获取连接的线程数 |
-| `hikaricp_connections_timeout_total` | 连接超时次数 |
-
-### HTTP 请求指标
-
-Spring Boot Actuator 自动记录所有 HTTP 请求的指标，这是最常用也最需要关注的指标组：
-
-```
-http_server_requests_seconds_count{method="GET", uri="/api/users", status="200"}
-http_server_requests_seconds_sum{method="GET", uri="/api/users", status="200"}
-http_server_requests_seconds_max{method="GET", uri="/api/users", status="200"}
-```
-
-**高基数风险就在这里**：`uri` 标签捕获了请求的完整路径。如果应用有 `/api/user/12345/profile` 这种动态路径，每个用户 ID 都会产生一条新的时间序列。当用户量达到 10 万时，仅仅这一个指标就能产生 10 万条序列。
-
-## 3.3 自定义业务指标
-
-### 使用 @Timed 注解
-
-Spring Boot 应用中，在方法上标注 `@Timed` 是最简单的自定义指标方式：
+某医疗健康公司使用 Spring Boot 开发了患者管理系统。API 设计如下：
 
 ```java
-@Timed(value = "order_create_seconds", percentiles = {0.5, 0.95, 0.99})
-@PostMapping("/create")
-public String createOrder(@RequestParam Long userId) {
-    // 业务逻辑
-    return "ok";
-}
-```
+@RestController
+public class PatientController {
 
-这会自动生成：
-- `order_create_seconds_count` — 调用次数
-- `order_create_seconds_sum` — 总耗时
-- `order_create_seconds_max` — 最大耗时
-- `order_create_seconds_bucket{le="..."}` — 直方图
-
-### 手动注册 Meter
-
-对于更复杂的场景，可以注入 `MeterRegistry` 并手动注册：
-
-```java
-@Component
-public class CustomMetricsConfig {
-    private final MeterRegistry meterRegistry;
-
-    public CustomMetricsConfig(MeterRegistry meterRegistry) {
-        this.meterRegistry = meterRegistry;
-    }
-
-    @PostConstruct
-    public void init() {
-        // Counter
-        meterRegistry.counter("order_created_total", "currency", "CNY");
-
-        // Gauge（从 AtomicInteger 取值）
-        Gauge.builder("app_active_users", activeUsers, AtomicInteger::get)
-                .register(meterRegistry);
-
-        // Timer（精细控制 bucket 边界）
-        Timer.builder("payment_processing_seconds")
-                .sla(Duration.ofMillis(50), Duration.ofMillis(100),
-                     Duration.ofMillis(200), Duration.ofMillis(500))
-                .publishPercentileHistogram()
-                .register(meterRegistry);
+    @GetMapping("/api/patients/{patientId}/records")
+    public List<Record> getRecords(@PathVariable String patientId) {
+        // 返回患者的病历记录
     }
 }
 ```
 
-## 3.4 潜在风险与优化
+运维团队配置了 Micrometer 监控，一切看起来正常。然而上线一周后，Prometheus 开始 OOM。
 
-### 高基数灾难
+**排查过程**：
 
-**问题**：Spring Boot 的 `http_server_requests_seconds` 指标会记录请求的完整 URI。如果 URI 中包含动态 ID（如 `/api/user/12345/profile`），则每个用户都产生一条序列。
-
-**后果**：10 万用户 → 10 万条时间序列 → Prometheus 内存爆炸 → OOM。
-
-**解决方案**：在 Prometheus 端通过 `metric_relabel_configs` 对 URI 进行泛化清洗。
-
-```yaml
-metric_relabel_configs:
-  # 将 /api/user/12345/profile 泛化为 /api/user/{id}/profile
-  - source_labels: [__name__, uri]
-    regex: 'http_server_requests_seconds.*;/api/user/\d+(/.*)?'
-    target_label: uri
-    replacement: '/api/user/{id}${1}'
-
-  # 丢弃 trace_id/span_id 等高基数标签
-  - regex: 'trace_id|span_id|parent_id'
-    action: labeldrop
-```
-
-### JVM Full GC 导致抓取超时
-
-**问题**：应用发生 Full GC 时，所有线程（包括 HTTP 请求处理线程）都会暂停。如果 Prometheus 恰好在此时 scrape，会连接超时，标记目标为 DOWN。
-
-**后果**：Prometheus 告警系统可能误报"服务宕机"。
-
-**解决方案**：
-1. 增加 JVM 堆内存，减少 Full GC 频率
-2. 调优 GC 算法（使用 G1GC 或 ZGC）
-3. 适当调整 `scrape_timeout`（默认 10s 通常已足够）
-4. 不要仅依赖一个 scrape 周期来判断目标状态
-
-### Histogram Bucket 优化
-
-**问题**：默认的 `http_server_requests_seconds` bucket 边界是 `.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10`。如果应用的典型延迟是 1ms-5ms，这些 bucket 太粗了。
-
-**优化**：根据业务特征自定义 bucket 边界，保证目标延迟（如 200ms）附近有足够的 bucket 密度。
-
-```java
-// 对于"必须在 200ms 内响应"的服务
-Timer.builder("api_latency_seconds")
-    .sla(Duration.ofMillis(50), Duration.ofMillis(100),
-         Duration.ofMillis(150), Duration.ofMillis(200),
-         Duration.ofMillis(300), Duration.ofMillis(500))
-    .register(meterRegistry);
-```
-
-### 生产环境检查清单
-
-- [ ] 是否已配置 `metric_relabel_configs` 清洗动态 URI？
-- [ ] 是否已丢弃 `trace_id`、`span_id` 等高基数标签？
-- [ ] JVM 启动参数是否已配置合理的堆大小和 GC 算法？
-- [ ] Prometheus 的 `scrape_timeout` 是否与应用响应时间匹配？
-- [ ] Histogram 的 bucket 边界是否符合业务 SLA？
-
-## 3.5 PromQL 速查
+1. 查看 Prometheus 序列数：从 100 涨到 10 万
+2. 使用 `promtool tsdb analyze` 分析高基数标签
+3. 发现 `uri` 标签的基数高达 8 万
+4. 进一步分析发现：`/api/patients/{patientId}/records` 中的 `patientId` 被当成了 URI 的一部分
 
 ```promql
-# JVM 堆内存使用率
-avg(jvm_memory_used_bytes{area="heap"}) / avg(jvm_memory_max_bytes) * 100
-
-# GC 暂停频率
-rate(jvm_gc_pause_seconds_count[5m])
-
-# QPS（按端点拆分）
-rate(http_server_requests_seconds_count[1m])
-
-# P99 延迟
-histogram_quantile(0.99, rate(http_server_requests_seconds_bucket[1m]))
-
-# 活跃线程数
-jvm_threads_live_threads
+# 实际产生的指标（每个患者一个序列！）
+http_server_requests_seconds_count{uri="/api/patients/1001/records"}
+http_server_requests_seconds_count{uri="/api/patients/1002/records"}
+http_server_requests_seconds_count{uri="/api/patients/1003/records"}
+# ... 每个患者都产生一个新序列
 ```
 
-## 本章小结
+**根因**：Micrometer 默认将完整 URI 路径作为标签值。动态路径参数导致每个患者 ID 都成为一个新的时间序列。
 
-- Micrometer 是 Java 监控的门面标准，类似 SLF4J
-- Spring Boot Actuator 自动暴露丰富的 JVM、Tomcat、数据源指标
-- 动态 URI 标签是高基数的头号来源，必须用 Relabeling 防护
-- Histogram bucket 应根据业务特征定制，而非使用默认值
-- Full GC 可能导致 scrape 超时，需从 JVM 和 Prometheus 两端优化
-- 实践：[Spring Boot 监控实验](../labs/ch03-springboot/README.md)
+**解决方案**：配置 Spring Boot 将 URI 模板化，只保留路径模式而非具体值。
+
+### 解决方案：配置 URI 标签为模板模式
+
+```yaml
+# application.yml
+server:
+  tomcat:
+    mbeanregistry:
+      enabled: true
+
+management:
+  metrics:
+    web:
+      server:
+        # 关键配置：使用 URI 模板而非完整路径
+        # 这样 /api/patients/1001/records 会变成 /api/patients/{patientId}/records
+        auto-time-requests: true
+    tags:
+      # 全局标签：所有指标自动带上这些标签
+      application: ${spring.application.name}
+      environment: ${env:production}
+```
+
+**效果**：序列数从 10 万降回 100，Prometheus 内存使用恢复正常。
+
+---
+
+## 3.2 原理比喻：Micrometer = SLF4J 的指标版
+
+如果你熟悉 SLF4J（Java 日志门面），那么理解 Micrometer 就很容易。
+
+```
+SLF4J（日志）                      Micrometer（指标）
+─────────────────────────────────────────────────
+Logger logger                      MeterRegistry registry
+  ↓                                  ↓
+LoggerFactory.getLogger()           Metrics.globalRegistry
+  ↓                                  ↓
+logger.info("msg")                  Counter.counter("name")
+  ↓                                  ↓
+Logback / Log4j（实现）             Micrometer（注册表）
+  ↓                                  ↓
+文件 / 控制台                       Prometheus / Datadog（后端）
+```
+
+### 核心概念对应
+
+| SLF4J | Micrometer |
+|-------|-----------|
+| Logger（日志记录器） | Meter（度量器） |
+| LoggerFactory | Metrics（全局注册表） |
+| log.info("msg") | counter.increment() |
+| MDC（诊断上下文） | Tags（标签） |
+| Appender（输出端） | Registry（注册表） |
+| 日志级别 | 指标类型（Counter/Gauge/...） |
+
+### Micrometer 的四种核心指标类型
+
+```java
+// 1. Counter（计数器）—— 只增不减，适合计数
+// 就像里程表：只会增加，不会减少
+Counter requestCount = Counter.builder("http.requests.total")
+    .tag("method", "GET")
+    .register(registry);
+requestCount.increment();
+
+// 2. Gauge（仪表盘）—— 可增可减，适合瞬时值
+// 就像汽车油表：随时变化，反映当前状态
+Gauge activeUsers = Gauge.builder("users.active", userService,
+    UserService::getActiveCount)
+    .register(registry);
+
+// 3. Timer（计时器）—— 测量耗时和频率
+// 就像秒表：记录每次操作的耗时
+Timer timer = Timer.builder("api.response.time")
+    .tag("endpoint", "/login")
+    .register(registry);
+timer.record(() -> {
+    // 需要计时的代码
+    loginService.login(request);
+});
+
+// 4. DistributionSummary（分布摘要）—— 测量数据分布
+// 就像统计全班考试成绩：有平均分、中位数、P99
+DistributionSummary summary = DistributionSummary.builder("payment.amount")
+    .tag("currency", "CNY")
+    .register(registry);
+```
+
+---
+
+## 3.3 代码旁白：application.yml 逐行解释
+
+```yaml
+spring:
+  application:
+    # 应用名称，会作为 Prometheus 的 job 标签
+    name: user-service
+
+server:
+  port: 8080
+  tomcat:
+    mbeanregistry:
+      # 启用 Tomcat MBean 注册
+      # 这样 Micrometer 可以采集 Tomcat 线程池、连接数等指标
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # 暴露所有 Actuator 端点（生产环境建议按需开放）
+        # 为什么？Prometheus 只需要 /actuator/prometheus
+        # 其他端点可能泄露敏感信息
+        include: health,info,prometheus
+
+  metrics:
+    web:
+      server:
+        # 自动为所有 Web 请求计时
+        auto-time-requests: true
+
+        # 请求指标的白名单
+        # 只统计这些路径，其他路径忽略
+        # 可以避免健康检查等高频路径污染指标
+        # request-match-patterns:
+        #   - "/api/**"
+
+    distribution:
+      # 百分位数的精确度配置
+      # 为什么配置？默认不计算 P99/P95，需要显式开启
+      percentiles-histogram:
+        http.server.requests: true
+      # SLA 边界值（毫秒）
+      # 为什么？计算小于 10ms/100ms/1000ms 的请求占比
+      sla:
+        http.server.requests: 10ms, 100ms, 1000ms
+
+    tags:
+      # 全局标签：附加到所有指标上
+      application: ${spring.application.name}
+      environment: ${env:production}
+```
+
+### 对应的 Java 配置
+
+```java
+@Configuration
+public class MetricsConfig {
+
+    @Bean
+    public MeterRegistryCustomizer<MeterRegistry> metricsCommonTags() {
+        // 为所有指标添加全局标签
+        // 相当于 application.yml 中的 management.metrics.tags
+        return registry -> registry.config()
+            .commonTags("application", "user-service",
+                       "environment", "production");
+    }
+
+    @Bean
+    public TimedAspect timedAspect(MeterRegistry registry) {
+        // 启用 @Timed 注解
+        // 这样可以在方法级别控制哪些方法需要计时
+        return new TimedAspect(registry);
+    }
+}
+```
+
+---
+
+## 3.4 手把手：从创建 Spring Boot 项目到 Grafana 展示指标
+
+### 步骤 1：创建 Spring Boot 项目
+
+使用 Spring Initializr（https://start.spring.io/）创建项目，添加以下依赖：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+### 步骤 2：编写一个简单的 REST 控制器
+
+```java
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
+
+    @GetMapping("/{id}")
+    public User getUser(@PathVariable Long id) {
+        log.info("Fetching user: {}", id);
+        // 模拟数据库查询延迟
+        try {
+            Thread.sleep((long) (Math.random() * 100));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return new User(id, "user" + id);
+    }
+
+    @PostMapping
+    public User createUser(@RequestBody User user) {
+        log.info("Creating user: {}", user);
+        // 模拟创建操作
+        return user;
+    }
+}
+```
+
+### 步骤 3：验证指标端点
+
+启动应用后，访问以下 URL 验证指标是否正常工作：
+
+```bash
+# 1. 健康检查
+curl http://localhost:8080/actuator/health
+# 返回: {"status":"UP"}
+
+# 2. 查看所有暴露的端点
+curl http://localhost:8080/actuator
+
+# 3. 查看 Prometheus 指标（最重要的！）
+curl http://localhost:8080/actuator/prometheus
+
+# 你应该会看到类似下面的输出：
+# HELP jvm_memory_used_bytes The amount of used memory
+# TYPE jvm_memory_used_bytes gauge
+# jvm_memory_used_bytes{area="heap",id="G1 Eden Space",} 2.3456789E7
+```
+
+### 步骤 4：配置 Prometheus 抓取
+
+在 Prometheus 的 `prometheus.yml` 中添加：
+
+```yaml
+scrape_configs:
+  - job_name: 'user-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['localhost:8080']
+```
+
+重启 Prometheus，访问 `http://localhost:9090/targets` 确认状态为 `UP`。
+
+### 步骤 5：生成一些测试数据
+
+```bash
+# 循环发送请求，产生指标数据
+for ($i = 0; $i -lt 100; $i++) {
+    curl -s http://localhost:8080/api/users/1 > $null
+    Start-Sleep -Milliseconds 200
+}
+```
+
+### 步骤 6：在 Prometheus 中查询指标
+
+访问 `http://localhost:9090/graph`，输入以下查询：
+
+```promql
+# 查看 JVM 内存使用
+jvm_memory_used_bytes{area="heap"}
+
+# 查看 HTTP 请求速率
+rate(http_server_requests_seconds_count[1m])
+
+# 查看请求延迟（P99）
+histogram_quantile(0.99,
+  rate(http_server_requests_seconds_bucket[5m])
+)
+```
+
+### 步骤 7：导入 Grafana Dashboard
+
+1. 打开 Grafana（默认 http://localhost:3000）
+2. 添加 Prometheus 数据源
+3. 导入 Dashboard ID: `4701`（JVM Micrometer Dashboard）
+4. 你会看到 JVM 内存、GC 次数、线程数、HTTP 请求等指标面板
+
+### 完整架构图
+
+```
+[Spring Boot App] ── /actuator/prometheus ──> [Prometheus]
+      ↑                                            │
+      │ 自动采集                                    │ 存储
+      │                                            ▼
+  [Micrometer]                               [TSDB Blocks]
+      │                                            │
+      │ 四种指标类型                                │ 查询
+      │ Counter / Gauge / Timer / Summary           │
+      │                                            ▼
+      │                                       [Grafana]
+      └──────────────────────────────────────────────┘
+                          Dashboard 4701
+```
+
+---
+
+## 3.5 Before/After：未配 relabeling vs 配了的序列数对比
+
+### 场景：Spring Boot 应用有 10 个动态 URI 参数
+
+**Before（未配置 relabeling）**：
+
+```yaml
+# Prometheus 配置：没有 relabeling
+scrape_configs:
+  - job_name: 'spring-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['app:8080']
+```
+
+指标产出：
+
+```promql
+http_server_requests_seconds_count{uri="/api/patients/1001/records"}
+http_server_requests_seconds_count{uri="/api/patients/1002/records"}
+http_server_requests_seconds_count{uri="/api/users/1"}
+http_server_requests_seconds_count{uri="/api/users/2"}
+```
+
+**序列数**：10 万（每个用户/患者一个序列）
+
+**内存**：8GB，持续增长
+
+---
+
+**After（配置了 URI 模板 + relabeling）**：
+
+```yaml
+# Spring Boot 配置
+management:
+  metrics:
+    web:
+      server:
+        auto-time-requests: true
+```
+
+```yaml
+# Prometheus 配置：添加 relabeling 规范化 URI
+scrape_configs:
+  - job_name: 'spring-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['app:8080']
+    # relabeling 规则：将 URI 中的数字 ID 替换为 {id}
+    metric_relabel_configs:
+      - source_labels: [uri]
+        regex: '/api/patients/\d+/records'
+        replacement: '/api/patients/{id}/records'
+        target_label: uri
+      - source_labels: [uri]
+        regex: '/api/users/\d+'
+        replacement: '/api/users/{id}'
+        target_label: uri
+```
+
+指标产出：
+
+```promql
+http_server_requests_seconds_count{uri="/api/patients/{id}/records"}
+http_server_requests_seconds_count{uri="/api/users/{id}"}
+```
+
+**序列数**：10（只有 URI 模板）
+
+**内存**：200MB，稳定
+
+---
+
+### 性能对比总结
+
+| 指标 | Before（无 relabeling） | After（有 relabeling） |
+|------|------------------------|----------------------|
+| 时间序列数 | 100,000+ | 10 |
+| Prometheus 内存 | 8GB（持续增长） | 200MB（稳定） |
+| 查询速度 | ~500ms | ~5ms |
+| OOM 风险 | 极高 | 无 |
+| Dashboard 可读性 | 混乱（无数 URI） | 清晰（模板化 URI） |
+
+---
+
+## 3.6 真实案例：未规范化 URI 导致的 Prometheus 宕机
+
+### 案例背景
+
+某在线教育平台使用 Prometheus 监控 Spring Boot 应用。API 设计如下：
+
+```java
+// 课程内容 API，courseId 是动态的
+@GetMapping("/api/courses/{courseId}/lessons/{lessonId}")
+public Lesson getLesson(@PathVariable String courseId,
+                       @PathVariable String lessonId) {
+    return lessonService.getLesson(courseId, lessonId);
+}
+```
+
+平台有 5000 门课程，每门课程平均 50 节课，共计 25 万个不同的 URI。
+
+### 事故经过
+
+1. 上线第一天：一切正常，Prometheus 内存 1GB
+2. 第三天：内存涨到 4GB
+3. 第五天：内存涨到 12GB
+4. 第六天：Prometheus 被 OOM Killer 杀死
+
+### 根因分析
+
+使用 `promtool tsdb analyze` 发现：
+
+```
+Highest cardinality label: uri (250,000)
+```
+
+每个 `uri` 标签值都是一个独立的时间序列。
+
+### 解决方案
+
+```yaml
+# 方案一：在 Spring Boot 端配置 URI 模板
+management:
+  metrics:
+    web:
+      server:
+        auto-time-requests: true
+  # Spring Boot 2.x+ 会自动使用 URI 模板
+```
+
+```yaml
+# 方案二：在 Prometheus 端用 relabeling 聚合
+metric_relabel_configs:
+  - source_labels: [uri]
+    regex: '/api/courses/[^/]+/lessons/[^/]+'
+    replacement: '/api/courses/{id}/lessons/{id}'
+    target_label: uri
+```
+
+### 事后复盘
+
+- 序列数从 25 万降到 10
+- Prometheus 内存从 12GB 降到 256MB
+- 团队在开发规范中增加了"URI 必须模板化"的检查
+
+---
+
+## 3.7 小结
+
+- **Micrometer** 是 SLF4J 的指标版：门面模式，解耦指标采集和后端输出
+- **四种核心指标**：Counter（计数）、Gauge（瞬时值）、Timer（耗时）、DistributionSummary（分布）
+- **URI 模板化**是 Spring Boot 监控的第一道防线——不配置就会产生大量高基数标签
+- **Relabeling** 是 Prometheus 端的第二道防线——可以在采集时修改标签
+- **常见陷阱**：动态 URI 参数、用户 ID、Session ID 等不应作为标签
+- 使用 `promtool tsdb analyze` 定期检查标签基数
+
+---
+
+**下一步**：掌握了单体应用的监控，接下来看第 4 章——如何监控 Kubernetes 集群中的动态服务。
