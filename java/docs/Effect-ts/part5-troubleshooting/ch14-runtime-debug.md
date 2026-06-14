@@ -1,462 +1,529 @@
 # ch14 运行时排查
 
-## 概述
+## 使用场景
 
-Effect-TS 的运行时系统基于 Fiber（轻量级协程）和 Supervisor（监督者），提供了传统 `async/await` 不具备的检查和调试能力。本章聚焦于运行时的**真实部署问题排**查：Fiber 泄漏、并发死锁、未捕获异常以及对 Fiber 树的诊断。
+服务器运行 72 小时后，内存占用从 200MB 涨到了 2GB——怀疑有 Fiber 泄漏。API 服务在低负载时正常，流量上来后随机超时——可能是死锁。某个 Effect 偶尔报错但 `catchAll` 没捕获到，调用方收到一个 `Defect`——未捕获的异常去哪了？
+
+Effect-TS 的 Fiber 模型提供了前所未有的诊断手段：Fiber Dump、Supervisor 追踪、Cause 分析。本章聚焦三个典型场景：
+
+- **Fiber 泄漏**：Fiber 数量无限增长导致内存耗尽
+- **并发死锁**：Fiber 互相等待导致服务挂起
+- **未捕获 Defect**：错误被静默吞掉
 
 ---
 
-## 1. Fiber 泄漏排查
+## 实现原理
 
-Fiber 泄漏类似于传统编程中的内存泄漏，但更隐蔽：一个 Fiber 可能不消耗大量内存，但无限增长的 Fiber 数量会耗尽系统资源。
+### Fiber 运行时模型
 
-### 1.1 泄漏的典型表现
+Effect-TS 运行于**协作式调度**的 Fiber。每个 Fiber 是轻量级协程，在 JS 主线程上协作执行。关键点：Fiber 不会被抢占——它们必须主动 `yield`；一个 Fiber 被阻塞，整个线程上的所有 Fiber 都停止。单个 Fiber 占几百字节，10 万个就能吃掉几百 MB。
 
-- 应用运行时间越长响应越慢
-- 内存使用持续增长但 GC 无法回收
-- CPU 使用率逐渐升高
+### 诊断架构
 
-### 1.2 常见原因
+三层诊断工具：
 
-```typescript
-import { Effect, Queue, Console, Fiber } from "effect"
+1. **Fiber 级别**：`Fiber.dump`、`Fiber.status`、`Fiber.id`
+2. **Supervisor 级别**：`Supervisor.track`——所有受管 Fiber 的集合视图
+3. **全局级别**：`Metric` + `Supervisor`——运行时状态 → 可监控指标
 
-// ❌ 泄漏模式 1：fork 了 Fiber 但没有 join 也没有 supervise
-const leaky = Effect.gen(function* (_) {
-  // 每次请求都 fork 一个新 Fiber
-  yield* _(
-    Effect.forever(
-      Effect.sleep("1 seconds").pipe(
-        Effect.andThen(Console.log("background task"))
-      )
-    ).pipe(Effect.fork)
-  )
-  // ❌ 这个 Fiber 永远不会被 join、supervise、或者 interrupt
-  // 每次请求都会留下一个僵尸 Fiber
-})
+---
 
-// ✅ 修正：使用 Scope 管理 Fiber 生命周期
-const fixed = Effect.scoped(
-  Effect.gen(function* (_) {
-    const fiber = yield* _(
-      Effect.forever(
-        Effect.sleep("1 seconds").pipe(
-          Effect.andThen(Console.log("background task"))
-        )
-      ).pipe(Effect.forkScoped) // forkScoped 在 Scope 结束时自动中断
-    )
-    // 返回给调用方，调用方决定 Fiber 何时结束
-    return fiber
-  })
-)
+## 潜在风险
 
-// ✅ 或手动 supervise
-const supervised = Effect.gen(function* (_) {
-  const supervisor = yield* _(Supervisor.track)
-  yield* _(
-    task().pipe(
-      Effect.supervisedBy(supervisor), // 将此 Fiber 注册到 supervisor
-      Effect.fork
-    )
-  )
-  // 可以通过 supervisor 追踪所有子 Fiber
-  const fibers = yield* _(supervisor.value)
-  console.log(`active fibers: ${fibers.length}`)
-})
-```
+### 风险 1：Fiber 泄漏的隐蔽性
 
-### 1.3 使用 Supervisor 监控 Fiber
+内存缓慢增长但 GC 无法回收挂起的闭包；应用响应变长；CPU 逐渐爬升。典型路径：请求中用 `Effect.fork` 启动后台任务却未用 `forkScoped`，请求完成后 Fiber 成为孤儿。
+
+### 风险 2：死锁的间歇性
+
+Fiber 调度是非确定性的——一个 `Queue.bounded(1)` 死锁可能在 offer/take 完美交替时永远不出现，直到请求恰好触碰边界。极难在开发环境复现。
+
+### 风险 3：Defect 的静默丢失
+
+`Defect`（`Cause.Die`）不会被 `catchAll` 捕获。未配置 `catchAllCause` 时，Defect 表现为未处理的 Promise rejection——在 `unhandledRejection` 中完全丢失，没有日志、没有告警。
+
+---
+
+## 优化策略
+
+### 策略 1：全局 Fiber 监控
 
 ```typescript
-import { Effect, Supervisor, Fiber, Console, Duration } from "effect"
+import { Effect, Supervisor, Metric, Console, Fiber } from "effect"
 
-const monitorFibers = Effect.gen(function* (_) {
-  // 创建全局 Fiber 追踪器
+const setupFiberMonitoring = Effect.gen(function* (_) {
   const supervisor = yield* _(Supervisor.track)
-  
-  // 让整个应用在监控下运行
-  const program = Effect.gen(function* (__) {
-    // ... 应用代码
-    yield* __(someBackgroundWork().pipe(Effect.fork))
-    yield* __(anotherBackgroundWork().pipe(Effect.fork))
-  }).pipe(
-    Effect.supervisedBy(supervisor)
-  )
-  
-  // 定时检查 Fiber 数量
+  const fiberGauge = Metric.gauge("app.fibers.active")
   yield* _(
     Effect.gen(function* (__) {
       const fibers = yield* __(supervisor.value)
-      const count = fibers.length
-      Console.log(`[monitor] active fibers: ${count}`)
-      
-      // 如果 Fiber 数量异常增长，打印详情
-      if (count > 100) {
-        yield* __(Console.log("[monitor] WARNING: fiber count high"))
-        for (const fiber of fibers) {
-          const status = yield* __(Fiber.status(fiber))
-          Console.log(`  fiber ${fiber.id()}: ${status._tag}`)
+      yield* __(fiberGauge.set(fibers.length))
+      if (fibers.length > 200) {
+        Console.warn(`[FIBER WARN] Active fibers: ${fibers.length}`)
+        for (const f of fibers.slice(0, 10)) {
+          const status = yield* __(Fiber.status(f))
+          Console.log(`  fiber ${f.id()}: ${status._tag}`)
         }
       }
-    }).pipe(
-      Effect.repeat({ delay: "5 seconds", times: 10 }),
-      Effect.fork
-    )
+    }).pipe(Effect.repeat({ delay: "30 seconds" }), Effect.fork)
   )
-  
-  return program
+  return supervisor
 })
 ```
 
-### 1.4 周期性 Fiber Dump
+### 策略 2：超时包装防死锁
 
 ```typescript
-import { Effect, Fiber, Console, Supervisor } from "effect"
-
-const addPeriodicDump = (app: Effect.Effect<void, never, never>) =>
-  Effect.gen(function* (_) {
-    const supervisor = yield* _(Supervisor.track)
-    
-    // 每 30 秒 dump 一次 Fiber 状态
-    yield* _(
-      Effect.gen(function* (__) {
-        const fibers = yield* __(supervisor.value)
-        Console.log(`=== Fiber Dump (${fibers.length} active) ===`)
-        for (const fiber of fibers) {
-          const id = fiber.id()
-          const status = yield* __(Fiber.status(fiber))
-          Console.log(`  [${id}] ${status._tag}`)
-          
-          // Done 状态：打印完成值
-          if (status._tag === "Done") {
-            Console.log(`    → ${JSON.stringify(status.value)}`)
-          }
-        }
-      }).pipe(
-        Effect.repeat({ delay: "30 seconds" }),
-        Effect.fork
-      )
-    )
-    
-    return app.pipe(Effect.supervisedBy(supervisor))
-  })
-```
-
----
-
-## 2. 并发死锁排查
-
-死锁在 Effect-TS 中比原生 JavaScript 更常见，因为 Fiber 是协作式调度 —— 一个 Fiber 如果完全阻塞（非 yield），整个线程都会被阻塞。
-
-### 2.1 典型死锁模式
-
-```typescript
-import { Effect, Queue, Ref, Console } from "effect"
-
-// ❌ 死锁模式 1：Fiber 在等待自己
-const selfDeadlock = Effect.gen(function* (_) {
-  const ref = yield* _(Ref.make(0))
-  
-  // 在同一个 Effect 中读一个又写同一个 Ref
-  // 虽然 Ref 是原子的，但如果包在 SynchronizedRef 的 updateEffect 里
-  // 且更新操作依赖于同一个 SynchronizedRef 的另一个状态 —— 死锁
-  yield* _(ref.update((n) => {
-    // 如果 update 内部再次操作 ref 的 get（在 Ref 中不允许）
-    // ref.get 是 Effect，不能在纯函数中执行
-    return n + 1
-  }))
-})
-
-// ❌ 死锁模式 2：有限的 Queue 满了，消费者也是自己
-const queueDeadlock = Effect.gen(function* (_) {
-  const queue = yield* _(Queue.bounded<number>(1))
-  
-  // offer(1) 成功（有空位）
-  yield* _(queue.offer(1))
-  // offer(2) 阻塞，因为队列容量为 1
-  // 但当前 Fiber 需要 offer(2) 完成才能进入 take
-  yield* _(queue.offer(2)) // ❌ 永远阻塞
-  yield* _(queue.take)     // 永远不会执行到这
-})
-
-// ✅ 修正：使用单独的 Fiber
-const fixedQueue = Effect.gen(function* (_) {
-  const queue = yield* _(Queue.bounded<number>(1))
-  
-  yield* _(queue.offer(1))
-  
-  // 单独的消费者 Fiber
-  yield* _(
-    queue.take.pipe(
-      Effect.andThen(Console.log("took 1")),
-      Effect.fork
-    )
-  )
-  
-  // 现在 offer(2) 可以继续，因为消费者 Fiber 已经就绪
-  yield* _(queue.offer(2))
-  yield* _(queue.take.pipe(Effect.andThen(Console.log("took 2"))))
-})
-```
-
-### 2.2 死锁检测策略
-
-```typescript
-import { Effect, Fiber, Queue, Console, Duration } from "effect"
-
-// 超时包装 —— 将潜在的死锁转换为超时错误
-const withDeadlockDetection = <A, E, R>(
+const withSafety = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   timeout: Duration.DurationInput = "10 seconds"
 ): Effect.Effect<A, E | Error, R> =>
-  effect.pipe(
-    Effect.timeout(timeout),
-    Effect.catchTag("TimeoutException", () =>
-      Effect.fail(new Error("Possible deadlock detected"))
-    )
-  )
-
-// 在开发环境使用
-if (process.env.NODE_ENV === "development") {
-  // 所有 Effect 都附加超时检测
-  const safeEffect = withDeadlockDetection(myEffect)
-}
+  effect.pipe(Effect.timeoutFail({
+    duration: timeout,
+    onTimeout: () => new Error(`Fiber timed out after ${Duration.format(timeout)}`)
+  }))
 ```
 
-### 2.3 死锁预防清单
-
-| 场景 | 预防措施 |
-|------|---------|
-| Queue offer/take 同一 Fiber | 生产者/消费者分离到不同 Fiber |
-| SynchronizedRef 嵌套 | 避免在 `updateEffect` 内操作其他同步原语 |
-| 共享资源顺序锁定 | 所有 Fiber 按相同的顺序获取资源 |
-| fiber.join 循环依赖 | Fiber A join B，B join A → 无解 |
-
----
-
-## 3. Fiber.dump 诊断工具
-
-Effect-TS 提供了 `Fiber.dump` 方法，可以在运行时获取 Fiber 的完整状态快照。
-
-### 3.1 基本用法
+### 策略 3：全局 Defect 捕获
 
 ```typescript
-import { Effect, Fiber, Console } from "effect"
-
-const dumpExample = Effect.gen(function* (_) {
-  const fiber = yield* _(
-    Effect.forever(
-      Effect.sleep("1 seconds").pipe(
-        Effect.andThen(Console.log("tick"))
-      )
-    ).pipe(Effect.fork)
-  )
-  
-  // 某些条件触发 dump
-  yield* _(Effect.sleep("3 seconds"))
-  
-  const dump = yield* _(Fiber.dump(fiber))
-  Console.log(`=== Fiber Dump ===`)
-  Console.log(`id: ${dump.id}`)
-  Console.log(`status: ${dump.status}`)
-  Console.log(`stack: ${dump.stack}`)
-  
-  yield* _(Fiber.interrupt(fiber))
-})
-```
-
-### 3.2 实际场景：在 HTTP 请求中
-
-```typescript
-import { Effect, Fiber, Console, Ref, Supervisor, Duration } from "effect"
-
-// HTTP 请求中间件 —— 自动 dump 超过阈值的请求
-const withSlowRequestDump = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  requestId: string,
-  threshold: Duration.DurationInput = "5 seconds"
-): Effect.Effect<A, E, never> =>
-  Effect.gen(function* (_) {
-    const start = yield* _(Effect.sync(() => Date.now()))
-    
-    const supervisor = yield* _(Supervisor.track)
-    const fiber = yield* _(
-      effect.pipe(
-        Effect.supervisedBy(supervisor),
-        Effect.fork
-      )
-    )
-    
-    // 超时检测
-    yield* _(
-      Effect.gen(function* (__) {
-        const elapsed = Date.now() - start
-        if (elapsed > Duration.toMillis(threshold)) {
-          Console.warn(`[SLOW] request ${requestId}: ${elapsed}ms`)
-          
-          const fibers = yield* __(supervisor.value)
-          for (const f of fibers) {
-            const dump = yield* __(Fiber.dump(f))
-            Console.log(`  fiber ${dump.id}: ${dump.status}`)
-          }
-        }
-      }).pipe(
-        Effect.repeat({ delay: "1 seconds" }),
-        Effect.fork,
-        Effect.andThen(fiber.join)
-      )
-    )
-    
-    return fiber.join.pipe(
-      Effect.andThen((result) => {
-        const total = Date.now() - start
-        Console.log(`[OK] request ${requestId}: ${total}ms`)
-        return result
-      })
-    )
-  })
-```
-
----
-
-## 4. 未捕获异常排查
-
-Effect 中的错误不会"抛"到全局的 `process.on('unhandledRejection')` 或 `window.onerror`，但某些场景下的错误可能被**静默吞掉**。
-
-### 4.1 常见静默错误
-
-```typescript
-import { Effect, Console } from "effect"
-
-// ❌ 错误被静默吞掉
-const silenced = Effect.gen(function* (_) {
-  // Effect 中的 throw 会转为 Cause.Die，不会向上抛出
-  // 但如果没有被任何 catch 捕获，并且也没有被 await
-  // 错误就消失了
-  throw new Error("silent error")
-})
-
-// 如果在测试/运行时不 await 这个 Effect，错误不会被观察到
-// Effect.runPromise(silenced) // 这能捕获，但如果忘了 runPromise
-
-// ✅ 使用 Effect.runPromiseExit 始终检查结果
-Effect.runPromiseExit(silenced).then((exit) => {
-  switch (exit._tag) {
-    case "Success":
-      console.log("success:", exit.value)
-      break
-    case "Failure":
-      console.error("failure:", exit.cause)
-      // 可以根据 Cause 分类处理
-      break
-  }
-})
-```
-
-### 4.2 Cause 分析
-
-```typescript
-import { Effect, Cause, Console } from "effect"
-
-const analyzeCause = (effect: Effect.Effect<unknown, Error, never>) =>
-  Effect.runPromiseExit(effect).then((exit) => {
-    if (exit._tag === "Failure") {
-      const cause = exit.cause
-      
-      // Cause 的种类
-      switch (cause._tag) {
-        case "Fail":
-          // 预期的错误（Error 类型）
-          console.error("Expected failure:", cause.error.message)
-          break
-        case "Die":
-          // 意外的缺陷（抛出的非 Error 值）
-          console.error("Unexpected defect:", cause.defect)
-          break
-        case "Interrupt":
-          // Fiber 被中断
-          console.warn("Fiber was interrupted")
-          break
-        case "Sequential":
-          // 多个连续错误
-          console.error("Sequential errors")
-          break
-        case "Parallel":
-          // 多个并行错误
-          console.error("Parallel errors:", cause.errors)
-          break
-      }
-    }
-  })
-```
-
-### 4.3 全局 Error Handler
-
-```typescript
-import { Effect, Cause, Console } from "effect"
-
-// 全局错误监听器（类似 Cortensor / Sentry）
-const withGlobalErrorHandler = <A, E, R>(
-  effect: Effect.Effect<A, E, R>
+const withDefectCapture = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  serviceName: string
 ): Effect.Effect<A, E, R> =>
   Effect.catchAllCause(effect, (cause) =>
     Effect.gen(function* (_) {
-      // 发送到 Sentry / 日志系统
-      const errorInfo = yarn* _(Cause.prettyPrint(cause))
-      Console.error("Unhandled cause:", errorInfo)
-      
-      // 重新抛出或者转换为默认值
+      if (Cause.isDie(cause)) {
+        const defect = Cause.squash(cause)
+        Console.error(`[${serviceName}] Unhandled defect:`, defect)
+        yield* _(reportDefect(serviceName, defect))
+      }
       if (Cause.isInterruptedOnly(cause)) {
         return yield* _(Effect.interrupt)
       }
-      
-      // 返回默认错误
-      return yield* _(Effect.fail(new Error("internal error")))
+      return yield* _(Effect.fail(new InternalError(`Error in ${serviceName}`)))
     })
   )
 ```
 
 ---
 
-## 5. 运行指标收集
+## 典型问题处理
+
+### 问题 1：Fiber 泄漏
+
+#### 问题复现
 
 ```typescript
-import { Effect, Fiber, Supervisor, Console, Metric } from "effect"
+// ❌ fork 后没有管理生命周期——Fiber 成为孤儿
+class BackgroundWorker {
+  startJob(jobId: string) {
+    const worker = Effect.forever(
+      Effect.sleep("1 second").pipe(Effect.andThen(Console.log(`running`)))
+    )
+    Effect.runFork(worker) // ❌ 永不停止
+  }
+  stopJob(jobId: string) {
+    // ❌ 只删了 Map，Fiber 仍在后台运行
+  }
+}
+```
 
-// 自定义指标
-const activeFibers = Metric.gauge("effect.fibers.active")
+#### 诊断方法
 
-const withMetrics = (app: Effect.Effect<void, never, never>) =>
+```typescript
+const diagnoseLeak = Effect.gen(function* (_) {
+  const supervisor = yield* _(Supervisor.track)
+  const children = yield* _(supervisor.value)
+  for (const child of children) {
+    const status = yield* _(Fiber.status(child))
+    if (status._tag === "Suspended") {
+      const dump = yield* _(Fiber.dump(child))
+      Console.log(`Suspended fiber: ${dump.stack}`)
+    }
+    if (status._tag === "Done") {
+      Console.warn(`Done fiber still referenced: ${child.id()}`)
+    }
+  }
+})
+```
+
+#### 解决方案
+
+```typescript
+// ✅ 方案 1：forkScoped——Scope 关闭时自动中断
+Effect.scoped(
   Effect.gen(function* (_) {
-    const supervisor = yield* _(Supervisor.track)
-    
-    // 更新活跃 Fiber 数量
+    const fiber = yield* _(backgroundTask().pipe(Effect.forkScoped))
+    return fiber
+  })
+)
+
+// ✅ 方案 2：FiberSet 管理一组 Fiber
+const workerPool = Effect.scoped(
+  Effect.gen(function* (_) {
+    const set = yield* _(FiberSet.make())
+    const start = (jobId: string) => FiberSet.run(set, backgroundTask(jobId))
+    return { start, stopAll: () => FiberSet.interruptAll(set) }
+  })
+)
+```
+
+#### 修复前后对比
+
+| 指标 | 修复前 | 修复后 |
+|------|--------|--------|
+| 1000 次请求后 Fiber 数 | 1000（全部活跃） | 0（全部回收） |
+| 内存使用 72h | 2.1GB OOM | 280MB 稳定 |
+| 每次请求 Fiber 创建 | 1 个孤儿 Fiber | 1 个 Scope 管理 Fiber |
+| GC 回收率 | 0%（Fiber 一直被引用） | 100%（Scope 关闭后回收） |
+
+---
+
+### 问题 2：并发死锁
+
+#### 问题复现
+
+```typescript
+import { Effect, Queue, Ref, Console } from "effect"
+
+// 死锁：生产者和消费者在同一个 Fiber 中
+const deadlockExample = (items: number[]) =>
+  Effect.gen(function* (_) {
+    const queue = yield* _(Queue.bounded<number>(2))
+
+    // 先 offer 两个（填满队列）
+    yield* _(queue.offer(items[0]))
+    yield* _(queue.offer(items[1]))
+
+    // 第 3 个 offer 会阻塞，因为队列已满
+    // 但当前 Fiber 被阻塞，无法执行下面的 take
+    yield* _(queue.offer(items[2])) // ❌ 永远卡在这里
+    yield* _(queue.take)            // 永远不会执行
+  })
+
+// 死锁：两个 Fiber 互相等待
+const crossDeadlock = Effect.gen(function* (_) {
+  const refA = yield* _(Ref.make(0))
+  const refB = yield* _(Ref.make(0))
+
+  const fiber1 = yield* _(
+    Effect.gen(function* (__) {
+      // Fiber 1: 锁定 refA，等待 refB
+      yield* __(refA.update((n) => n + 1))
+      yield* __(refB.update((n) => n + 1)) // 如果 refB 被 Fiber2 锁定...
+    }).pipe(Effect.fork)
+  )
+
+  const fiber2 = yield* _(
+    Effect.gen(function* (__) {
+      // Fiber 2: 锁定 refB，等待 refA
+      yield* __(refB.update((n) => n + 1))
+      yield* __(refA.update((n) => n + 1)) // 如果 refA 被 Fiber1 锁定...
+    }).pipe(Effect.fork)
+  )
+
+  yield* _(Fiber.join(fiber1))
+  yield* _(Fiber.join(fiber2))
+})
+```
+
+#### 诊断方法
+
+```typescript
+import { Effect, Fiber, Queue, Console, Duration } from "effect"
+
+// 死锁检测：定时检查队列深度和 Fiber 状态
+const deadlockDetector = (label: string, queue: Queue.Queue<unknown>) =>
+  Effect.gen(function* (_) {
+    const size = yield* _(Queue.size(queue))
+    const capacity = queue.capacity
+
+    Console.log(`[${label}] queue: ${size}/${capacity}`)
+
+    // 队列满了 + 没有消费者 = 可能的死锁
+    if (size === capacity && size > 0) {
+      // 尝试一次 take 看是否能成功
+      const result = yield* _(
+        queue.take.pipe(
+          Effect.timeout("100 millis"),
+          Effect.optionFromOptional // 超时返回 None
+        )
+      )
+
+      if (result._tag === "None") {
+        Console.error(`[DEADLOCK DETECTED] ${label}: queue full, no consumer`)
+        // 强制清空队列以恢复
+        // yield* _(Queue.shutdown(queue))
+      }
+    }
+  })
+
+// 在生产环境部署探测
+const monitoredQueue = <A>(label: string, capacity: number) =>
+  Effect.gen(function* (_) {
+    const queue = yield* _(Queue.bounded<A>(capacity))
+
+    // 启动定时探测
     yield* _(
-      Effect.gen(function* (__) {
-        const fibers = yield* __(supervisor.value)
-        yield* __(activeFibers.set(fibers.length))
-      }).pipe(
-        Effect.repeat({ delay: "10 seconds" }),
+      deadlockDetector(label, queue).pipe(
+        Effect.repeat({ delay: "5 seconds" }),
         Effect.fork
       )
     )
-    
-    return app.pipe(Effect.supervisedBy(supervisor))
+
+    return queue
+  })
+```
+
+#### 解决方案
+
+```typescript
+// ✅ 方案 1：分离生产者和消费者到不同 Fiber
+const safeQueueUsage = Effect.gen(function* (_) {
+  const queue = yield* _(Queue.bounded<number>(2))
+
+  // 消费者 Fiber 独立运行
+  yield* _(
+    Effect.gen(function* (__) {
+      while (true) {
+        const item = yield* __(queue.take)
+        Console.log(`consumed: ${item}`)
+      }
+    }).pipe(Effect.fork)
+  )
+
+  // 生产者不再自锁
+  yield* _(queue.offer(1))
+  yield* _(queue.offer(2))
+  yield* _(queue.offer(3)) // ✅ 消费者 Fiber 会及时取走
+  yield* _(queue.offer(4))
+})
+
+// ✅ 方案 2：使用 Queue 的 offer 变体避免阻塞
+const nonBlockingOffer = Effect.gen(function* (_) {
+  const queue = yield* _(Queue.bounded<number>(2))
+
+  // offer 立刻返回，失败也不阻塞
+  const offered = yield* _(queue.offer(3).pipe(Effect.optionFromOptional))
+  if (offered._tag === "None") {
+    Console.log("queue full, item discarded")
+  }
+  // ✅ 不会阻塞当前 Fiber
+})
+
+// ✅ 方案 3：使用 Polling 模式而非阻塞
+const pollQueue = Effect.gen(function* (_) {
+  const queue = yield* _(Queue.bounded<number>(100))
+
+  // 用 poll 替代 take，不阻塞
+  const item = yield* _(
+    queue.take.pipe(
+      Effect.timeout("100 millis"),
+      Effect.optionFromOptional
+    )
+  )
+
+  if (item._tag === "Some") {
+    Console.log(`got: ${item.value}`)
+  } else {
+    Console.log("queue empty, doing other work")
+  }
+})
+```
+
+---
+
+### 问题 3：未捕获 Defect
+
+#### 问题复现
+
+```typescript
+const buggyEffect = Effect.gen(function* (_) {
+  const data = yield* _(fetchData())
+  return data.nested.value // TypeError: Cannot read properties of null
+})
+
+// ❌ catchAll 无法捕获 Die
+const handled = buggyEffect.pipe(
+  Effect.catchAll((err) => {
+    Console.log("caught:", err) // 永远不会执行！
+    return Effect.succeed("fallback")
+  })
+)
+// → 不会输出任何日志，rejected promise 可能被静默吞掉
+```
+
+#### 诊断方法
+
+```typescript
+// 使用 catchAllCause 捕获所有 Error 种类
+const diagnosticEffect = buggyEffect.pipe(
+  Effect.catchAllCause((cause) =>
+    Effect.gen(function* (_) {
+      Console.error("full cause:", Cause.prettyPrint(cause))
+      if (Cause.isDie(cause)) Console.error("DEFECT (Die): unexpected runtime error")
+      if (Cause.isFail(cause)) Console.error("Expected failure (Fail)")
+      if (Cause.isInterruptedOnly(cause)) Console.error("Interruption")
+      return Effect.succeed("fallback")
+    })
+  )
+)
+```
+
+#### 解决方案
+
+```typescript
+// ✅ 方案 1：将 Defect 转换为 Fail
+const safeEffect = buggyEffect.pipe(
+  Effect.catchAllDefect((defect) =>
+    Effect.fail(new InternalError(`Defect: ${String(defect)}`))
+  )
+)
+
+// ✅ 方案 2：全局错误边界
+const withErrorBoundary = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  service: string
+): Effect.Effect<A, E, R> =>
+  Effect.catchAllCause(effect, (cause) =>
+    Effect.gen(function* (_) {
+      Console.error(`[${service}] Cause: ${Cause.prettyPrint(cause)}`)
+      if (Cause.isDie(cause)) {
+        return yield* _(Effect.fail(new ServiceError(`Unhandled defect in ${service}`)))
+      }
+      if (Cause.isInterruptedOnly(cause)) {
+        return yield* _(Effect.interrupt)
+      }
+      return yield* _(Effect.fail(new ServiceError(`Failed: ${Cause.prettyPrint(cause)}`)))
+    })
+  )
+```
+
+---
+
+## 开发者技能
+
+### 技能 1：构建调试 REPL
+
+```typescript
+(globalThis as any).__effect_debug = {
+  fibers: () =>
+    Effect.runPromise(supervisor.value.then((fibers) =>
+      console.table(fibers.map((f) => ({ id: f.id(), status: Fiber.status(f) })))
+    )),
+  dump: (id: string) =>
+    Effect.runPromise(
+      Effect.gen(function* (_) {
+        const fibers = yield* _(supervisor.value)
+        const target = fibers.find((f) => f.id() === id)
+        if (target) console.log(yield* _(Fiber.dump(target)))
+      })
+    ),
+  killAll: () => Effect.runPromise(
+    supervisor.value.pipe(Effect.flatMap((fibers) => Effect.forEach(fibers, Fiber.interrupt)))
+  )
+}
+```
+
+### 技能 2：运行时探针模式
+
+使用 `Effect.repeat` 构建探针，在生产环境持续检查运行时健康度：
+
+```typescript
+const healthProbe = (options: { maxFibers: number; checkInterval: Duration.DurationInput }) =>
+  Effect.gen(function* (_) {
+    const supervisor = yield* _(Supervisor.track)
+    yield* _(
+      Effect.gen(function* (__) {
+        const fibers = yield* __(supervisor.value)
+        if (fibers.length > options.maxFibers)
+          Console.warn(`[PROBE] Fiber count ${fibers.length} exceeds ${options.maxFibers}`)
+        for (const f of fibers) {
+          const status = yield* __(Fiber.status(f))
+          if (status._tag === "Suspended" && (status as any).duration > 60000)
+            Console.warn(`[PROBE] Fiber ${f.id()} suspended for >60s`)
+        }
+      }).pipe(Effect.repeat({ delay: options.checkInterval }), Effect.fork)
+    )
+    return supervisor
   })
 ```
 
 ---
 
-## 6. 生产环境 Checklist
+## 示例代码
 
-| 检查项 | 工具/方法 |
-|--------|----------|
-| Fiber 数量监控 | Supervisor.track + Metric.gauge |
-| 死锁检测 | Effect.timeout 包装 + 告警 |
-| 异常上报 | Effect.catchAllCause + 全局 handler |
-| 慢 Fiber 诊断 | Fiber.dump + 定期报告 |
-| 资源泄露 | Scoped 管理确保 acquireRelease |
-| 并发配置 | 确认 concurrency 参数不越界 |
+### Before/After：Fiber 泄漏修复
+
+```typescript
+// BEFORE：fork 后 Fiber 成为孤儿
+const handleRequest = (req: Request) =>
+  Effect.gen(function* (_) {
+    const result = yield* _(processBusiness(req))
+    yield* _(sendAnalytics(req, result).pipe(Effect.fork)) // ❌ 永不中断
+    return result
+  })
+// 100 req/s × 30s = 3000 个活跃 Fiber（持续增长）
+
+// AFTER：Scope 管理
+const handleRequestFixed = (req: Request) =>
+  Effect.scoped(
+    Effect.gen(function* (_) {
+      const result = yield* _(processBusiness(req))
+      yield* _(sendAnalytics(req, result).pipe(Effect.forkScoped)) // ✅ Scope 结束时中断
+      return result
+    })
+  )
+// 100 req/s × 100ms = ~10 个活跃 Fiber（稳定）
+```
+
+### 监控集成示例：Prometheus 指标
+
+```typescript
+const fiberCountGauge = Metric.gauge("effect_fibers_total")
+const collectMetrics = Effect.gen(function* (_) {
+  const supervisor = yield* _(Supervisor.track)
+  yield* _(
+    Effect.gen(function* (__) {
+      const fibers = yield* __(supervisor.value)
+      yield* __(fiberCountGauge.set(fibers.length))
+    }).pipe(Effect.repeat({ delay: "15 seconds" }), Effect.fork)
+  )
+  return supervisor
+})
+```
+
+---
+
+## 本章小结
+
+Effect-TS 的运行时排查体系比原生 JavaScript 更为完善，关键在于利用它提供的一系列结构化诊断工具：
+
+1. **Fiber 泄漏**：使用 `forkScoped` 替代 `fork`，或用 `Supervisor.track` 监控 Fiber 生命周期。建立 Fiber 数量基线并设置告警阈值。记住：每创建一个 Fiber，都要想清楚它的生命周期由谁管理。
+
+2. **并发死锁**：分离生产者和消费者到不同 Fiber，使用非阻塞 API（`offer` + `Effect.optionFromOptional`）替代阻塞式 `take`。在所有关键操作外层包裹 `Effect.timeout` 将死锁转换为超时错误。
+
+3. **未捕获 Defect**：在应用顶层设置 `catchAllCause` 全局边界，将所有 Defect 转换为可处理的 Fail。使用 `Effect.runPromiseExit` 在所有入口点检查 Exit 类型。不要在应用层面依赖 `process.on('unhandledRejection')`。
+
+4. **运行时监控**：使用 `Metric` + `Supervisor` 构建生产环境的 Fiber 监控面板。定时的 Fiber Dump 可以辅助排查深层问题。
+
+```typescript
+// 生产环境启动模板
+const productionApp = Effect.gen(function* (_) {
+  // 1. 设置全局 Defect 边界
+  const safeMain = withErrorBoundary(main, "app")
+
+  // 2. 启动 Fiber 监控
+  const supervisor = yield* _(setupFiberMonitoring())
+
+  // 3. 启动健康探针
+  yield* _(healthProbe({ maxFibers: 500, checkInterval: "30 seconds" }))
+
+  // 4. 运行应用
+  return yield* _(safeMain.pipe(Effect.supervisedBy(supervisor)))
+})
+```
 
 ---
 
@@ -464,4 +531,5 @@ const withMetrics = (app: Effect.Effect<void, never, never>) =>
 
 - Effect-TS Fiber 文档：https://effect.website/docs/concurrency/fibers
 - Effect-TS Supervisor 文档：https://effect.website/docs/concurrency/supervisors
+- Effect-TS Cause 文档：https://effect.website/docs/observability/cause
 - 相关章节：ch06（结构化并发）、ch13（DX 痛点）、ch15（性能调优）
