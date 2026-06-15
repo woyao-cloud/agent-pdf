@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-ch01
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      echo '=== Installing dependencies... ===' &&
+      cd examples && bun install && cd .. &&
+      echo '' &&
+      echo '=== Bun Version ===' &&
+      bun --version &&
+      echo '' &&
+      echo '=== 01-basic: Hello Bun ===' &&
+      bun run examples/01-basic/hello.ts &&
+      echo '' &&
+      echo '=== 02-advanced: Express Compatibility ===' &&
+      bun run examples/02-advanced/express-compat.ts &&
+      echo '' &&
+      echo '=== 03-production: API Server ===' &&
+      timeout 3 bun run examples/03-production/api-server.ts || true
+      "
