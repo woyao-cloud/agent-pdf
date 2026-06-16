@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  hono-app:
+    image: oven/bun:latest
+    container_name: bun-hono-app
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    ports:
+      - "3000:3000"
+    command: >
+      sh -c "bun run examples/01-basic/hono-app.ts"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+
+  elysia-app:
+    image: oven/bun:latest
+    container_name: bun-elysia-app
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    ports:
+      - "3001:3001"
+    command: >
+      sh -c "bun run examples/02-advanced/elysia-app.ts"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+
+  framework-bench:
+    image: oven/bun:latest
+    container_name: bun-framework-bench
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    ports:
+      - "3002:3002"
+    command: >
+      sh -c "bun run examples/03-production/framework-bench.ts"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
