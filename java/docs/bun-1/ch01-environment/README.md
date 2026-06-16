@@ -178,9 +178,9 @@ Bun 内置了以下能力，使其成为 bash/Python 的可行替代：
 #!/usr/bin/env bun
 
 // 文件操作
-const files = Bun.readdirSync(".");
+const files = await Bun.readdir(".");
 for (const file of files) {
-  const stat = Bun.statSync(file);
+  const stat = await Bun.stat(file);
   console.log(`${file} - ${stat.size} bytes`);
 }
 
@@ -2511,7 +2511,7 @@ Bun 运行 Express 比 Node.js 快约 25-35%。这个性能提升主要来自 Ja
 2. **理解了使用场景**：从本地开发到 CI/CD，从快速脚本到教学环境，Bun 在多个场景中都有显著优势
 3. **深入了实现原理**：了解了 Bun 的自包含二进制设计、JavaScriptCore 引擎优化、io_uring 事件驱动等核心技术
 4. **学习了风险与优化**：掌握了 Windows 兼容性、版本管理、全局工具冲突等实际问题的应对策略
-5. **掌握了问题排查**：5 个常见问题的症状、原因和解决方案
+5. **掌握了问题排查**：8 个常见问题的症状、原因和解决方案
 6. **运行了三个示例**：从简单的 Hello World 到 Express 兼容性，再到生产级 API 服务器
 
 从下一章开始，我们将深入 Bun 的运行时核心，探索 Bun 的内部架构和执行模型。

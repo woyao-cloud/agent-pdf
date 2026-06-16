@@ -13,16 +13,21 @@ console.log("Bun version:", Bun.version);
 const start = Bun.nanoseconds();
 
 // Built-in fetch() — Web API, no import required
-const response = await fetch("https://httpbin.org/json");
-const data = await response.json();
+let response: Response;
+try {
+  response = await fetch("https://httpbin.org/json");
+  const data = await response.json();
 
-const end = Bun.nanoseconds();
-const elapsed = (end - start) / 1_000_000; // convert to milliseconds
+  const end = Bun.nanoseconds();
+  const elapsed = (end - start) / 1_000_000; // convert to milliseconds
 
-console.log("HTTP GET https://httpbin.org/json");
-console.log("Status:", response.status);
-console.log("Response keys:", Object.keys(data).join(", "));
-console.log("Request took:", elapsed.toFixed(2), "ms");
+  console.log("HTTP GET https://httpbin.org/json");
+  console.log("Status:", response.status);
+  console.log("Response keys:", Object.keys(data).join(", "));
+  console.log("Request took:", elapsed.toFixed(2), "ms");
+} catch (err) {
+  console.log("HTTP request failed (network may be unavailable):", err);
+}
 
 // Demonstrate Bun's built-in hash functions
 const input = "Hello, Bun!";

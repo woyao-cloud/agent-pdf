@@ -8,7 +8,6 @@ services:
       - ./examples:/app/examples
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "
       echo '=== Bun Version ===' && bun --version &&
       echo '' &&
       echo '=== 01-basic: Four Identities Demo ===' &&
@@ -20,4 +19,3 @@ services:
       echo '' &&
       echo '=== 03-production: Microservices ===' &&
       timeout 5 bun run examples/03-production/microservices.ts || true
-      "

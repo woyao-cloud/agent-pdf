@@ -8,7 +8,6 @@ services:
       - ./examples:/app/examples
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "
       echo '=== Installing dependencies... ===' &&
       cd examples && bun install && cd .. &&
       echo '' &&
@@ -23,4 +22,3 @@ services:
       echo '' &&
       echo '=== 03-production: API Server ===' &&
       timeout 3 bun run examples/03-production/api-server.ts || true
-      "
