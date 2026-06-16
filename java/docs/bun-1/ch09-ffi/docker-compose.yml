@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-ch09
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      echo '=== 01-basic: C Library FFI ===' &&
+      bun run examples/01-basic/ffi-basics.ts &&
+      echo '' &&
+      echo '=== 02-advanced: String & Struct Handling ===' &&
+      bun run examples/02-advanced/complex-ffi.ts &&
+      echo '' &&
+      echo '=== 03-production: Image Hash ===' &&
+      bun run examples/03-production/image-hash.ts
