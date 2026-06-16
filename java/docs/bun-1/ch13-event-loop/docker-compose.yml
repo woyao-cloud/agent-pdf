@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-ch13-event-loop
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    entrypoint: ["bun", "run"]
+    # 默认不执行任何脚本，由用户手动指定
+    profiles:
+      - do-not-start
+
+  # 基础事件循环阶段演示
+  basic-phases:
+    image: oven/bun:latest
+    container_name: bun-ch13-basic-phases
+    working_dir: /app
+    volumes:
+      - ./examples/01-basic:/app/examples
+    entrypoint: ["bun", "run", "examples/event-loop-phases.ts"]
+
+  # 微任务优先级分析
+  advanced-microtask:
+    image: oven/bun:latest
+    container_name: bun-ch13-advanced-microtask
+    working_dir: /app
+    volumes:
+      - ./examples/02-advanced:/app/examples
+    entrypoint: ["bun", "run", "examples/microtask-priority.ts"]
+
+  # io_uring 异步 I/O 基准测试
+  production-iouring:
+    image: oven/bun:latest
+    container_name: bun-ch13-production-iouring
+    working_dir: /app
+    volumes:
+      - ./examples/03-production:/app/examples
+    entrypoint: ["bun", "run", "examples/io-uring-demo.ts"]
