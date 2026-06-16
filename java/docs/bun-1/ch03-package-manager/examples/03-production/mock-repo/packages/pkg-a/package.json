@@ -1,0 +1,7 @@
+{
+  "name": "@mock/pkg-a",
+  "version": "1.0.0",
+  "dependencies": {
+    "@mock/pkg-b": "^1.0.0"
+  }
+}
