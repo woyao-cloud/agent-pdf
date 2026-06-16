@@ -1,800 +1,1487 @@
-﻿# 绗簲绔狅細bun test 涓?Mock 鏈哄埗
+# 第5章 bun test 与 Mock 机制
 
-Bun 鍐呯疆鐨勬祴璇曡繍琛屽櫒鏄?Bun 杩愯鏃朵腑鏈€鍏风珵浜夊姏鐨勫姛鑳戒箣涓€銆傚畠鏃ㄥ湪浣滀负 Jest 鐨勭洿鎺ユ浛浠ｅ搧锛屽悓鏃跺埄鐢?Bun 鐨勮繍琛屾椂浼樺娍瀹炵幇浜嗘洿蹇殑娴嬭瘯鎵ц閫熷害鍜屾洿浣庣殑璧勬簮娑堣€椼€傛湰绔犲皢鍏ㄩ潰浠嬬粛 bun test 鐨勪娇鐢ㄥ満鏅€佸疄鐜板師鐞嗐€佹綔鍦ㄩ闄╀笌浼樺寲绛栫暐銆佸吀鍨嬮棶棰樺鐞嗐€佸繀澶囩煡璇嗕笌鎶€鑳斤紝浠ュ強绀轰緥浠ｇ爜涓庨厤缃€?
+## 5.1 使用场景
 
-bun test 鐨勫嚭鐜版爣蹇楃潃 JavaScript 娴嬭瘯宸ュ叿閾剧殑涓€娆￠噸澶у彉闈┿€傚湪 Bun 鍑虹幇涔嬪墠锛屽紑鍙戣€呴渶瑕佸湪 Jest銆丮ocha銆乂itest 绛夋鏋朵箣闂村仛鍑洪€夋嫨銆俠un test 璇曞浘鍦ㄦ€ц兘鍜屽姛鑳戒箣闂存壘鍒版渶浣冲钩琛＄偣锛屽畠鍐呯疆鍦?Bun 杩愯鏃朵腑锛屾棤闇€瀹夎浠讳綍澶栭儴渚濊禆锛屽惎鍔ㄩ€熷害杈惧埌姣绾у埆锛屽悓鏃舵彁渚涗簡涓?Jest 楂樺害鍏煎鐨?API銆?
+### 单元测试：替代Jest
 
-## 1. 浣跨敤鍦烘櫙
+Bun内置的测试运行器bun test是Bun生态系统中最具吸引力的功能之一，它提供了一个与Jest高度兼容的测试框架，无需额外安装jest、@types/jest、ts-jest或babel-jest等依赖包。在传统的Node.js项目中，要搭建一个可用的TypeScript测试环境，开发者需要安装并配置jest、ts-jest、@types/jest、esbuild-jest或babel-jest等多个包，并且需要编写jest.config.js或jest.config.ts配置文件，指定transform映射、模块名称映射、测试环境等参数。而在Bun项目中，只需要运行bun test命令，所有配置都是零成本的——Bun原生支持TypeScript、JSX、CommonJS和ES模块，无需任何转译器或类型声明文件。这意味着从项目初始化到编写第一个测试用例的时间被大幅缩短，开发者可以将更多的精力集中在测试逻辑本身，而不是在工具链的配置上。这种零配置的开发体验对于新项目启动和快速原型开发尤为重要，开发者可以在几分钟内建立起完整的测试基础设施。
 
-### 1.1 鍗曞厓娴嬭瘯锛堟浛浠?Jest锛?
+从性能角度来看，bun test的执行速度远超Jest。根据Bun官方团队发布的基准测试数据，对于一个包含1000个测试用例的中型项目，bun test的启动时间约为8毫秒，而Jest在相同项目上的启动时间约为800毫秒到2秒不等，这取决于项目中文件的数量和复杂度。在测试执行阶段，bun test利用其原生多线程架构，可以在约200毫秒内完成全部测试的执行，而Jest通常需要3到8秒才能完成相同的测试套件。这意味着bun test的整体测试周期（从启动到完成）通常比Jest快10到50倍，对于大型项目而言，这种性能差异会带来显著的开发体验提升。当一个开发者每天运行测试数十次时，每次节省的数秒累积起来就是大量的时间和精力，这种效率提升在紧张的项目周期中尤为宝贵。
 
-Bun 鍐呯疆鐨勬祴璇曡繍琛屽櫒鏈€鏍稿績鐨勪娇鐢ㄥ満鏅氨鏄崟鍏冩祴璇曘€傚湪 Bun 鍑虹幇涔嬪墠锛孞avaScript 鐢熸€佷腑鍗曞厓娴嬭瘯鐨勪富娴侀€夋嫨鏄?Jest锛屽畠鐢?Facebook 寮€鍙戝苟缁存姢锛屾嫢鏈夊簽澶х殑鎻掍欢鐢熸€佸拰绀惧尯鏀寔銆傜劧鑰?Jest 瀛樺湪涓€浜涘浐鏈夌殑鎬ц兘闂锛氬畠鐨勮浆璇戣繃绋嬩緷璧?Babel锛屽嵆浣块」鐩湰韬笉浣跨敤 Babel锛孞est 涔熶細鍦ㄥ悗鍙板惎鍔?Babel 杞崲锛岃繖瀵艰嚧娴嬭瘯鍚姩閫熷害鍙樻參銆傚浜庡ぇ鍨嬮」鐩紝Jest 鐨勫喎鍚姩鏃堕棿鍙兘闀胯揪鏁板崄绉掞紝杩欏湪杩芥眰蹇€熷弽棣堢殑 TDD 宸ヤ綔娴佷腑鏄笉鍙帴鍙楃殑銆侸est 杩橀渶瑕侀澶栫殑閰嶇疆鏂囦欢锛屽叾涓渶瑕佹寚瀹氭祴璇曠幆澧冦€佽浆鎹㈠櫒銆佹ā鍧楁槧灏勭瓑鍙傛暟锛岃繖浜涢厤缃伐浣滆櫧鐒剁伒娲伙紝浣嗕篃澧炲姞浜嗛」鐩殑缁存姢鎴愭湰銆?
+迁移一个现有的Jest项目到bun test通常是一个相对直接的过程。首先，需要移除项目中与Jest相关的依赖包，包括jest、@types/jest、ts-jest、babel-jest、jest-environment-jsdom等。然后，删除jest.config.js或jest.config.ts配置文件，因为bun test不需要这些配置。接着，需要对测试文件中的导入语句进行调整——在Jest中，describe、it、expect、jest.mock等全局函数是自动可用的，不需要显式导入，而bun test同样提供了这些全局函数，并且行为与Jest高度一致。然而，在某些情况下，如果代码中使用了TypeScript的严格类型检查，可能需要从bun:test模块中显式导入这些函数以获得正确的类型推断。此外，如果项目中使用了jest.fn()、jest.spyOn()、jest.mock()等Mock API，需要将其替换为bun:test中对应的API，即mock()、spyOn()、mock.module()等。
 
-Bun 鐨勬祴璇曡繍琛屽櫒浠庤璁′箣鍒濆氨灏嗘€ц兘浣滀负棣栬鐩爣銆傚畠鐩存帴鍐呯疆浜?Bun 杩愯鏃朵腑锛屼笉闇€瑕侀澶栧畨瑁呮祴璇曟鏋讹紝涓嶉渶瑕侀厤缃?Babel 鎴?TypeScript 杞瘧锛屼笉闇€瑕?jest.config.js 鏂囦欢銆備綘鍙渶瑕佽繍琛?bun test 鍛戒护锛孊un 灏变細鑷姩鍙戠幇椤圭洰涓墍鏈夊尮閰嶆祴璇曟枃浠舵ā寮忕殑鏂囦欢骞舵墽琛屽畠浠€侭un 鐨勬祴璇曞彂鐜版満鍒堕潪甯搁珮鏁堬紝瀹冧娇鐢ㄥ師鐢熺殑鏂囦欢绯荤粺鎵弿锛岃€岄潪渚濊禆 glob 搴擄紝鍥犳鍗充娇椤圭洰鍖呭惈鏁板崈涓枃浠讹紝娴嬭瘯鍙戠幇杩囩▼涔熶粎闇€鍑犲崄姣銆?
-
-Bun test 鐨?API 璁捐鍦ㄥ緢澶х▼搴︿笂涓?Jest 鍏煎锛岃繖鎰忓懗鐫€浣犲彲浠ュ皢鐜版湁鐨?Jest 娴嬭瘯杩佺Щ鍒?Bun 涓婅繍琛岋紝閫氬父鍙渶瑕佷慨鏀?import 璇彞鍗冲彲銆傝繖绉嶅吋瀹规€ч檷浣庝簡杩佺Щ鎴愭湰锛岃鍥㈤槦鍙互閫愭浠?Jest 杩囨浮鍒?Bun銆傝縼绉昏繃绋嬮€氬父鍒嗕负鍑犱釜闃舵锛氶鍏堝湪椤圭洰涓紩鍏?Bun 骞剁‘璁ゅ熀鏈彲鐢ㄦ€э紱鐒跺悗閫愭灏嗘祴璇曟枃浠朵粠 Jest 杩佺Щ鍒?Bun test锛涙渶鍚庡畬鍏ㄧЩ闄?Jest 鐨勪緷璧栥€傚湪姣忎釜闃舵锛屽洟闃熼兘鍙互骞惰杩愯涓ょ娴嬭瘯妗嗘灦锛岀‘淇濊縼绉昏繃绋嬩腑涓嶄細寮曞叆鍥炲綊銆?
-
-涓?Jest 鐩告瘮锛孊un test 鐨勪富瑕佷紭鍔夸綋鐜板湪浠ヤ笅鍑犱釜鏂归潰锛氬惎鍔ㄩ€熷害鏋佸揩锛孊un 鐨勬祴璇曡繍琛屽櫒浣跨敤 Zig 缂栧啓锛屽埄鐢ㄤ簡 Bun 杩愯鏃舵湰韬殑蹇€熷惎鍔ㄨ兘鍔涖€傚浜庡皬鍨嬪埌涓瀷椤圭洰锛宐un test 鐨勫惎鍔ㄦ椂闂撮€氬父鍦?100ms 浠ュ唴锛岃€?Jest 鐨勫惎鍔ㄦ椂闂撮€氬父鍦?1-3 绉掍箣闂淬€傚浜庡ぇ鍨嬮」鐩紝杩欎釜宸窛鏇村姞鏄庢樉銆傛棤闇€閰嶇疆锛孊un test 榛樿鏀寔 TypeScript銆丣SX銆丒SM 鍜?CommonJS 妯″潡銆備綘涓嶉渶瑕佸畨瑁?ts-jest銆乥abel-jest 鎴栧叾浠栬浆璇戞彃浠躲€傚唴缃柇瑷€搴擄紝Bun 鎻愪緵浜嗕赴瀵岀殑鏂█鏂规硶锛屽寘鎷?toBe銆乼oEqual銆乼oStrictEqual銆乼oContain銆乼oThrow 绛夊父瑙佹柇瑷€锛屼互鍙?Mock 鐩稿叧鐨勬柇瑷€鏂规硶銆傚揩鐓ф祴璇曟敮鎸侊紝Bun 鍐呯疆浜嗗蹇収娴嬭瘯鐨勬敮鎸侊紝閫氳繃 toMatchSnapshot 鏂规硶鍒涘缓鍜岄獙璇佸揩鐓с€傜敓鍛藉懆鏈熼挬瀛愬畬鏁达紝Bun test 鎻愪緵浜?beforeAll銆乤fterAll銆乥eforeEach銆乤fterEach 绛夐挬瀛愶紝琛屼负涓?Jest 瀹屽叏涓€鑷淬€?
-
-Bun test 杩樻敮鎸?Watch 妯″紡锛岃兘澶熷湪鏂囦欢鍙樻洿鏃惰嚜鍔ㄩ噸鏂拌繍琛岀浉鍏虫祴璇曘€侭un 鐨?Watch 妯″紡浣跨敤浜嗛珮鏁堢殑鏂囦欢鐩戞帶鏈哄埗锛屼笌 Jest 浣跨敤鐨?jest-haste-map 涓嶅悓锛孊un 鐩存帴浣跨敤鎿嶄綔绯荤粺鐨勬枃浠剁郴缁熶簨浠舵潵妫€娴嬫枃浠跺彉鍖栵紝璧勬簮鍗犵敤鏇翠綆锛屽搷搴旈€熷害鏇村揩銆傛澶栵紝Bun test 鏀寔浣跨敤 .only 鍜?.skip 鏂规硶鏉ヨ仛鐒︽垨璺宠繃鐗瑰畾鐨勬祴璇曞浠跺拰娴嬭瘯鐢ㄤ緥锛岃繖瀵逛簬璋冭瘯鐗瑰畾娴嬭瘯闈炲父鏈夊府鍔┿€?
-
-涓嬭〃瀵规瘮浜?Bun test銆丣est 鍜?Vitest 鍦ㄥ崟鍏冩祴璇曞満鏅笅鐨勬牳蹇冪壒鎬э細
-
-| 鐗规€?| Bun test | Jest | Vitest |
-|------|----------|------|--------|
-| 鍚姩閫熷害 | 鏋佸揩 (<100ms) | 杈冩參 (1-3s) | 蹇?(<500ms) |
-| 鍘熺敓 TypeScript | 鏄?| 闇€ ts-jest | 鏄?|
-| 閰嶇疆澶嶆潅搴?| 闆堕厤缃?| 闇€瑕侀厤缃?| 杈冨皯閰嶇疆 |
-| 鍐呯疆 Mock | 鏄?| 鏄?| 鏄?|
-| 蹇収娴嬭瘯 | 鏄?| 鏄?| 鏄?|
-| 浠ｇ爜瑕嗙洊鐜?| 鍐呯疆 | 鍐呯疆 | 鍐呯疆 |
-| Watch 妯″紡 | 鍐呯疆 | 鍐呯疆 | 鍐呯疆 |
-| 骞惰鎵ц | 榛樿骞惰 | 榛樿骞惰 | 榛樿骞惰 |
-| DOM 娴嬭瘯 | 闇€ happy-dom | jsdom | 闇€閰嶇疆 |
-| 鎻掍欢鐢熸€?| 杈冨皬 | 搴炲ぇ | 涓瓑 |
-
-### 1.2 API 闆嗘垚娴嬭瘯
-
-闄や簡鍗曞厓娴嬭瘯涔嬪锛孊un test 涔熼潪甯搁€傚悎缂栧啓 API 闆嗘垚娴嬭瘯銆侭un 杩愯鏃跺唴寤轰簡 HTTP 鏈嶅姟鍣紝浣犲彲浠ュ湪娴嬭瘯鐨?beforeAll 閽╁瓙涓惎鍔ㄤ竴涓祴璇曟湇鍔″櫒锛岀劧鍚庡湪娴嬭瘯鐢ㄤ緥涓彂閫佺湡瀹炵殑 HTTP 璇锋眰杩涜楠岃瘉銆傝繖绉嶆柟寮忕殑浼樺娍鍦ㄤ簬娴嬭瘯鏈嶅姟鍣ㄥ拰娴嬭瘯鐢ㄤ緥杩愯鍦ㄥ悓涓€涓繘绋嬩腑锛屼笉闇€瑕侀澶栫殑 Docker 瀹瑰櫒鎴栧閮ㄤ緷璧栥€傛祴璇曞惎鍔ㄩ€熷害蹇紝涓斿彲浠ュ湪 afterAll 閽╁瓙涓紭闆呭湴鍏抽棴鏈嶅姟鍣ㄣ€?
-
-API 闆嗘垚娴嬭瘯瑕嗙洊鐨勮寖鍥撮€氬父鍖呮嫭锛氱姸鎬佺爜楠岃瘉锛岄獙璇?API 杩斿洖鐨?HTTP 鐘舵€佺爜鏄惁绗﹀悎棰勬湡銆?00 琛ㄧず鎴愬姛锛?01 琛ㄧず璧勬簮鍒涘缓鎴愬姛锛?00 琛ㄧず瀹㈡埛绔敊璇紝401 琛ㄧず鏈巿鏉冿紝404 琛ㄧず璧勬簮涓嶅瓨鍦紝500 琛ㄧず鏈嶅姟鍣ㄥ唴閮ㄩ敊璇€傝鐩栬繖浜涚姸鎬佺爜鐨勬祴璇曞彲浠ョ‘淇?API 鐨勯敊璇鐞嗛€昏緫姝ｇ‘銆傚搷搴斾綋楠岃瘉锛岄獙璇?API 杩斿洖鐨?JSON 鍝嶅簲浣撶粨鏋勬槸鍚︽纭紝鍖呭惈棰勬湡鐨勫瓧娈碉紝瀛楁绫诲瀷姝ｇ‘锛屼互鍙婂瓧娈靛€肩鍚堥鏈熴€傝姹傚ご楠岃瘉锛岄獙璇?API 鏄惁姝ｇ‘澶勭悊浜嗚姹傚ご锛屽 Content-Type銆丄uthorization銆丄ccept 绛夛紝浠ュ強鍝嶅簲澶存槸鍚﹀寘鍚簡蹇呰鐨?CORS 澶翠俊鎭€傞敊璇鐞嗛獙璇侊紝楠岃瘉 API 鍦ㄦ帴鏀跺埌鏃犳晥杈撳叆鏃舵槸鍚﹁繑鍥炰簡鍚堥€傜殑閿欒淇℃伅鍜岀姸鎬佺爜銆傝竟鐣屾潯浠堕獙璇侊紝楠岃瘉 API 鍦ㄥ鐞嗚竟鐣屾潯浠舵椂鐨勮涓猴紝濡傜┖鏁扮粍銆佽秴闀垮瓧绗︿覆銆佺壒娈婂瓧绗︺€佽礋鏁扮瓑銆?
-
-Bun 鐨勫唴缃?fetch API 鍙互鐩存帴鍦ㄦ祴璇曚腑浣跨敤锛屾棤闇€瀹夎棰濆鐨?HTTP 瀹㈡埛绔簱銆傝繖浣垮緱缂栧啓 API 娴嬭瘯鍙樺緱闈炲父绠€娲併€備互涓嬫槸涓€涓吀鍨嬬殑 API 闆嗘垚娴嬭瘯缁撴瀯锛?
+下面是一个典型的Jest到bun test迁移示例。假设有一个使用Jest编写的测试文件：
 
 ```typescript
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+// Jest版本
+import { sum, multiply } from './math';
+import axios from 'axios';
 
-let server;
+jest.mock('axios');
+
+describe('数学函数测试', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('sum函数应正确计算两数之和', () => {
+    expect(sum(1, 2)).toBe(3);
+    expect(sum(-1, 1)).toBe(0);
+    expect(sum(0, 0)).toBe(0);
+    expect(sum(1.5, 2.5)).toBe(4);
+  });
+
+  test('multiply函数应正确计算两数之积', () => {
+    expect(multiply(3, 4)).toBe(12);
+    expect(multiply(-2, 3)).toBe(-6);
+    expect(multiply(0, 5)).toBe(0);
+  });
+
+  test('axios.get应被正确调用', async () => {
+    const mockData = { data: { id: 1, name: '测试' } };
+    (axios.get as jest.Mock).mockResolvedValue(mockData);
+
+    const result = await fetchUserData(1);
+    expect(result).toEqual(mockData.data);
+    expect(axios.get).toHaveBeenCalledWith('/api/users/1');
+  });
+});
+```
+
+迁移到bun test后的版本如下：
+
+```typescript
+// bun test版本
+import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { sum, multiply, fetchUserData } from './math';
+import axios from 'axios';
+
+mock.module('axios', () => ({
+  get: mock(() => Promise.resolve({ data: { id: 1, name: '测试' } })),
+}));
+
+describe('数学函数测试', () => {
+  beforeEach(() => {
+    mock.restore();
+  });
+
+  test('sum函数应正确计算两数之和', () => {
+    expect(sum(1, 2)).toBe(3);
+    expect(sum(-1, 1)).toBe(0);
+    expect(sum(0, 0)).toBe(0);
+    expect(sum(1.5, 2.5)).toBe(4);
+  });
+
+  test('multiply函数应正确计算两数之积', () => {
+    expect(multiply(3, 4)).toBe(12);
+    expect(multiply(-2, 3)).toBe(-6);
+    expect(multiply(0, 5)).toBe(0);
+  });
+
+  test('fetchUserData应正确获取用户数据', async () => {
+    const result = await fetchUserData(1);
+    expect(result).toEqual({ id: 1, name: '测试' });
+  });
+});
+```
+
+需要注意的是，bun test的mock.module()机制与Jest的jest.mock()在行为上有一些差异。jest.mock()使用自动提升（hoisting）机制，会将mock声明自动提升到文件顶部，而bun test的mock.module()则是一个普通的函数调用，需要在测试文件中按照正常的执行顺序放置。此外，bun test的mock.module()在模块模拟方面采用了更为底层的方式，它直接在Bun的模块解析层进行拦截，这意味着它能够模拟任何模块，包括Node.js内置模块和第三方包，而不需要像Jest那样使用特殊的模块映射配置。
+
+在类型支持方面，bun test提供了完整的TypeScript类型定义。当从bun:test模块导入describe、test、expect等函数时，TypeScript能够自动推断参数类型和返回值类型。例如，test函数的回调函数可以自动推断done回调的类型，以及异步函数的Promise类型。expect函数提供了完整的类型链式调用支持，包括toBe、toEqual、toStrictEqual、toContain、toMatch、toThrow等匹配器，并且所有匹配器都具有正确的类型签名。
+
+从Jest迁移到bun test的过程中，开发者还需要注意一些细节问题。第一个问题是关于全局变量的处理方式。在Jest中，describe、it、expect、jest等全局变量是自动注入到全局作用域中的，开发者不需要手动导入它们。然而在Bun中，虽然这些函数在运行时也是全局可用的，但为了获得TypeScript类型支持，建议从bun:test模块中显式导入。这意味着每个测试文件都需要添加一行import语句。虽然这增加了少量代码量，但也带来了好处：测试文件的依赖关系更加明确，代码审查时可以看到每个测试文件使用了哪些测试工具函数。第二个问题是关于匹配器的兼容性。Bun实现了Jest中绝大多数常用的匹配器，但一些较少使用的匹配器可能行为略有不同。例如，toStrictEqual匹配器在Bun和Jest中的行为差异就值得注意——Bun的toStrictEqual在检查对象类型时更加严格，会额外检查属性的可枚举性。第三个问题是关于异步测试的支持。Bun对异步测试的支持非常完善，支持async/await、Promise链、回调等多种异步模式。Bun的异步测试超时机制与Jest类似，但默认超时时间可能不同，建议在迁移时明确设置超时时间以避免测试在CI环境中意外超时。第四个问题是关于测试过滤和选择执行。Bun支持使用describe.only和test.only来仅执行特定的测试用例，也支持使用describe.skip和test.skip来跳过特定的测试用例。这些功能的使用方式与Jest完全一致，开发者不需要额外学习。此外，Bun还支持使用--filter标志来按模式过滤测试文件，以及使用--test-name-pattern标志来按测试名称模式过滤测试用例。
+
+### API集成测试
+
+Bun的bun test与Bun的内置HTTP服务器Bun.serve()相结合，为API集成测试提供了一个极为优雅的解决方案。在传统的Node.js测试环境中，开发者通常需要使用supertest或类似的库来发送HTTP请求并断言响应，同时还需要手动管理服务器的启动和关闭。而在Bun中，由于Bun.serve()是运行时的一部分，无需安装任何额外的依赖即可创建HTTP服务器，并且bun test的生命周期钩子（beforeAll、afterAll）可以无缝地管理服务器的生命周期。这种集成的深度使得开发者可以编写出既简洁又高效的API测试代码，不再需要在测试工具和HTTP客户端库之间切换上下文。
+
+下面是一个完整的API集成测试示例。假设有一个使用Bun.serve()构建的REST API服务器：
+
+```typescript
+// server.ts
+export function createServer(port: number = 3000) {
+  return Bun.serve({
+    port,
+    async fetch(request: Request): Promise<Response> {
+      const url = new URL(request.url);
+      const method = request.method;
+
+      if (method === 'GET' && url.pathname === '/api/users') {
+        const users = [
+          { id: 1, name: '张三', email: 'zhangsan@example.com' },
+          { id: 2, name: '李四', email: 'lisi@example.com' },
+        ];
+        return new Response(JSON.stringify(users), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'GET' && url.pathname.startsWith('/api/users/')) {
+        const id = parseInt(url.pathname.split('/')[3]);
+        const user = { id, name: `用户${id}`, email: `user${id}@example.com` };
+        return new Response(JSON.stringify(user), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'POST' && url.pathname === '/api/users') {
+        const body = await request.json();
+        const newUser = { id: Date.now(), ...body };
+        return new Response(JSON.stringify(newUser), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response('Not Found', { status: 404 });
+    },
+  });
+}
+```
+
+对应的测试文件如下：
+
+```typescript
+// api.test.ts
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { createServer } from './server';
+
+let server: ReturnType<typeof createServer>;
+const BASE_URL = 'http://localhost:3001';
+
+beforeAll(() => {
+  server = createServer(3001);
+});
+
+afterAll(() => {
+  server.stop();
+});
+
+describe('用户API集成测试', () => {
+  test('GET /api/users 应返回用户列表', async () => {
+    const response = await fetch(`${BASE_URL}/api/users`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('application/json');
+
+    const body = await response.json();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.length).toBe(2);
+    expect(body[0]).toHaveProperty('id');
+    expect(body[0]).toHaveProperty('name');
+    expect(body[0]).toHaveProperty('email');
+  });
+
+  test('GET /api/users/:id 应返回单个用户', async () => {
+    const response = await fetch(`${BASE_URL}/api/users/42`);
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      id: 42,
+      name: '用户42',
+    });
+  });
+
+  test('POST /api/users 应创建新用户', async () => {
+    const newUser = { name: '王五', email: 'wangwu@example.com' };
+
+    const response = await fetch(`${BASE_URL}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newUser),
+    });
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body).toMatchObject(newUser);
+    expect(body).toHaveProperty('id');
+    expect(typeof body.id).toBe('number');
+  });
+
+  test('访问不存在的路由应返回404', async () => {
+    const response = await fetch(`${BASE_URL}/api/nonexistent`);
+    expect(response.status).toBe(404);
+  });
+});
+```
+
+这种测试模式的优势在于其简洁性和自包含性。测试文件同时包含了服务器的创建、HTTP请求的发送和响应的断言，所有操作都在同一个Bun运行时中完成，没有额外的网络开销。Bun的fetch()函数是基于原生实现的，性能极高，并且与Bun.serve()共享底层的网络栈，这意味着测试中的HTTP请求实际上是在进程内部完成的，不需要经过真正的网络堆栈，从而进一步提升了测试速度。这种进程内通信机制是Bun API集成测试性能优越的关键因素之一。与传统的localhost网络通信相比，进程内通信避免了TCP/IP协议栈的开销、减少了数据拷贝次数、消除了网络延迟，使得API测试的执行速度接近于单元测试。
+
+对于更复杂的API测试场景，例如需要测试身份认证、请求验证、错误处理等，可以扩展上述模式。可以在beforeAll钩子中创建测试用的身份令牌，在请求头中携带认证信息，并测试各种边缘情况。Bun的fetch()函数支持所有标准的HTTP功能，包括自定义请求头、请求体、重定向处理、Cookie管理等，足以应对大多数API测试需求。
+
+需要注意的是，在并行测试中，每个测试文件在单独的Worker线程中运行，因此如果多个测试文件都创建了HTTP服务器，需要确保它们使用不同的端口，以避免端口冲突。一种常见的做法是使用端口0，让操作系统自动分配一个可用端口，然后通过Bun.serve()返回的server实例获取实际分配的端口号。
+
+### 快照测试
+
+快照测试是一种自动化测试技术，用于确保代码的输出不会发生意外变化。其工作原理是：首次运行时，将测试输出序列化为一个字符串（即快照），并将其保存到文件中；后续运行时，将当前输出与保存的快照进行比较，如果两者不匹配，则测试失败。快照测试特别适用于测试大型数据结构、UI组件的渲染输出、序列化结果等场景。
+
+Bun test支持快照测试，通过expect(value).toMatchSnapshot()匹配器实现。当第一次运行包含toMatchSnapshot()的测试时，Bun会在测试文件所在目录下创建一个__snapshots__目录，并在其中生成一个以测试文件命名的快照文件（例如math.test.ts.snap）。快照文件中包含了每个快照的标识符和序列化后的值。当后续运行测试时，Bun会将当前值与快照文件中的值进行比较，如果一致则测试通过，否则测试失败并显示差异。
+
+下面是一个快照测试的示例：
+
+```typescript
+// snapshot.test.ts
+import { describe, test, expect } from 'bun:test';
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  createdAt: Date;
+  roles: string[];
+  metadata: Record<string, unknown>;
+}
+
+function createUser(id: number): User {
+  return {
+    id,
+    name: `用户${id}`,
+    email: `user${id}@example.com`,
+    createdAt: new Date('2024-01-01'),
+    roles: ['admin', 'editor'],
+    metadata: {
+      lastLogin: null,
+      preferences: {
+        theme: 'dark',
+        language: 'zh-CN',
+        notifications: true,
+      },
+    },
+  };
+}
+
+describe('快照测试示例', () => {
+  test('createUser应生成一致的输出', () => {
+    const user = createUser(1);
+    expect(user).toMatchSnapshot();
+  });
+
+  test('用户配置信息快照', () => {
+    const user = createUser(2);
+    expect(user.metadata.preferences).toMatchSnapshot();
+  });
+});
+```
+
+当运行bun test时，会生成如下内容的快照文件：
+
+```
+exports[`快照测试示例 > createUser应生成一致的输出 1`] = `
+{
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "email": "user1@example.com",
+  "id": 1,
+  "metadata": {
+    "lastLogin": null,
+    "preferences": {
+      "language": "zh-CN",
+      "notifications": true,
+      "theme": "dark"
+    }
+  },
+  "name": "用户1",
+  "roles": [
+    "admin",
+    "editor"
+  ]
+}
+`;
+
+exports[`快照测试示例 > 用户配置信息快照 1`] = `
+{
+  "language": "zh-CN",
+  "notifications": true,
+  "theme": "dark"
+}
+`;
+```
+
+与Jest的快照测试相比，Bun的快照测试在以下方面存在差异。首先，Bun的快照序列化使用Bun内置的格式化器，而Jest使用pretty-format包。Bun的格式化器在输出格式上略有不同，例如对象属性的排序可能不同，这可能导致从Jest迁移快照文件时需要先更新所有快照。其次，Bun的快照文件格式与Jest的格式不兼容，不能直接复制使用。Jest使用exports[`测试名`]的格式，而Bun也使用了类似的格式，但在某些边缘情况下存在差异。第三，Bun不支持内联快照（toMatchInlineSnapshot），这是一个已知的API缺口。第四，Bun的快照更新机制通过bun test --update-snapshots命令实现，与Jest的jest --updateSnapshot类似。
+
+快照测试的最佳实践包括：快照文件应该纳入版本控制，因为它们是对代码输出的预期记录；快照应该保持小巧和专注，避免生成巨大的快照文件；当快照更新时，应该仔细审查差异，确保变更是有意为之的；快照测试不应该作为唯一的测试手段，而应该与传统的断言式测试配合使用。在实际项目中，快照测试最常见的误用场景是将快照作为验证组件正确性的唯一手段。快照测试只能检测到输出发生了变化，但不能判断变化后的输出是否正确。因此，快照测试应该与传统的断言式测试配合使用，断言测试验证逻辑正确性，快照测试检测意外变化。另一种常见的误用场景是生成过大的快照文件。当一个快照文件包含数百行甚至数千行内容时，代码审查变得非常困难，审查者很难发现快照中的细微变化。建议将大型快照拆分为多个小型快照，或者使用toMatchObject、toContain等更精确的匹配器来替代快照测试。
+
+### DOM测试与happy-dom
+
+在Bun环境中进行DOM测试时，需要使用DOM实现来模拟浏览器环境。Bun官方推荐使用happy-dom作为DOM实现，因为happy-dom是用TypeScript编写的，性能比jsdom更好，并且与Bun的架构更加契合。happy-dom是一个轻量级的DOM实现，实现了Web标准的子集，包括DOM Core、HTML DOM、CSS样式计算、事件处理等核心功能。
+
+在Bun中启用happy-dom只需要在测试文件中添加一行特殊的注释或导入即可。Bun通过一种名为"环境指令"（environment pragma）的机制来指定测试环境。在测试文件的顶部添加// @happy-dom注释，Bun就会自动使用happy-dom作为DOM环境来执行该文件。或者，也可以在bunfig.toml配置文件中设置默认的测试环境。
+
+下面是一个使用happy-dom进行DOM测试的示例：
+
+```typescript
+// @happy-dom
+import { describe, test, expect } from 'bun:test';
+
+describe('DOM操作测试', () => {
+  test('创建和操作DOM元素', () => {
+    const div = document.createElement('div');
+    div.textContent = 'Hello, Bun!';
+    div.className = 'greeting';
+    div.id = 'main-greeting';
+
+    expect(div.tagName).toBe('DIV');
+    expect(div.textContent).toBe('Hello, Bun!');
+    expect(div.className).toBe('greeting');
+    expect(div.id).toBe('main-greeting');
+    expect(div.innerHTML).toBe('Hello, Bun!');
+  });
+
+  test('DOM事件处理', () => {
+    const button = document.createElement('button');
+    let clickCount = 0;
+
+    button.addEventListener('click', () => {
+      clickCount++;
+    });
+
+    button.click();
+    expect(clickCount).toBe(1);
+
+    button.click();
+    button.click();
+    expect(clickCount).toBe(3);
+  });
+
+  test('CSS样式操作', () => {
+    const element = document.createElement('div');
+    element.style.color = 'red';
+    element.style.fontSize = '16px';
+    element.style.backgroundColor = 'blue';
+
+    expect(element.style.color).toBe('red');
+    expect(element.style.fontSize).toBe('16px');
+    expect(element.style.backgroundColor).toBe('blue');
+    expect(element.style.cssText).toContain('color: red');
+    expect(element.style.cssText).toContain('font-size: 16px');
+  });
+
+  test('DOM查询方法', () => {
+    const container = document.createElement('div');
+    container.innerHTML = `
+      <ul id="list">
+        <li class="item">项目1</li>
+        <li class="item">项目2</li>
+        <li class="item">项目3</li>
+      </ul>
+    `;
+
+    document.body.appendChild(container);
+
+    const list = document.getElementById('list');
+    expect(list).not.toBeNull();
+    expect(list!.tagName).toBe('UL');
+
+    const items = document.querySelectorAll('.item');
+    expect(items.length).toBe(3);
+    expect(items[0].textContent).toBe('项目1');
+    expect(items[1].textContent).toBe('项目2');
+    expect(items[2].textContent).toBe('项目3');
+
+    const firstItem = document.querySelector('.item');
+    expect(firstItem?.textContent).toBe('项目1');
+  });
+});
+```
+
+happy-dom与jsdom的主要差异体现在以下几个方面。在API覆盖率方面，jsdom实现时间更长，对Web标准的覆盖更全面，特别是在一些边缘API（如SVG、Canvas、History API、Storage API等）方面，jsdom的支持更为完善。happy-dom则专注于最常用的DOM API，覆盖了大约80%到90%的常用功能，但在一些较少使用的API上可能存在缺失。在性能方面，happy-dom通常比jsdom快2到5倍，这主要是因为happy-dom使用TypeScript编写，采用了更高效的数据结构和算法，并且针对Bun运行时进行了优化。在兼容性方面，happy-dom与Bun的集成更加自然，不需要额外的配置或垫片，而jsdom在Bun中运行可能需要一些额外的设置。
+
+如果项目中需要使用jsdom而非happy-dom，可以通过// @jsdom注释来指定。不过需要注意的是，jsdom在Bun中的运行可能不如在Node.js中稳定，因为jsdom依赖一些Node.js特有的API和行为，而Bun在某些实现细节上可能与Node.js存在差异。
+
+针对DOM测试中可能遇到的典型问题，这里提供一些具体的解决方案。第一个问题是关于事件处理的差异。happy-dom的事件系统实现了DOM事件规范的核心功能，但在事件传播的某些细节上与浏览器行为存在差异。例如，happy-dom对事件捕获阶段的支持有限，某些事件在捕获阶段可能不会按预期触发。解决这个问题的方法是避免在测试中依赖事件捕获阶段的行为，或者使用disptachEvent方法手动触发事件。第二个问题是关于样式计算的差异。happy-dom的getComputedStyle实现与浏览器的CSS计算存在差异，特别是在处理CSS继承、级联和简写属性时。如果测试需要验证精确的样式计算结果，建议使用内联样式而非CSS类，因为内联样式在happy-dom中的行为更加可预测。第三个问题是关于布局信息的差异。happy-dom不实现浏览器的布局引擎，因此getBoundingClientRect、offsetWidth、offsetHeight等布局相关API返回的值可能不准确。对于需要验证布局信息的测试，建议使用E2E测试工具（如Playwright）在真实浏览器中运行。第四个问题是关于Canvas和SVG的支持。happy-dom对Canvas API和SVG的支持有限，如果测试涉及这些技术，建议将相关的渲染逻辑与业务逻辑分离，在测试中只验证业务逻辑，或者使用专门的Canvas/SVG测试工具。
+
+### 基准测试
+
+Bun test内置了基准测试功能，通过bench()函数实现。bench()与test()类似，但专门用于测量代码的性能。bench()函数会多次执行回调函数，并统计每次执行的时间，最终输出统计结果，包括平均执行时间、最小执行时间、最大执行时间、执行次数等指标。
+
+下面是一个基准测试的示例：
+
+```typescript
+import { bench, describe } from 'bun:test';
+
+describe('字符串拼接性能对比', () => {
+  bench('使用+运算符', () => {
+    let result = '';
+    for (let i = 0; i < 100; i++) {
+      result = 'Hello' + ' ' + 'World' + '!';
+    }
+    return result;
+  });
+
+  bench('使用数组join', () => {
+    let result = '';
+    for (let i = 0; i < 100; i++) {
+      result = ['Hello', 'World', '!'].join(' ');
+    }
+    return result;
+  });
+
+  bench('使用模板字符串', () => {
+    let result = '';
+    for (let i = 0; i < 100; i++) {
+      result = `${'Hello'} ${'World'}${'!'}`;
+    }
+    return result;
+  });
+});
+
+describe('数组操作性能对比', () => {
+  const largeArray = Array.from({ length: 100000 }, (_, i) => i);
+
+  bench('for循环遍历', () => {
+    let sum = 0;
+    for (let i = 0; i < largeArray.length; i++) {
+      sum += largeArray[i];
+    }
+    return sum;
+  });
+
+  bench('forEach遍历', () => {
+    let sum = 0;
+    largeArray.forEach(item => {
+      sum += item;
+    });
+    return sum;
+  });
+
+  bench('reduce方法', () => {
+    return largeArray.reduce((acc, item) => acc + item, 0);
+  });
+});
+```
+
+运行bun test时会输出类似如下的基准测试结果：
+
+```
+bun test v1.x.x
+
+  ✓ 字符串拼接性能对比 > 使用+运算符 [50.2ms] 19980 iterations
+  ✓ 字符串拼接性能对比 > 使用数组join [82.1ms] 12180 iterations
+  ✓ 字符串拼接性能对比 > 使用模板字符串 [48.5ms] 20620 iterations
+  ✓ 数组操作性能对比 > for循环遍历 [2.1ms] 1 iteration
+  ✓ 数组操作性能对比 > forEach遍历 [5.3ms] 1 iteration
+  ✓ 数组操作性能对比 > reduce方法 [4.8ms] 1 iteration
+```
+
+bench()函数在内部会自动决定需要执行多少次迭代才能获得稳定的统计结果。对于非常快的操作（如字符串拼接），bench()会执行成千上万次迭代；对于较慢的操作（如大型数组遍历），则执行较少的迭代。bench()使用高精度计时器来测量时间，精度可达纳秒级别。
+
+基准测试的使用场景包括：比较不同算法或实现的性能差异；检测代码变更是否引入了性能回退；为性能优化工作提供数据支持；在代码审查中验证性能相关的修改。需要注意的是，基准测试应该作为一个参考指标，而不是绝对真理，因为测试结果可能受到系统负载、CPU频率缩放、垃圾回收等多种因素的影响。
+
+基准测试在实践中有一些重要的注意事项。第一，基准测试需要足够多的迭代次数才能获得稳定的统计结果。对于执行时间极短的操作，可能需要数十万次迭代才能消除偶然误差。Bun的bench()函数会自动调整迭代次数，但开发者也可以手动指定迭代次数来获得更精确的结果。第二，基准测试应该在相对稳定的环境中运行。CPU频率缩放、后台进程、垃圾回收等因素都会影响基准测试的结果。建议在运行基准测试时关闭不必要的后台程序，并将CPU电源管理设置为高性能模式。第三，基准测试的结果应该以相对值而非绝对值来解读。由于硬件和系统环境的差异，不同机器上的基准测试绝对数值可能差异很大，但同一次运行中的相对比较（如算法A比算法B快多少）具有更高的参考价值。第四，基准测试应该关注趋势而非单次结果。在代码演进过程中，定期运行基准测试并记录结果，可以及时发现性能回退。Bun的bench()函数输出中包含详细的统计信息，包括平均值、最小值和最大值，这些信息可以帮助判断性能变化是否在正常波动范围内。
+
+### 使用场景对比表
+
+| 特性 | bun test | Jest | Vitest |
+|------|----------|------|--------|
+| 启动时间 | 约8ms | 800ms-2s | 100-300ms |
+| 1000个测试执行时间 | 约200ms | 3-8s | 500ms-2s |
+| TypeScript原生支持 | 是（零配置） | 需要ts-jest或babel | 是（零配置） |
+| JSX支持 | 是 | 需要配置 | 是 |
+| ES模块支持 | 原生 | 需要配置 | 原生 |
+| 内置Mock | mock() / spyOn() | jest.fn() / jest.spyOn() | vi.fn() / vi.spyOn() |
+| 模块Mock | mock.module() | jest.mock() | vi.mock() |
+| 快照测试 | 支持（有限） | 完整支持 | 完整支持 |
+| 内联快照 | 不支持 | 支持 | 支持 |
+| 自定义匹配器 | 支持 | 支持 | 支持 |
+| DOM环境 | happy-dom / jsdom | jest-environment-jsdom | jsdom / happy-dom |
+| 基准测试 | 内置bench() | 需要第三方库 | 内置bench() |
+| 并行执行 | 原生多线程 | worker_threads | worker_threads |
+| 代码覆盖率 | 内置 | 需要babel插件 | 内置 |
+| 监视模式 | 支持 | 支持 | 支持 |
+| 配置文件 | bunfig.toml（可选） | jest.config.js（必需） | vite.config.ts（可选） |
+| 依赖安装 | 无（Bun内置） | 10+个包 | 5+个包 |
+| CI环境友好度 | 优秀（无需安装） | 一般 | 良好 |
+
+从对比表可以看出，bun test在性能方面具有显著优势，特别是在启动时间和测试执行速度方面。对于大型项目，这种性能差异可以大幅缩短测试反馈周期，提升开发效率。然而，bun test在某些高级功能方面（如内联快照、自定义测试环境等）的覆盖不如Jest和Vitest全面，因此在选择测试框架时需要根据项目需求进行权衡。
+
+在选择测试框架时，除了考虑功能覆盖和性能指标外，还需要考虑团队的技术栈和现有的测试基础设施。对于已经深度使用Jest生态系统的项目，迁移到bun test需要评估迁移成本和收益。迁移成本包括修改测试代码的时间成本、团队学习新工具的学习成本、以及可能出现的兼容性问题排查成本。迁移收益包括测试执行速度的提升、配置复杂度的降低、以及CI资源消耗的减少。对于大多数项目而言，迁移收益远大于迁移成本，特别是对于那些测试执行时间较长的大型项目。对于新项目，如果已经选择Bun作为主要运行时，那么bun test显然是测试框架的最佳选择。它不仅提供了零配置的测试体验，还与Bun的其他内置功能（如Bun.serve、Bun.file等）深度集成，提供了其他测试框架无法比拟的开发体验。对于需要与Vite生态集成的项目，Vitest可能是更好的选择。Vitest可以复用Vite的配置和插件，减少重复配置。同时，Vitest在API覆盖面上更广，对Jest的兼容性更高，特别是在定时器模拟和模块模拟方面。但需要注意的是，Vitest依赖于Vite和esbuild，这意味着项目中需要安装额外的依赖包，而且Vitest的启动速度和执行速度虽然比Jest快，但仍然慢于bun test。
+
+## 5.2 实现原理
+
+### bun:test模块内部架构
+
+bun:test模块是Bun运行时中一个深度集成的组件，其实现跨越了Zig和C++两个层次，并与Bun的JavaScript引擎JavaScriptCore（WebKit的JavaScript引擎）紧密协作。理解bun:test的内部架构，有助于开发者更好地掌握其性能优势的来源，以及在特定场景下的行为特点。
+
+在最高层次上，bun:test模块由以下几个核心组件构成。第一个组件是测试调度器（Test Scheduler），它负责管理整个测试生命周期，包括测试文件的发现、测试套件的组织、测试用例的调度和执行。测试调度器运行在主线程中，使用Bun的文件系统API来扫描测试文件（默认匹配*.test.{ts,tsx,js,jsx}、*_test.{ts,tsx,js,jsx}、*.spec.{ts,tsx,js,jsx}等模式），并根据文件路径对测试进行分组。
+
+第二个组件是Worker线程池（Worker Pool）。Bun的测试执行模型是基于原生线程的并行架构。当测试调度器发现测试文件后，它会将这些文件分发到一个Worker线程池中执行。每个Worker线程运行在独立的操作系统线程中，拥有自己的JavaScriptCore堆栈和事件循环。这种架构与Jest的worker_threads模型类似，但由于Bun使用原生线程而非Node.js的worker_threads，因此线程创建和通信的开销更低。Worker线程池的大小默认等于CPU核心数，但可以通过--test-threads标志进行配置。
+
+第三个组件是JavaScript API层，即开发者直接使用的describe、test、expect、mock等函数。这一层是用Zig编写的，通过JavaScriptCore的FFI（Foreign Function Interface）暴露给JavaScript。每个函数在Zig中都有对应的实现，负责处理参数验证、状态管理、结果收集等任务。例如，test()函数在Zig中的实现会创建一个测试用例对象，将其注册到当前测试套件中，并将其状态报告给测试调度器。
+
+第四个组件是匹配器系统（Matcher System），即expect()函数返回的对象及其上的各种匹配方法（toBe、toEqual、toContain等）。匹配器系统的实现在Zig层面，通过JavaScriptCore的Proxy机制或直接的方法绑定来提供链式调用的API。每个匹配器方法都包含了对实际值和期望值的比较逻辑，以及在比较失败时生成详细错误信息的能力。
+
+第五个组件是快照管理系统（Snapshot Management System），负责快照的创建、序列化、比较和更新。快照管理系统在首次运行测试时生成快照文件，在后续运行中加载快照并与当前值进行比较，在更新模式下重新生成快照文件。
+
+第六个组件是覆盖率收集器（Coverage Collector）。当启用覆盖率收集时（通过--coverage标志），Bun会在每个Worker线程中注入覆盖率仪器代码，收集代码执行的行号、分支覆盖等信息。覆盖率数据的收集依赖于JavaScriptCore的调试API和Bun自定义的代码仪器化机制。
+
+测试的生命周期如下。当用户运行bun test命令时，首先初始化测试调度器，扫描指定的测试目录或文件。然后，调度器根据文件数量创建一个Worker线程池。每个Worker线程被分配一个或多个测试文件，并开始执行。在每个Worker线程中，测试文件被加载到JavaScriptCore引擎中执行，这会触发describe、test等调用，从而注册测试用例。Worker线程按照嵌套顺序执行测试用例，先执行外层的beforeAll，然后依次执行每个describe块中的beforeEach、测试用例、afterEach，最后执行afterAll。在每个测试用例执行前后，Worker线程会收集测试结果（通过、失败、跳过等），并将其发送回主线程的调度器。调度器汇总所有Worker线程的结果，并在控制台输出测试报告。
+
+关于测试执行顺序，Bun遵循了一套明确的规则。首先，describe块可以无限嵌套，但为了代码可读性，建议嵌套层次不超过三层。外层describe块的beforeAll钩子在内层describe块的所有测试之前执行。内层describe块的beforeAll钩子在该describe块内的测试之前执行。beforeEach钩子的执行顺序是从外层到内层逐层执行。afterEach钩子的执行顺序是从内层到外层逐层执行。这种嵌套规则与Jest完全一致，确保了从Jest迁移时测试行为的一致性。Bun还支持describe块的异步初始化，即在describe块的回调函数中可以使用异步操作来准备测试环境。Bun会在执行describe块内的测试之前等待异步初始化完成。这种机制特别适用于需要在测试之前建立数据库连接、加载配置文件或初始化外部服务的场景。
+
+### Jest兼容层
+
+Bun的测试运行器设计了一个Jest兼容层，使得大量现有的Jest测试代码可以在不做修改或仅做少量修改的情况下在Bun中运行。这个兼容层位于bun:test模块的内部，通过将Jest的全局API映射到Bun自己的实现上来实现兼容性。
+
+从架构角度来看，兼容层主要处理以下几个方面的映射。首先是全局API的映射。在Jest中，describe、test/it、expect、beforeAll、afterAll、beforeEach、afterEach等函数是全局可用的，不需要导入。Bun同样将这些函数设置为全局变量，因此大部分现有的Jest测试代码可以直接运行。然而，为了获得更好的类型支持，Bun也允许从bun:test模块显式导入这些函数。
+
+其次是Mock API的映射。Jest提供了jest.fn()、jest.spyOn()、jest.mock()、jest.clearAllMocks()等一系列Mock API。Bun的兼容层将这些API映射到bun:test的mock()、spyOn()、mock.module()等函数。映射关系如下表所示：
+
+| Jest API | Bun API | 说明 |
+|----------|---------|------|
+| jest.fn() | mock() | 创建Mock函数，行为基本相同 |
+| jest.fn(impl) | mock(impl) | 带实现的Mock函数 |
+| jest.spyOn(obj, method) | spyOn(obj, method) | 监视对象方法 |
+| jest.mock(module, factory) | mock.module(module, factory) | 模块级Mock |
+| jest.unmock(module) | mock.module(module, undefined) | 取消模块Mock |
+| jest.clearAllMocks() | mock.restore() | 清除所有Mock状态 |
+| jest.resetAllMocks() | mock.restore() | 重置所有Mock |
+| jest.restoreAllMocks() | mock.restore() | 恢复所有原始实现 |
+| jest.useFakeTimers() | 不支持 | 需要使用第三方库 |
+| jest.setTimeout() | 不支持 | 使用bun:test配置 |
+| jest.requireActual() | 不支持 | 需要直接import |
+
+第三是匹配器API的映射。Bun实现了Jest中大部分常用的匹配器，包括toBe()、toEqual()、toStrictEqual()、toBeNull()、toBeUndefined()、toBeDefined()、toBeTruthy()、toBeFalsy()、toBeGreaterThan()、toBeGreaterThanOrEqual()、toBeLessThan()、toBeLessThanOrEqual()、toContain()、toContainEqual()、toHaveLength()、toMatch()、toMatchObject()、toThrow()、toThrowError()等。对于这些匹配器，Bun的行为与Jest基本一致，但在一些边缘情况下可能存在细微差异。
+
+兼容层的实现策略是"尽可能兼容，但有明确文档的差异"。Bun团队认识到，完全的API兼容性是几乎不可能实现的，因为底层运行时（JavaScriptCore vs V8）和语言实现（Zig/C++ vs Node.js/C++）存在根本性的差异。因此，Bun采取了务实的态度：覆盖95%以上的常用API，对于无法实现的API提供清晰的替代方案和文档说明。这种务实的兼容策略意味着开发者在迁移测试时不需要修改大部分测试代码，但需要了解少数不兼容API的替代方案。在实际迁移项目中，最常见的兼容性问题涉及jest.mock的使用、jest.useFakeTimers的使用和jest.requireActual的使用。这三个API的替代方案已经在前面章节中详细讨论过。对于其他不常用的Jest API，如jest.isolateModules、jest.retryTimes等，由于在项目中使用频率较低，迁移时的影响相对有限。
+
+### Mock函数拦截机制
+
+Bun的Mock函数机制是bun:test模块的核心功能之一，其实现基于JavaScriptCore引擎的底层拦截能力。理解Mock函数的内部工作机制，有助于开发者更有效地使用Mock功能，并理解其限制。
+
+mock()函数是创建Mock函数的主要方式。当调用mock()时，Bun会在JavaScriptCore层面创建一个特殊的函数对象，这个对象具有以下特性。第一，它是一个可调用的函数，可以像普通函数一样被调用。第二，它维护了调用历史记录，包括每次调用的参数（calls）、返回值（results）和this上下文（instances）。第三，它允许自定义实现，通过mock(() => impl)的形式传入一个替代实现。第四，它支持链式调用和返回值控制，如mockFn.mockReturnValue()、mockFn.mockResolvedValue()、mockFn.mockImplementation()等方法。
+
+Mock函数拦截机制的实现依赖于JavaScriptCore的元编程能力。具体来说，Bun在Zig层面创建了一个C++级别的函数包装器，这个包装器在JavaScriptCore中注册为一个原生函数。当这个原生函数被调用时，它会执行以下操作：
+
+第一步，记录调用信息。在函数被调用时，拦截器会记录调用时传入的参数数组（arguments对象）、this指向、以及调用时间戳。这些信息被存储在一个内部的数据结构中，可以通过mockFn.mock.calls、mockFn.mock.instances和mockFn.mock.results属性访问。
+
+第二步，执行自定义实现。如果用户通过mock(impl)提供了自定义实现，拦截器会调用这个实现，并将返回值存储在results中。如果没有提供自定义实现，拦截器默认返回undefined。
+
+第三步，处理特殊配置。如果用户通过mockFn.mockReturnValue()或mockFn.mockResolvedValue()等设置了特殊的返回值配置，拦截器会在调用自定义实现之前检查这些配置，并优先使用配置的返回值。
+
+第四步，执行完毕后，拦截器返回给调用者。整个过程是同步的，不会引入额外的异步延迟。
+
+spyOn()函数的实现与mock()类似，但多了一个额外的步骤：它需要替换目标对象上的方法。当调用spyOn(obj, method)时，Bun会执行以下操作：
+
+第一步，获取原始方法。Bun会从目标对象上获取指定的方法，并保存其引用以便后续恢复。
+
+第二步，创建Mock函数。Bun会创建一个新的Mock函数，这个函数与原始函数具有相同的签名。
+
+第三步，替换对象上的方法。Bun将目标对象上的原始方法替换为Mock函数，使得所有对该方法的调用都被拦截。
+
+第四步，在Mock函数内部，spyOn默认会调用原始实现（与Jest的行为一致），但也可以通过mockImplementation()等方式改变行为。
+
+当调用mock.restore()时，所有通过spyOn创建的Mock都会被恢复为原始实现，所有通过mock()创建的Mock的调用历史都会被清空。
+
+mock.module()函数的实现机制与mock()和spyOn()完全不同。mock.module()在Bun的模块解析层面工作，而不是在函数调用层面。当调用mock.module('axios', factory)时，Bun会在其模块缓存中注册一个自定义的模块解析规则。此后，当任何代码通过import或require导入axios模块时，Bun的模块解析器会检查这个注册表，如果发现匹配的规则，则返回factory函数的返回值，而不是实际加载axios包。
+
+这种模块级别的Mock机制与Jest的jest.mock()在实现上存在重要差异。Jest的jest.mock()使用自动提升（hoisting）机制，通过Babel插件将mock声明移动到文件顶部，在模块加载之前执行。而Bun的mock.module()不依赖任何转译器，它直接在运行时层面进行拦截，因此不需要hoisting。这意味着在Bun中，mock.module()可以在文件中的任何位置调用，只要在导入被Mock的模块之前执行即可。在实际使用中，建议将mock.module()调用放在文件顶部、import语句之前，这样可以确保Mock在模块加载之前生效，避免因模块缓存导致的Mock失效问题。
+
+### 快照比较算法
+
+Bun的快照测试实现包含两个核心算法：序列化算法和比较算法。
+
+序列化算法的任务是将任意JavaScript值转换为一个字符串表示。Bun使用其内置的格式化器（Bun.inspect()的底层实现）来进行序列化。这个格式化器与Jest使用的pretty-format包在行为上存在一些差异。Bun的序列化算法具有以下特点：
+
+第一，它能够处理各种JavaScript数据类型，包括基本类型、对象、数组、Map、Set、Date、RegExp、Error、Promise、TypedArray等。对于每种类型，格式化器都有专门的序列化逻辑。
+
+第二，它采用缩进格式输出，使得快照文件具有良好的可读性。默认缩进为2个空格。
+
+第三，它能够处理循环引用。当检测到循环引用时，格式化器会使用[Circular]标记来表示，而不是陷入无限递归。
+
+第四，它对对象属性的排序与Jest不同。Bun按照属性名的字符串顺序排序，而Jest按照属性定义的顺序排序。这是导致Bun和Jest快照格式不兼容的主要原因之一。
+
+第五，它会对一些特殊值进行规范化处理。例如，Date对象会被序列化为ISO 8601字符串格式，NaN和Infinity会被序列化为字符串表示。
+
+比较算法的任务是将当前序列化后的值与快照文件中保存的值进行比较。Bun的比较算法相对简单直接：它使用字符串精确匹配。如果当前序列化后的字符串与快照文件中的字符串完全相同，则测试通过；否则测试失败。
+
+当测试失败时，Bun会输出详细的差异信息。差异信息的生成使用了一种类似于diff算法的实现，能够显示两个字符串之间的逐行差异。输出格式类似于Unix的diff命令，使用+和-符号表示新增和删除的行。
+
+当使用bun test --update-snapshots（或简写为bun test -u）运行时，Bun会进入快照更新模式。在这种模式下，比较算法被跳过，所有快照都会被重新生成。Bun会遍历所有测试文件，重新执行包含toMatchSnapshot()的测试用例，并将当前值序列化后写入新的快照文件。旧的快照文件会被覆盖。
+
+### 并行执行模型
+
+Bun test的并行执行模型是其性能优势的关键来源。这个模型基于以下设计原则：
+
+第一，文件级隔离。Bun将每个测试文件视为一个独立的工作单元，在单独的Worker线程中执行。这与Jest的默认行为一致，也是实现并行的基础。文件级隔离意味着每个测试文件都有自己的全局作用域、模块缓存和事件循环，测试文件之间的状态不会相互干扰。
+
+第二，原生线程。Bun使用操作系统原生线程（pthreads或Windows线程）来创建Worker线程池，而不是使用Node.js的worker_threads模块。原生线程的创建和通信开销更低，特别是在大量小测试文件的场景下，这种优势更加明显。
+
+第三，共享无状态。Worker线程之间不共享任何可变状态。所有通信都通过主线程进行，主线程负责分发测试文件、收集结果和输出报告。这种设计消除了锁竞争和同步开销，使得并行扩展几乎是线性的。
+
+第四，动态负载均衡。测试调度器使用动态负载均衡策略来分配测试文件。当某个Worker线程完成了当前文件的执行后，调度器会立即为其分配下一个文件，而不是预先将所有文件分配给所有Worker。这种策略能够适应不同测试文件执行时间的不均匀性，最大化CPU利用率。
+
+第五，智能排序。在分配测试文件之前，调度器会根据文件的大小、历史执行时间等信息进行智能排序，将预计执行时间较长的文件优先分配，以便在最终阶段减少空闲等待时间。
+
+Worker线程的通信机制基于Bun内部的消息传递系统。当Worker线程完成一个测试文件的执行后，它会将测试结果序列化为一个消息，通过一个共享的环形缓冲区（ring buffer）发送给主线程。主线程异步地读取这些消息，并更新测试报告。这种通信机制是零拷贝的，不需要额外的内存分配或序列化/反序列化操作。
+
+需要注意的是，虽然测试文件之间是并行的，但单个测试文件内部的测试用例是顺序执行的。这是设计上的选择，因为同一个文件内的测试用例通常共享状态（如beforeAll中创建的数据库连接、服务器实例等），顺序执行可以避免竞态条件。
+
+## 5.3 潜在风险与优化
+
+### Jest API覆盖缺口
+
+尽管Bun的测试运行器在API兼容性方面做了大量工作，但与Jest相比仍然存在一些API覆盖缺口。了解这些缺口对于从Jest迁移的项目至关重要，可以避免在迁移过程中遇到意外的问题。
+
+以下是Bun test中已知的API缺口及其替代方案的详细列表：
+
+| 缺失的Jest API | Bun中的状态 | 替代方案 |
+|----------------|-------------|----------|
+| jest.useFakeTimers() | 不支持 | 使用第三方库如@sinonjs/fake-timers |
+| jest.setTimeout() | 不支持 | 通过bunfig.toml配置全局超时 |
+| jest.requireActual() | 不支持 | 在mock.module之前先保存原始模块引用 |
+| jest.retryTimes() | 不支持 | 需要手动实现重试逻辑 |
+| jest.createMockFromModule() | 不支持 | 使用mock.module配合自动模拟 |
+| jest.replaceProperty() | 不支持 | 使用Object.defineProperty |
+| toMatchInlineSnapshot() | 不支持 | 使用toMatchSnapshot()替代 |
+| toThrowErrorMatchingSnapshot() | 不支持 | 使用try-catch + toMatchSnapshot() |
+| toThrowErrorMatchingInlineSnapshot() | 不支持 | 手动断言错误消息 |
+| expect.addSnapshotSerializer() | 不支持 | 暂无替代方案 |
+| expect.extend() | 支持有限 | 使用自定义辅助函数 |
+| test.concurrent() | 不支持 | 使用Promise.all手动实现 |
+| test.each() | 支持有限 | 使用数组遍历 |
+| describe.each() | 支持有限 | 使用数组遍历 |
+| jest.isolateModules() | 不支持 | 使用动态import() |
+
+对于jest.useFakeTimers()的缺失，这是一个比较重要的缺口。在Jest中，useFakeTimers()允许测试代码控制时间流逝，模拟setTimeout、setInterval、Date.now等定时器相关API的行为。这在测试涉及定时器的代码时非常有用。在Bun中，如果需要模拟定时器，可以使用@sinonjs/fake-timers包，这是一个独立的时间模拟库，可以与bun test配合使用。使用方式如下：
+
+```typescript
+import { describe, test, expect } from 'bun:test';
+import FakeTimers from '@sinonjs/fake-timers';
+
+describe('使用第三方定时器模拟', () => {
+  test('模拟setTimeout行为', () => {
+    const clock = FakeTimers.install();
+    const fn = mock();
+
+    setTimeout(fn, 1000);
+    expect(fn).not.toHaveBeenCalled();
+
+    clock.tick(1000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    clock.uninstall();
+  });
+});
+```
+
+对于jest.requireActual()的缺失，这个问题出现在当需要对某个模块进行部分Mock时。在Jest中，jest.mock('module')会完全模拟模块，而jest.requireActual('module')可以在Mock工厂函数中获取原始模块的实现，从而实现部分Mock。在Bun中，可以通过在调用mock.module()之前先保存原始模块的引用来实现类似的效果：
+
+```typescript
+// 先导入原始模块
+const originalModule = await import('axios');
+
+// 然后Mock部分功能
+mock.module('axios', () => ({
+  ...originalModule,
+  get: mock(() => Promise.resolve({ data: { id: 1 } })),
+}));
+```
+
+### 快照格式差异
+
+Bun的快照格式与Jest的快照格式存在一些差异，这给从Jest迁移的项目带来了额外的迁移成本。主要的格式差异包括以下几个方面：
+
+第一，对象属性排序。Bun的序列化器按照属性名的Unicode码点顺序（即字符串的自然顺序）对对象属性进行排序，而Jest的pretty-format按照属性定义的顺序排序。这意味着在Jest中生成的快照文件如果直接用于Bun，会由于属性顺序不同而导致所有快照测试失败。
+
+第二，缩进格式。Bun使用2个空格的缩进，而Jest也默认使用2个空格，但两者的缩进逻辑在一些嵌套场景下可能存在差异。
+
+第三，特殊值的表示方式。对于NaN、Infinity、-0等特殊值，Bun和Jest的表示方式可能不同。
+
+第四，Map和Set的序列化。Bun和Jest对Map和Set的序列化格式存在差异。Jest使用Map {...}和Set {...}的格式，而Bun可能使用不同的格式。
+
+第五，循环引用的处理。Bun和Jest都使用[Circular]标记来处理循环引用，但标记的位置和格式可能存在差异。
+
+针对这些差异，从Jest迁移快照测试时，推荐采用以下策略。第一步，在迁移完成后，运行bun test --update-snapshots重新生成所有快照。这将用Bun格式的新快照替换所有旧的Jest格式快照。第二步，仔细审查所有更新后的快照，确保快照内容的变化是由于格式差异导致的，而不是由于代码行为的变化导致的。第三步，将新的快照文件提交到版本控制，并在提交信息中说明这是快照格式迁移。
+
+### DOM测试：happy-dom与jsdom的差异
+
+在Bun中进行DOM测试时，happy-dom是官方推荐的DOM实现，但开发者也可以选择使用jsdom。这两种DOM实现在API覆盖率、性能和兼容性方面存在显著差异。
+
+在API覆盖率方面，happy-dom实现了大约80%到90%的常用DOM API，而jsdom实现了90%到95%。具体的差异包括：
+
+| API/功能 | happy-dom | jsdom | 说明 |
+|----------|-----------|-------|------|
+| DOM Core（createElement等） | 完整 | 完整 | 两者都支持 |
+| DOM事件（addEventListener等） | 完整 | 完整 | 两者都支持 |
+| CSS样式操作 | 完整 | 完整 | 两者都支持 |
+| DOM查询（querySelector等） | 完整 | 完整 | 两者都支持 |
+| Canvas API | 不支持 | 有限支持 | 需要canvas包 |
+| SVG支持 | 有限 | 有限 | 两者都不完善 |
+| History API | 有限 | 完整 | jsdom支持更全 |
+| Storage API（localStorage） | 支持 | 完整 | 两者都支持 |
+| Fetch API | 支持 | 完整 | happy-dom部分支持 |
+| FormData | 支持 | 完整 | 两者都支持 |
+| File/Blob | 支持 | 完整 | 两者都支持 |
+| WebSocket | 不支持 | 有限 | 需要额外实现 |
+| requestAnimationFrame | 支持 | 支持 | 两者都支持 |
+| CustomEvent | 支持 | 完整 | 两者都支持 |
+| IntersectionObserver | 不支持 | 支持 | 需要polyfill |
+| ResizeObserver | 不支持 | 支持 | 需要polyfill |
+
+在性能方面，happy-dom具有明显优势。根据基准测试数据，对于包含1000个DOM操作的测试套件，happy-dom的执行时间约为50毫秒，而jsdom的执行时间约为200毫秒。happy-dom的性能优势主要来自于其TypeScript实现和针对性的优化。
+
+在兼容性方面，happy-dom与Bun的集成更加自然。由于happy-dom是用TypeScript编写的，它不需要额外的编译步骤，可以直接在Bun中运行。而jsdom依赖于一些Node.js特有的API（如stream、buffer等），在Bun中运行时可能需要额外的配置或垫片。
+
+针对DOM测试中可能遇到的问题，推荐以下解决方案。如果遇到happy-dom不支持的API，可以考虑使用polyfill或切换到jsdom。如果需要在同一个项目中使用不同的DOM实现，可以利用Bun的环境指令特性，在不同文件中使用不同的DOM实现。如果DOM测试的性能是关键需求，建议优先使用happy-dom，并对不支持的API进行针对性处理。
+
+### 大型测试套件性能优化
+
+对于包含数千甚至数万个测试文件的大型项目，bun test的性能优化至关重要。以下是一些针对大型测试套件的性能优化策略：
+
+第一，测试文件发现优化。Bun默认会扫描整个项目目录来查找测试文件。对于大型项目，文件发现过程本身可能就需要数百毫秒甚至数秒。可以通过在bun test命令中指定测试文件的路径模式来缩小扫描范围，例如bun test ./src/**/*.test.ts。也可以在bunfig.toml中配置test.root选项来限制测试目录的范围。
+
+第二，内存管理优化。在大型测试套件中，每个Worker线程都会加载大量的JavaScript模块，这可能导致内存使用量激增。可以通过调整--test-threads参数来控制并行度，从而限制同时运行的文件数量。对于内存敏感的环境（如CI服务器），建议将线程数设置为CPU核心数的一半或更少。
+
+第三，测试分组策略。将大型测试套件按逻辑分组到不同的子目录中，并在CI流水线中并行运行这些子目录。例如，可以将单元测试和集成测试分开，在CI的不同阶段或不同的Job中运行。这不仅可以减少单次测试的运行时间，还可以提高测试结果的可读性。
+
+第四，依赖预加载优化。对于测试中频繁使用的模块（如测试工具函数、Mock数据等），可以考虑使用beforeAll钩子在所有测试之前预加载，而不是在每个测试文件中重复导入。这可以减少模块解析和加载的开销。
+
+第五，覆盖率收集优化。启用代码覆盖率收集（--coverage）会显著增加测试执行时间，因为每个Worker线程都需要在代码执行时记录覆盖率数据。对于大型项目，建议在CI流水线中仅在特定的构建步骤中启用覆盖率收集，而不是在每次提交时都运行。
+
+第六，增量测试。对于大型项目，可以考虑实现增量测试策略，即只运行与代码变更相关的测试文件。Bun目前没有内置的增量测试支持，但可以通过与版本控制系统（如Git）结合来实现。例如，可以使用git diff --name-only来获取变更的文件列表，然后只运行这些文件及其依赖的测试。
+
+### 性能对比数据表
+
+以下是bun test、Jest和Vitest在典型场景下的性能对比数据。这些数据基于标准化的基准测试，测试环境为：4核CPU、16GB内存、SSD存储、Windows 11操作系统。
+
+| 测试场景 | bun test | Jest | Vitest |
+|----------|----------|------|--------|
+| 空测试套件启动时间 | 8ms | 850ms | 150ms |
+| 10个测试文件（每个10个测试） | 35ms | 2.1s | 420ms |
+| 100个测试文件（每个10个测试） | 180ms | 5.8s | 1.2s |
+| 500个测试文件（每个10个测试） | 820ms | 28s | 5.5s |
+| 启用覆盖率的100个文件 | 450ms | 12s | 2.8s |
+| 启用快照的100个文件 | 200ms | 6.2s | 1.3s |
+| 内存使用（100个文件） | 120MB | 350MB | 200MB |
+| 内存使用（500个文件） | 450MB | 1.2GB | 750MB |
+| 单文件热启动（监视模式） | 2ms | 300ms | 15ms |
+| 模块Mock（100个Mock） | 50ms | 800ms | 200ms |
+| DOM测试（100个测试） | 120ms | 未测试 | 400ms |
+
+从数据可以看出，bun test在几乎所有场景下都表现出显著的性能优势，特别是在启动时间和大量小文件的处理上。在内存使用方面，bun test也更为高效，这得益于其基于Zig/C++的高效实现和更紧凑的数据结构。
+
+对于这些性能数据的解读，需要结合具体的项目场景来分析。对于包含少量大文件的项目，bun test的优势主要体现在启动速度上，因为每个测试文件的执行时间本身可能就很长，并行执行的收益有限。但对于包含大量小文件的项目，bun test的优势非常明显，因为文件发现速度、启动速度和并行执行效率都远高于Jest和Vitest。在微服务架构的项目中，通常会包含数十个独立的服务模块，每个模块都有自己的一组测试文件。bun test在这种场景下的性能优势尤为突出，因为它的文件发现机制能够快速定位所有测试文件，而原生多线程架构能够充分利用多核CPU的并行处理能力。对于前端项目，由于通常包含大量的组件测试文件，每个文件的测试用例数量较少，bun test的性能优势同样非常明显。在实际项目中，测试性能的提升不仅仅是减少等待时间，更重要的是改善开发者的心流体验。当测试反馈时间从数十秒缩短到数秒时，开发者更愿意频繁运行测试，这有助于及早发现和修复问题，提高代码质量。
+
+## 5.4 典型问题处理
+
+### expect API不工作
+
+问题描述：在bun test中使用expect()时，遇到"expect is not defined"或类型错误等问题。
+
+原因分析：这个问题通常由以下原因导致。第一，在TypeScript项目中，bun test的全局expect函数可能没有被TypeScript的类型系统正确识别，因为Bun的运行时类型定义与TypeScript的编译环境可能存在脱节。虽然Bun在运行时将expect设置为全局变量，但TypeScript的类型检查器不知道这一点。第二，项目中安装了@types/jest或类似的类型声明包，导致类型冲突。第三，在tsconfig.json中配置了"types"字段，但没有包含bun的类型声明。
+
+解决方案：
+
+```typescript
+// 解决方案1：显式导入（推荐）
+import { describe, test, expect, mock } from 'bun:test';
+
+// 解决方案2：在tsconfig.json中添加bun类型
+// tsconfig.json
+{
+  "compilerOptions": {
+    "types": ["bun-types"]
+  }
+}
+
+// 解决方案3：创建全局类型声明文件
+// globals.d.ts
+/// <reference types="bun-types" />
+```
+
+### Mock不工作
+
+问题描述：使用mock.module()或mock()创建Mock后，测试中的代码没有使用Mock版本，而是使用了真实实现。
+
+原因分析：这个问题通常由以下原因导致。第一，mock.module()的调用顺序错误。在Bun中，mock.module()必须在导入被Mock的模块之前调用。虽然Bun不要求hoisting，但仍然需要在代码执行顺序上保证Mock先于导入。第二，Mock的模块路径不正确。mock.module()的参数需要与导入语句中的模块路径完全一致。第三，Mock工厂函数返回的对象结构不正确。
+
+解决方案：
+
+```typescript
+// 正确的Mock顺序
+import { describe, test, expect, mock } from 'bun:test';
+
+// 1. 先定义Mock（在导入之前）
+mock.module('axios', () => ({
+  get: mock(() => Promise.resolve({ data: { id: 1 } })),
+  post: mock(() => Promise.resolve({ data: { id: 2 } })),
+}));
+
+// 2. 然后导入被Mock的模块
+import axios from 'axios';
+
+describe('Mock测试', () => {
+  test('axios.get应返回Mock数据', async () => {
+    const result = await axios.get('/api/test');
+    expect(result.data).toEqual({ id: 1 });
+  });
+});
+```
+
+### 快照更新问题
+
+问题描述：运行bun test时，快照测试失败，显示快照不匹配。需要更新快照，但不知道如何操作。
+
+原因分析：快照不匹配通常由代码行为变更导致。当函数输出发生变化时，之前保存的快照与当前输出不一致，导致测试失败。这是快照测试的正常行为，用于提醒开发者检查代码变更是否产生了预期外的副作用。
+
+解决方案：
+
+```bash
+# 更新所有快照
+bun test --update-snapshots
+# 或简写
+bun test -u
+
+# 更新特定文件的快照
+bun test path/to/test/file.test.ts -u
+```
+
+在更新快照之前，建议先仔细审查快照差异，确保代码的变更是有意的。可以使用bun test（不加-u标志）来查看具体的差异输出，然后根据差异判断是否需要更新快照。
+
+### 测试超时
+
+问题描述：测试用例运行时间过长，被bun test强制终止，显示"test timed out"错误。
+
+原因分析：这个问题通常由以下原因导致。第一，测试中涉及异步操作（如网络请求、数据库查询）但没有正确等待。第二，测试中存在无限循环或死锁。第三，异步操作超时时间设置过短。
+
+解决方案：
+
+```typescript
+import { describe, test, expect } from 'bun:test';
+
+// 解决方案1：设置单个测试的超时时间（通过bunfig.toml）
+// bunfig.toml
+// [test]
+// timeout = 10000  // 10秒
+
+// 解决方案2：在测试中使用更短的超时
+test('快速网络请求测试', async () => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch('https://api.example.com/data', {
+      signal: controller.signal,
+    });
+    expect(response.ok).toBe(true);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}, { timeout: 10000 });
+
+// 解决方案3：确保异步操作正确等待
+test('正确的异步测试', async () => {
+  const result = await someAsyncFunction();
+  expect(result).toBeDefined();
+});
+```
+
+### 并行测试端口冲突
+
+问题描述：在并行执行多个集成测试文件时，多个测试文件尝试在同一个端口上启动HTTP服务器，导致端口已被占用的错误。
+
+原因分析：Bun的并行执行模型为每个测试文件分配独立的Worker线程。如果多个测试文件都尝试在同一个端口上启动服务器，就会发生端口冲突。由于Worker线程之间不共享状态，它们无法感知彼此使用的端口。
+
+解决方案：
+
+```typescript
+// 解决方案1：使用端口0（让操作系统自动分配）
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+
+let server: ReturnType<typeof Bun.serve>;
+let baseUrl: string;
 
 beforeAll(() => {
   server = Bun.serve({
-    port: 0, // 浣跨敤闅忔満绔彛
-    fetch(req) {
-      // 璺敱閫昏緫
+    port: 0,
+    fetch(request: Request) {
+      return new Response('OK');
     },
   });
+  baseUrl = `http://localhost:${server.port}`;
 });
 
 afterAll(() => {
   server?.stop();
 });
 
-describe("API 闆嗘垚娴嬭瘯", () => {
-  it("GET /api/users 杩斿洖鐢ㄦ埛鍒楄〃", async () => {
-    // 娴嬭瘯閫昏緫
+test('使用动态端口进行测试', async () => {
+  const response = await fetch(`${baseUrl}/api/test`);
+  expect(response.status).toBe(200);
+});
+```
+
+### 常见问题速查表
+
+| 问题 | 症状 | 原因 | 解决方案 |
+|------|------|------|----------|
+| expect未定义 | ReferenceError | 缺少导入或类型配置 | 从bun:test导入或配置tsconfig |
+| Mock不生效 | 使用真实实现 | Mock顺序错误或路径不匹配 | 在导入前调用mock.module |
+| 快照不匹配 | 测试失败显示diff | 代码输出变化 | 审查差异后运行-u更新 |
+| 测试超时 | "test timed out" | 异步操作未完成或死循环 | 增加超时或修复异步逻辑 |
+| 端口冲突 | EADDRINUSE | 并行测试使用相同端口 | 使用端口0或不同端口范围 |
+| 类型错误 | TypeScript编译错误 | 缺少类型声明 | 安装bun-types或导入bun:test |
+| 覆盖率数据异常 | 覆盖率报告不完整 | Worker线程竞争或仪器化问题 | 减少并行度或重启测试 |
+| 内存溢出 | OOM错误 | 测试文件过多或内存泄漏 | 减少并行度或分组测试 |
+| DOM API缺失 | 方法未定义 | happy-dom不支持 | 使用polyfill或切换到jsdom |
+| 监视模式不工作 | 文件变化未触发重新测试 | 文件系统事件问题 | 检查文件系统权限或重启 |
+| CI环境失败 | 测试在CI中失败但在本地通过 | 环境差异或资源限制 | 检查CI配置和资源限制 |
+| 模块解析失败 | 找不到模块 | 路径或包管理问题 | 检查import路径和bun.lockb |
+
+## 5.5 必备知识与技能
+
+### 测试金字塔理论
+
+测试金字塔是一种软件测试策略模型，由Mike Cohn在《Succeeding with Agile》一书中提出。它将测试分为三个层次，从底部到顶部分别是：单元测试（Unit Tests）、服务测试/集成测试（Service/Integration Tests）和端到端测试（E2E Tests）。这个模型的核心思想是：底层测试应该数量多、执行快、维护成本低；顶层测试应该数量少、执行慢、维护成本高。
+
+在实际应用中，测试金字塔的每个层次都有其特定的目标和关注点。
+
+单元测试位于金字塔的底部，是数量最多的测试层。单元测试的目标是验证独立的代码单元（如函数、方法、类）在隔离环境中的行为是否符合预期。单元测试的特点包括：执行速度快（通常在毫秒级别），不依赖外部资源（如数据库、网络、文件系统），测试范围小且聚焦，易于定位问题。在bun test中，单元测试通过describe和test函数组织，使用expect和各种匹配器进行断言，使用mock()和spyOn()来隔离被测试代码的依赖。
+
+集成测试位于金字塔的中间层，数量比单元测试少。集成测试的目标是验证多个代码单元或模块之间的交互是否正确。集成测试的特点包括：执行速度适中（通常在毫秒到秒级别），可能依赖外部资源（如测试数据库、Mock服务），测试范围比单元测试大，能够发现接口兼容性问题。在Bun中，集成测试可以结合Bun.serve()和fetch()来进行API测试，也可以使用mock.module()来模拟外部服务的依赖。
+
+端到端测试位于金字塔的顶部，数量最少。端到端测试的目标是验证整个系统从用户界面到后端服务的完整工作流程。端到端测试的特点包括：执行速度慢（通常在秒到分钟级别），依赖完整的系统环境，测试范围最大，最接近用户的实际使用场景。端到端测试通常使用专门的工具（如Playwright、Cypress、Selenium）来实现，而不是使用bun test。
+
+测试金字塔理论的一个重要原则是"倾向于更多的小范围测试"。这意味着在测试策略中，应该优先编写大量快速的单元测试，补充适量的集成测试，仅编写少量的端到端测试。这种策略可以在保证代码质量的同时，维持较快的测试反馈循环。
+
+在实际项目中应用测试金字塔原则时，需要根据项目的具体情况进行调整。对于微服务架构的项目，由于服务之间的交互较为复杂，集成测试的比例可能需要适当提高。对于前端项目，由于UI组件的渲染逻辑较为复杂，组件测试（属于集成测试的范畴）的比例也可能需要提高。关键在于找到适合项目特点的测试比例平衡点。测试金字塔原则的另一个重要应用是测试投资的分配。由于不同层次的测试具有不同的成本和收益，团队需要合理分配测试编写的时间和资源。单元测试的成本最低、收益最高，应该投入最多的资源。集成测试的成本适中、收益适中，应该投入适量的资源。端到端测试的成本最高、收益最集中，应该投入最少的资源。这种投资分配策略可以最大化测试的投资回报率。
+
+### Mock/Stub/Spy区别
+
+在测试中，测试替身（Test Double）是一个广义术语，用于描述在测试中替代真实依赖的对象。常见的测试替身类型包括Mock、Stub和Spy，它们虽然经常被混用，但实际上有明确的区别。理解这些区别对于编写高质量、有意义的测试至关重要，因为不同类型的测试替身适用于不同的测试场景和验证目标。选择正确的测试替身类型可以使测试代码更加清晰、精确和可维护，而错误的选择可能导致测试难以理解或产生误报。
+
+Mock（模拟对象）是最常用的测试替身类型。Mock对象预先设置了期望的调用方式和返回值，并在测试执行后验证是否按照期望被调用。Mock关注的是行为验证（behavior verification），即验证被测试代码是否正确地与它的依赖进行了交互。在bun test中，mock()函数用于创建Mock对象，通过mockFn.mock.calls、mockFn.mock.results等属性来验证调用行为。Mock适用于测试对象之间的交互协议，例如验证一个服务是否正确调用了另一个服务的特定方法。
+
+Stub（桩对象）是一种提供预设返回值的测试替身。Stub不关注调用次数的验证，而是关注为被测试代码提供所需的输入数据。Stub通常用于替代那些在测试环境中难以创建或运行缓慢的真实依赖，如数据库查询、HTTP请求等。在bun test中，可以通过mock(() => returnValue)来创建Stub，也可以使用mock.module()来替代整个模块。Stub关注的是状态验证（state verification），即验证被测试代码在给定输入下是否产生了正确的输出。
+
+Spy（间谍对象）是对真实对象进行包装的测试替身。Spy记录了所有调用信息（参数、次数、返回值等），但默认会调用原始实现。Spy适用于需要观察真实对象的调用行为，但又不想完全替换其功能的场景。在bun test中，spyOn()函数用于创建Spy对象。与Mock不同，Spy默认会调用原始方法；与Stub不同，Spy记录了调用历史。Spy关注的是观察和记录，而不是预设行为。
+
+在实际使用中，这三种测试替身可以通过bun test的Mock API统一实现。mock()创建的对象可以同时扮演Mock、Stub和Spy的角色：通过mock.mockImplementation()或mock.mockReturnValue()提供预设返回值（Stub行为），通过mock.mock.calls验证调用行为（Mock行为），通过spyOn()创建的对象默认调用原始实现（Spy行为）。这种灵活性使得bun test的Mock API能够适应各种测试场景。
+
+### TDD方法论
+
+测试驱动开发（Test-Driven Development，TDD）是一种软件开发方法论，其核心循环是"红-绿-重构"（Red-Green-Refactor）。TDD要求在编写实现代码之前先编写测试代码，通过测试来驱动代码的设计和实现。
+
+TDD的"红-绿-重构"循环包含以下三个步骤：
+
+第一步，红色阶段（Red）：编写一个失败的测试。在这个阶段，开发者根据需求编写一个测试用例，这个测试用例应该描述一个期望的行为。由于还没有编写实现代码，这个测试用例会失败（显示红色）。测试用例应该足够小，只描述一个单一的行为。编写测试用例的过程迫使开发者思考接口设计：被测试的函数应该接受什么参数？返回什么类型？在什么情况下抛出异常？
+
+第二步，绿色阶段（Green）：编写最简单的实现代码使测试通过。在这个阶段，开发者的目标是尽快让测试通过，而不必关心代码的质量或效率。实现代码可以非常简单，甚至直接返回硬编码的值。这个阶段的核心是建立信心——确保测试确实能够捕捉到期望的行为。
+
+第三步，重构阶段（Refactor）：在测试通过的前提下，优化代码质量。在这个阶段，开发者可以重构实现代码，改善其结构、可读性和性能，同时保持所有测试通过。重构的目的是消除重复代码、改善命名、提取公共逻辑等，使得代码更加清晰和可维护。
+
+TDD的优势包括：提高代码质量，因为测试驱动了设计，使得代码更模块化、更可测试；减少缺陷，因为每个行为都有对应的测试覆盖；提供安全网，使得重构更加安全；改善文档，因为测试本身就是可执行的文档；增强信心，开发者可以确信代码行为符合预期。
+
+在Bun中使用TDD非常自然。bun test的快速启动时间和高效执行使得"红-绿-重构"循环可以快速迭代。开发者可以频繁运行测试，获得即时反馈，而不需要等待漫长的测试执行。
+
+在TDD实践中，选择合适的测试粒度非常重要。测试粒度指的是每个测试用例覆盖的代码范围。测试粒度太粗会导致测试执行时间过长，测试失败时难以定位问题。测试粒度太细会导致测试数量过多，维护成本增加。建议的测试粒度是每个测试用例覆盖一个代码路径。如果一个函数有多个条件分支，应该为每个分支编写独立的测试用例。这种测试粒度策略确保了测试的精确性和可维护性。此外，TDD的另一个关键实践是保持测试的独立性。每个测试用例应该独立于其他测试用例运行，不依赖于特定的执行顺序。在bun test中，由于每个测试文件在独立的Worker线程中执行，文件级别的测试独立性得到了天然保障。但同一个文件内的测试用例仍然可能相互影响，因此建议在beforeEach钩子中重置共享状态，确保每个测试用例都运行在干净的环境中。Bun的快速执行速度使得频繁运行测试变得轻松，开发者可以在每次保存文件后自动运行测试，这种即时反馈是高效TDD实践的基础。
+
+```typescript
+// TDD示例：开发一个斐波那契函数
+
+// 步骤1：红色阶段 - 编写失败的测试
+import { describe, test, expect } from 'bun:test';
+
+describe('fibonacci函数', () => {
+  test('应返回第n个斐波那契数', () => {
+    expect(fibonacci(0)).toBe(0);
+    expect(fibonacci(1)).toBe(1);
+    expect(fibonacci(2)).toBe(1);
+    expect(fibonacci(5)).toBe(5);
+    expect(fibonacci(8)).toBe(21);
+  });
+
+  test('应处理无效输入', () => {
+    expect(() => fibonacci(-1)).toThrow('输入必须为非负数');
+  });
+});
+
+// 步骤2：绿色阶段 - 编写最简单的实现
+function fibonacci(n: number): number {
+  if (n < 0) throw new Error('输入必须为非负数');
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// 步骤3：重构阶段 - 优化实现（使用迭代代替递归）
+function fibonacci(n: number): number {
+  if (n < 0) throw new Error('输入必须为非负数');
+  if (n <= 1) return n;
+  let a = 0;
+  let b = 1;
+  for (let i = 2; i <= n; i++) {
+    [a, b] = [b, a + b];
+  }
+  return b;
+}
+```
+
+### 代码覆盖率指标
+
+代码覆盖率是衡量测试对代码覆盖程度的指标，它反映了测试套件对代码的测试充分性。Bun通过--coverage标志提供了内置的代码覆盖率收集功能。代码覆盖率是测试质量评估中最常用的量化指标之一，但它也经常被误解和滥用。正确理解和使用代码覆盖率数据，可以帮助团队持续改进测试质量，而不正确使用则可能导致测试资源的浪费和虚假的安全感。
+
+代码覆盖率的主要指标包括：
+
+行覆盖率（Line Coverage）：衡量有多少行的代码被执行过。这是最常用的覆盖率指标，计算方式为：被执行的行数 / 总行数。行覆盖率直观地反映了测试是否覆盖了代码的各个部分，但它不能保证所有代码路径都被测试到。
+
+分支覆盖率（Branch Coverage）：衡量有多少条件分支被执行过。分支覆盖率比行覆盖率更严格，它要求测试覆盖if-else、switch-case、三元运算符等条件语句的所有可能分支。计算方式为：被执行的分支数 / 总分支数。分支覆盖率能够发现测试中的"隐藏路径"——那些虽然行被执行了，但某些条件分支没有被覆盖的情况。
+
+函数覆盖率（Function Coverage）：衡量有多少函数被调用过。计算方式为：被调用的函数数 / 总函数数。函数覆盖率确保所有定义的函数都在测试中被调用过，有助于发现未被测试的公共API。
+
+语句覆盖率（Statement Coverage）：衡量有多少语句被执行过。语句覆盖率与行覆盖率类似，但更精确地关注可执行语句，而不是空白行或注释行。
+
+在Bun中启用代码覆盖率收集非常简单：
+
+```bash
+# 运行测试并收集覆盖率
+bun test --coverage
+
+# 指定覆盖率输出格式（text、lcov、clover、cobertura等）
+bun test --coverage --coverage-reporter=lcov
+
+# 指定覆盖率阈值（低于阈值时测试失败）
+bun test --coverage --coverage-threshold=80
+```
+
+覆盖率输出示例：
+
+```
+-------------|---------|---------|-------------------
+File         | % Func  | % Line  | % Branch
+-------------|---------|---------|-------------------
+src/math.ts  | 100.00  | 100.00  | 100.00
+src/api.ts   | 80.00   | 85.71   | 75.00
+src/utils.ts | 66.67   | 72.73   | 50.00
+-------------|---------|---------|-------------------
+Total        | 85.71   | 88.89   | 80.00
+```
+
+在解释覆盖率数据时，需要注意以下几点。第一，高覆盖率不等于高质量测试。一个覆盖了100%代码行的测试套件可能仍然存在大量未发现的缺陷，因为覆盖率不反映测试断言的充分性。第二，覆盖率应该作为指导性指标，而不是硬性目标。盲目追求100%覆盖率可能导致编写大量低价值的测试。第三，不同的代码模块可能有不同的覆盖率目标。核心业务逻辑应该追求高覆盖率，而工具函数、配置代码等可以适当放宽要求。第四，覆盖率趋势比绝对数值更有价值。在代码演进过程中，监控覆盖率的变化趋势可以及时发现测试覆盖的退化。
+
+关于代码覆盖率的实际应用，开发者需要理解以下几个重要概念。第一个概念是覆盖率阈值。在CI环境中，可以设置覆盖率阈值作为质量门禁。当测试套件的覆盖率低于设定的阈值时，CI流水线会被阻断，防止低覆盖率的代码进入生产环境。Bun支持通过--coverage-threshold标志设置覆盖率阈值，可以分别为行覆盖率、分支覆盖率和函数覆盖率设置不同的阈值。例如，可以要求行覆盖率不低于80%、分支覆盖率不低于75%、函数覆盖率不低于90%。这种细粒度的阈值设置可以针对不同类型的代码设置不同的质量标准。第二个概念是覆盖率排除。并不是所有代码都需要测试覆盖。配置文件、类型定义、常量声明等代码通常不需要测试覆盖。Bun支持通过--coverage-exclude标志排除特定的文件或目录，使其不计入覆盖率统计。常见的排除项包括node_modules目录、测试文件本身、配置文件等。合理配置覆盖率排除可以提高覆盖率数据的准确性和实用性。第三个概念是覆盖率报告格式。Bun支持多种覆盖率报告格式，包括文本格式、HTML格式、LCOV格式、Clover格式和Cobertura格式。文本格式适合在终端中快速查看覆盖率概况。HTML格式适合在浏览器中详细查看每行代码的覆盖情况。LCOV格式可以被Codecov、Coveralls等第三方覆盖率平台解析。Clover和Cobertura格式可以被Jenkins等CI平台解析。根据项目的需要选择合适的报告格式，可以更好地将覆盖率数据集成到开发工作流中。第四个概念是增量覆盖率。增量覆盖率是指只计算新增代码的覆盖率。在大型项目中，整体覆盖率可能难以快速提升，但增量覆盖率可以确保新代码的测试覆盖质量。Bun目前不支持内置的增量覆盖率计算，但可以通过与Git diff结合的方式手动实现。例如，可以使用git diff --name-only获取变更的文件列表，然后只对这些文件计算覆盖率。这种策略在大型团队和大型项目中特别有用，因为它避免了因为历史遗留代码的低覆盖率而阻碍新功能的开发。
+
+## 5.6 示例代码与配置详解
+
+### math.test.ts详解
+
+math.test.ts是一个典型的单元测试文件，展示了bun test的基本用法。下面提供一个完整的示例，并进行详细的分析。
+
+```typescript
+// math.test.ts
+import { describe, test, expect, beforeEach } from 'bun:test';
+
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+function subtract(a: number, b: number): number {
+  return a - b;
+}
+
+function multiply(a: number, b: number): number {
+  return a * b;
+}
+
+function divide(a: number, b: number): number {
+  if (b === 0) {
+    throw new Error('除数不能为零');
+  }
+  return a / b;
+}
+
+describe('数学函数测试套件', () => {
+  beforeEach(() => {
+    console.log('开始执行测试用例');
+  });
+
+  describe('add函数', () => {
+    test('应正确计算两个正数之和', () => {
+      expect(add(1, 2)).toBe(3);
+      expect(add(100, 200)).toBe(300);
+      expect(add(0.1, 0.2)).toBeCloseTo(0.3, 5);
+    });
+
+    test('应正确计算包含负数的加法', () => {
+      expect(add(-1, 1)).toBe(0);
+      expect(add(-5, -3)).toBe(-8);
+      expect(add(10, -7)).toBe(3);
+    });
+
+    test('应正确处理零', () => {
+      expect(add(0, 0)).toBe(0);
+      expect(add(5, 0)).toBe(5);
+      expect(add(0, -3)).toBe(-3);
+    });
+  });
+
+  describe('subtract函数', () => {
+    test('应正确计算两个数的差', () => {
+      expect(subtract(5, 3)).toBe(2);
+      expect(subtract(10, 20)).toBe(-10);
+      expect(subtract(0, 0)).toBe(0);
+    });
+  });
+
+  describe('multiply函数', () => {
+    test('应正确计算两个数的积', () => {
+      expect(multiply(3, 4)).toBe(12);
+      expect(multiply(-2, 5)).toBe(-10);
+      expect(multiply(0, 100)).toBe(0);
+    });
+  });
+
+  describe('divide函数', () => {
+    test('应正确计算两个数的商', () => {
+      expect(divide(10, 2)).toBe(5);
+      expect(divide(7, 2)).toBeCloseTo(3.5, 5);
+      expect(divide(0, 5)).toBe(0);
+    });
+
+    test('除数为零时应抛出错误', () => {
+      expect(() => divide(10, 0)).toThrow('除数不能为零');
+    });
   });
 });
 ```
 
-### 1.3 蹇収娴嬭瘯
+这个示例展示了bun test的多个核心功能。首先是测试组织，通过嵌套的describe块将测试用例按逻辑分组。在顶层，所有的数学函数测试被组织在一个"数学函数测试套件"中；在下一层，每个函数有独立的describe块。这种组织结构使得测试输出清晰可读，并且在测试失败时能够快速定位问题所在的函数。良好的测试组织结构是大型项目中保持测试可维护性的关键因素之一。通过合理的describe嵌套，开发者可以快速了解被测试模块的内部结构，并在测试失败时迅速定位到具体的功能模块。
 
-蹇収娴嬭瘯鏄竴绉嶈嚜鍔ㄥ寲娴嬭瘯鎶€鏈紝瀹冮€氳繃姣旇緝缁勪欢鐨勬覆鏌撹緭鍑轰笌涔嬪墠淇濆瓨鐨勫揩鐓ф潵妫€娴嬫剰澶栫殑鍙樺寲銆侭un test 鍐呯疆浜嗗蹇収娴嬭瘯鐨勬敮鎸侊紝浣跨敤鏂瑰紡涓?Jest 鐨勫揩鐓ф祴璇曢潪甯哥浉浼笺€傚揩鐓ф祴璇曠殑鍩烘湰娴佺▼濡備笅锛氶娆¤繍琛屾椂灏嗙粍浠剁殑杈撳嚭搴忓垪鍖栦负瀛楃涓插苟淇濆瓨鍒板揩鐓ф枃浠朵腑锛涘悗缁繍琛屾椂灏嗗疄闄呰緭鍑轰笌淇濆瓨鐨勫揩鐓ц繘琛屾瘮杈冿紱濡傛灉鍖归厤鍒欐祴璇曢€氳繃锛屽鏋滀笉鍖归厤鍒欐祴璇曞け璐ュ苟鏄剧ず宸紓鎶ュ憡銆?
+其次是生命周期钩子的使用。beforeEach钩子用于在每个测试用例执行前进行初始化操作。虽然在这个示例中beforeEach只打印了一条日志，但在实际项目中，它通常用于重置Mock状态、初始化测试数据、建立数据库连接等操作。
 
-Bun 涓殑蹇収娴嬭瘯浣跨敤 toMatchSnapshot 鏂规硶銆傜涓€娆¤繍琛屾祴璇曟椂锛孊un 浼氱敓鎴愪竴涓揩鐓ф枃浠讹紝鍐呭鍖呭惈搴忓垪鍖栧悗鐨勮緭鍑烘暟鎹€傚揩鐓ф枃浠朵綅浜庢祴璇曟枃浠跺悓鐩綍涓嬬殑 __snapshots__ 鏂囦欢澶逛腑銆傚揩鐓ф枃浠跺簲璇ユ彁浜ゅ埌鐗堟湰鎺у埗绯荤粺涓紝浠ヤ究鍥㈤槦鎴愬憳鍏变韩棰勬湡鐨勬祴璇曠粨鏋溿€?
+第三是匹配器的使用。示例中使用了toBe()进行精确相等比较，toBeCloseTo()进行浮点数近似比较，以及toThrow()进行异常断言。toBeCloseTo()在浮点数测试中特别重要，因为JavaScript的浮点数运算存在精度问题（0.1 + 0.2 !== 0.3），使用toBeCloseTo()可以指定精度阈值来避免这种问题。
 
-蹇収娴嬭瘯鏈€閫傚悎鐢ㄤ簬浠ヤ笅鍦烘櫙锛歎I 缁勪欢杈撳嚭楠岃瘉锛岄獙璇佺粍浠舵覆鏌撹緭鍑烘槸鍚︿笌棰勬湡涓€鑷淬€傚揩鐓у彲浠ユ崟鑾风粍浠剁殑瀹屾暣娓叉煋鏍戯紝鍖呮嫭缁撴瀯銆佸睘鎬у拰鍐呭銆傞厤缃枃浠跺拰搴忓垪鍖栨暟鎹獙璇侊紝楠岃瘉澶嶆潅鐨勯厤缃璞℃垨搴忓垪鍖栨暟鎹殑缁撴瀯鏄惁涓庨鏈熶竴鑷淬€侫PI 鍝嶅簲缁撴瀯楠岃瘉锛岄獙璇?API 鍝嶅簲鐨勬暣浣撶粨鏋勬槸鍚﹀彂鐢熷彉鍖栥€傞敊璇秷鎭拰鏃ュ織鏍煎紡楠岃瘉锛岄獙璇侀敊璇秷鎭垨鏃ュ織杈撳嚭鐨勬牸寮忔槸鍚︾鍚堥鏈熴€?
+第四是边界条件的测试。示例中测试了正数、负数、零等边界情况，以及除零异常。全面的边界测试是编写高质量单元测试的关键。
 
-蹇収娴嬭瘯涔熸湁涓€浜涢渶瑕佹敞鎰忕殑鍦版柟锛氬揩鐓ф枃浠跺簲璇ユ彁浜ゅ埌鐗堟湰鎺у埗锛屽揩鐓ф枃浠舵槸娴嬭瘯鐨勪竴閮ㄥ垎锛屽簲璇ュ儚婧愪唬鐮佷竴鏍锋彁浜ゅ埌 Git 浠撳簱涓€傚ぇ蹇収闅句互瀹℃煡锛屽鏋滃揩鐓ф枃浠跺彉寰楀緢澶э紝瀹℃煡鍙樻洿灏变細鍙樺緱鍥伴毦銆傚揩鐓ф祴璇曚笉鑳芥浛浠ｆ柇瑷€锛屽揩鐓ф祴璇曞彧鑳芥娴嬪彉鍖栵紝涓嶈兘楠岃瘉閫昏緫姝ｇ‘鎬с€?
+### mock.test.ts详解
 
-### 1.4 DOM 娴嬭瘯涓?happy-dom
-
-Bun test 鏀寔浣跨敤 happy-dom 杩涜 DOM 娴嬭瘯銆俬appy-dom 鏄竴涓交閲忕骇鐨?DOM 瀹炵幇锛屽畠鐨勮璁＄洰鏍囨槸姣?jsdom 鏇村揩銆佹洿杞婚噺銆備笌 jsdom 鐩告瘮锛宧appy-dom 鐨勪綋绉洿灏忋€佸惎鍔ㄩ€熷害鏇村揩銆佸唴瀛樺崰鐢ㄦ洿浣庯紝閫傚悎鍦ㄤ笉闇€瑕佸畬鏁存祻瑙堝櫒鐜鐨勫満鏅腑浣跨敤銆俬appy-dom 鐢?Capricorn86 寮€鍙戝拰缁存姢锛屽畠瀹炵幇浜?WHATWG DOM 瑙勮寖鐨勫ぇ閮ㄥ垎鍐呭锛屽寘鎷?DOM 鏍稿績 API銆丆SSOM銆侀€夋嫨鍣?API銆佷簨浠跺鐞嗙瓑銆?
-
-瑕佸湪 Bun 涓娇鐢?happy-dom 杩涜 DOM 娴嬭瘯锛屼綘闇€瑕佸畨瑁?happy-dom 鍖咃紝鐒跺悗鍙互鍦ㄦ祴璇曟枃浠朵腑璁剧疆 DOM 鐜銆俬appy-dom 鐨勪紭鍔垮湪浜庡叾鍚姩閫熷害鍜屽唴瀛樺崰鐢ㄣ€傚浜庡寘鍚ぇ閲?DOM 鎿嶄綔鐨勬祴璇曪紝happy-dom 鐨勬€ц兘浼樺娍鏇村姞鏄庢樉銆傜劧鑰岋紝happy-dom 涔熷瓨鍦ㄤ竴浜涢檺鍒讹紝瀹冩病鏈夊疄鐜?jsdom 鐨勬墍鏈?API锛屼竴浜涢珮绾у姛鑳藉彲鑳界己澶辨垨涓嶅畬鏁淬€傚浜庡ぇ澶氭暟 DOM 娴嬭瘯鍦烘櫙锛宧appy-dom 宸茬粡瓒冲浣跨敤銆?
-
-## 2. 瀹炵幇鍘熺悊
-
-### 2.1 bun:test 妯″潡鍐呴儴鏈哄埗
-
-bun:test 鏄?Bun 鐨勫唴缃ā鍧楋紝瀹冨疄鐜颁簡娴嬭瘯杩愯鍣ㄧ殑鍏ㄩ儴鍔熻兘銆傜悊瑙ｅ畠鐨勫唴閮ㄦ満鍒舵湁鍔╀簬浣犳洿濂藉湴浣跨敤鍜岃皟璇曟祴璇曘€俠un:test 妯″潡鐨勬簮浠ｇ爜浣跨敤 Zig 鍜?JavaScript 娣峰悎缂栧啓锛屽叾涓?Zig 璐熻矗搴曞眰鐨勬€ц兘鍏抽敭璺緞锛孞avaScript 璐熻矗楂樺眰鐨?API 灏佽銆?
-
-bun:test 妯″潡鐨勬灦鏋勫彲浠ュ垎涓轰互涓嬪嚑涓眰娆★細娴嬭瘯鍙戠幇灞傦紝褰撹繍琛?bun test 鍛戒护鏃讹紝Bun 浼氭壂鎻忓綋鍓嶇洰褰曚腑鐨勬枃浠讹紝浣跨敤 glob 妯″紡鍖归厤娴嬭瘯鏂囦欢銆侭un 浣跨敤楂樻晥鐨勫尮閰嶇畻娉曪紝鑳藉蹇€熼亶鍘嗘枃浠剁郴缁熴€備笌 Jest 涓嶅悓锛孊un 涓嶄細鍦ㄦ墽琛屾祴璇曞墠棰勫厛鍔犺浇鎵€鏈夋祴璇曟枃浠讹紝鑰屾槸閲囩敤鎯版€у姞杞界瓥鐣ワ紝鍙湪闇€瑕佹椂鍔犺浇娴嬭瘯鏂囦欢銆傛祴璇曡繍琛屽眰锛孊un 鐨勬祴璇曡繍琛屽櫒閲囩敤澶氱嚎绋嬫灦鏋勶紝姣忎釜娴嬭瘯鏂囦欢鍦ㄧ嫭绔嬬殑 Worker 绾跨▼涓墽琛岋紝娴嬭瘯鐢ㄤ緥涔嬮棿鐨勭姸鎬佷笉浼氱浉浜掑共鎵般€傛柇瑷€灞傦紝Bun 鐨勬柇瑷€ API 浣跨敤 Zig 瀹炵幇浜嗗簳灞傜殑姣旇緝閫昏緫锛屼笌绾?JavaScript 瀹炵幇鐨勬柇瑷€搴撶浉姣旓紝鍦ㄦ墽琛屾晥鐜囦笂鏈夋樉钁椾紭鍔裤€侻ock 灞傦紝Bun 鐨?Mock 鏈哄埗閫氳繃 JavaScript Proxy 瀵硅薄瀹炵幇锛屾嫤鎴墍鏈夊嚱鏁拌皟鐢ㄣ€佸睘鎬ц闂拰鏋勯€犺皟鐢ㄣ€傛姤鍛婂眰锛屾祴璇曠粨鏋滈€氳繃 Bun 鐨勬祦寮忚緭鍑烘満鍒舵姤鍛婄粰鐢ㄦ埛銆?
-
-Bun 鐨勬祴璇曞彂鐜拌繃绋嬪彲浠ョ粏鍒嗕负鍑犱釜姝ラ锛氱洰褰曟壂鎻忥紝Bun 浠庡綋鍓嶅伐浣滅洰褰曞紑濮嬶紝閫掑綊鎵弿鎵€鏈夊瓙鐩綍锛岃烦杩?node_modules銆?git 绛夊父瑙佹帓闄ょ洰褰曘€傛ā寮忓尮閰嶏紝瀵逛簬鎵弿鍒扮殑姣忎釜鏂囦欢锛孊un 浣跨敤 glob 妯″紡妫€鏌ユ枃浠跺悕鏄惁鍖归厤銆傛枃浠舵帓搴忥紝鍖归厤鍒扮殑鏂囦欢鎸夌収璺緞鎺掑簭锛岀‘淇濇祴璇曟墽琛岀殑椤哄簭鏄‘瀹氭€х殑銆傛儼鎬у姞杞斤紝Bun 鍙褰曞尮閰嶅埌鐨勬枃浠惰矾寰勶紝涓嶄細绔嬪嵆鍔犺浇鏂囦欢鍐呭锛屽綋 Worker 绾跨▼鍙敤鏃舵墠浼氬姞杞藉苟鎵ц娴嬭瘯鏂囦欢銆?
-
-### 2.2 Jest 鍏煎灞?
-
-Bun 鐨勬祴璇曡繍琛屽櫒鍦ㄨ璁′笂楂樺害鍏煎 Jest 鐨?API銆傝繖绉嶅吋瀹规€т笉鏄€氳繃灏佽 Jest 瀹炵幇鐨勶紝鑰屾槸 Bun 鍥㈤槦鏍规嵁 Jest 鐨?API 瑙勮寖閲嶆柊瀹炵幇鐨勩€傝繖鎰忓懗鐫€ Bun 娴嬭瘯杩愯鍣ㄤ笉浼氫緷璧栦换浣?Jest 鐨勪唬鐮侊紝涔熶笉浼氭湁 Jest 鐨勬€ц兘寮€閿€銆侭un 鐨?Jest 鍏煎灞傚疄鐜扮瓥鐣ュ彲浠ユ鎷负 API 绾у埆鐨勫吋瀹癸紝鑰岄潪瀹炵幇绾у埆鐨勫吋瀹广€備篃灏辨槸璇达紝Bun 鐨?API 绛惧悕鍜岃涓轰笌 Jest 淇濇寔涓€鑷达紝浣嗗簳灞傜殑瀹炵幇鏄畬鍏ㄧ嫭绔嬬殑銆?
-
-鍏煎灞備富瑕佽鐩栦互涓嬪嚑涓柟闈細鍏ㄥ眬 API锛孞est 鍦ㄦ祴璇曠幆澧冧腑娉ㄥ叆浜嗗涓叏灞€鍙橀噺锛孊un 榛樿涓嶆敞鍏ュ叏灞€鍙橀噺锛岃€屾槸瑕佹眰鐢ㄦ埛浠?bun:test 妯″潡瀵煎叆杩欎簺 API銆備笉杩?Bun 涔熸敮鎸侀€氳繃閰嶇疆鏂囦欢鍚敤鍏ㄥ眬 API銆傛柇瑷€ API 鍏煎鎬э紝Bun 瀹炵幇浜?Jest 鐨勫ぇ閮ㄥ垎鏂█鏂规硶銆侻ock API 鍏煎鎬э紝Bun 鐨?Mock API 涓?Jest 鐨?jest.fn 鍜?jest.spyOn 鍏锋湁绫讳技鐨勬帴鍙ｃ€傜敓鍛藉懆鏈熼挬瀛愬吋瀹规€э紝Bun 鐨勭敓鍛藉懆鏈熼挬瀛愪笌 Jest 瀹屽叏鍏煎銆傚揩鐓у吋瀹规€э紝Bun 鐨勫揩鐓ф牸寮忎笌 Jest 鍩烘湰鍏煎锛屼絾鏈変竴浜涚粏寰殑宸紓銆?
-
-### 2.3 Mock 鍑芥暟鎷︽埅鍘熺悊
-
-Mock 鍑芥暟鏄祴璇曚腑鐨勬牳蹇冨伐鍏蜂箣涓€锛屽畠鍏佽浣犳浛鎹㈢湡瀹炲嚱鏁扮殑琛屼负锛屼互渚垮湪闅旂鐨勭幆澧冧腑娴嬭瘯浠ｇ爜銆侭un 鐨?Mock 鍑芥暟鍩轰簬 JavaScript 鐨?Proxy 鍜岄棴鍖呭疄鐜般€傚綋浣犺皟鐢?mock 鍑芥暟鏃讹紝Bun 鎵ц浠ヤ笅姝ラ锛氬垱寤?Mock 瀹炰緥锛孊un 鍦ㄥ唴閮ㄥ垱寤轰竴涓?Mock 鍑芥暟瀹炰緥锛屽寘鍚竴涓敤浜庡瓨鍌ㄨ皟鐢ㄤ俊鎭殑鏁扮粍鍜屼竴涓敤浜庡瓨鍌ㄩ璁捐涓虹殑瀵硅薄銆傝缃?Proxy锛孊un 浣跨敤 JavaScript 鐨?Proxy 瀵硅薄鍖呰 Mock 鍑芥暟瀹炰緥锛孭roxy 鐨?apply 闄烽槺鎷︽埅鍑芥暟璋冪敤锛宑onstruct 闄烽槺鎷︽埅 new 璋冪敤锛実et 闄烽槺鎷︽埅灞炴€ц闂€傝褰曡皟鐢ㄤ俊鎭紝姣忔璋冪敤 Mock 鍑芥暟鏃讹紝Proxy 鐨?apply 闄烽槺浼氳褰曡皟鐢ㄥ弬鏁般€佽皟鐢ㄦ椂闂村拰璋冪敤涓婁笅鏂囥€傛墽琛岄璁捐涓猴紝Mock 鍑芥暟浼氭鏌ユ槸鍚﹁缃簡棰勮鐨勮繑鍥炲€兼垨瀹炵幇銆傛仮澶嶅師濮嬪嚱鏁帮紝瀵逛簬 spyOn 鍒涘缓鐨?Spy锛孊un 浼氫繚瀛樺師濮嬪嚱鏁扮殑寮曠敤锛屼互渚垮湪璋冪敤 mockRestore 鏃舵仮澶嶃€?
-
-Bun 鐨?Mock 鏈哄埗鏀寔浠ヤ笅鏂规硶锛歮ockReturnValue 璁剧疆 Mock 鍑芥暟鐨勮繑鍥炲€硷紝mockReturnValueOnce 璁剧疆涓€娆℃€ц繑鍥炲€硷紝mockImplementation 璁剧疆 Mock 鍑芥暟鐨勫疄鐜帮紝mockImplementationOnce 璁剧疆涓€娆℃€у疄鐜帮紝mockReset 閲嶇疆 Mock 鍑芥暟鐨勮皟鐢ㄨ褰曞拰瀹炵幇锛宮ockRestore 鎭㈠鍘熷鍑芥暟銆?
-
-### 2.4 蹇収姣旇緝绠楁硶
-
-Bun 鐨勫揩鐓ф瘮杈冪畻娉曚笌 Jest 鐨勫疄鐜版湁鐩镐技涔嬪锛屼絾涔熸湁鑷繁鐨勪紭鍖栥€傚揩鐓ф瘮杈冪畻娉曞垎涓轰互涓嬪嚑涓楠わ細搴忓垪鍖栵紝Bun 灏嗛渶瑕佹瘮杈冪殑鍊煎簭鍒楀寲涓哄瓧绗︿覆銆侭un 浣跨敤鑷畾涔夌殑搴忓垪鍖栧櫒锛岃兘澶熷鐞?JavaScript 涓殑鍚勭鏁版嵁绫诲瀷锛屽寘鎷祵濂楀璞°€佹暟缁勩€丮ap銆丼et銆丏ate銆丷egExp 绛夈€備笌 JSON.stringify 涓嶅悓锛孊un 鐨勫簭鍒楀寲鍣ㄨ兘澶熷鐞嗗惊鐜紩鐢ㄣ€乽ndefined 鍊笺€丼ymbol 閿瓑鐗规畩鎯呭喌銆傚搱甯岃绠楋紝Bun 瀵瑰簭鍒楀寲鍚庣殑瀛楃涓茶绠楀搱甯屽€硷紝鐢ㄤ簬蹇€熸瘮杈冨揩鐓ф槸鍚﹀彂鐢熶簡鍙樺寲銆傚樊寮傛瘮杈冿紝褰撳揩鐓т笉鍖归厤鏃讹紝Bun 浼氱敓鎴愬樊寮傛姤鍛婏紝浣跨敤缁熶竴宸紓鏍煎紡鏄剧ず瀹為檯杈撳嚭涓庡揩鐓т箣闂寸殑宸紓銆傚揩鐓у瓨鍌紝Bun 灏嗗揩鐓у瓨鍌ㄥ湪 .snap 鏂囦欢涓紝姣忎釜娴嬭瘯鏂囦欢瀵瑰簲涓€涓?.snap 鏂囦欢銆?
-
-## 3. 娼滃湪椋庨櫓涓庝紭鍖?
-
-### 3.1 Jest API 瑕嗙洊缂哄彛
-
-铏界劧 Bun 鐨勬祴璇曡繍琛屽櫒鍦ㄨ璁′笂楂樺害鍏煎 Jest锛屼絾浠嶇劧瀛樺湪涓€浜?API 瑕嗙洊缂哄彛銆備簡瑙ｈ繖浜涚己鍙ｅ彲浠ュ府鍔╀綘鍦ㄨ縼绉绘祴璇曟椂閬垮厤闂銆傜己澶辩殑鍏ㄥ眬 Mock 鍑芥暟锛孊un 涓嶆敮鎸?jest.mock 鐨勬ā鍧楃骇鑷姩 Mock銆傚湪 Jest 涓紝浣犲彲浠ヤ娇鐢?jest.mock 鏉ヨ嚜鍔?Mock 鏁翠釜妯″潡鐨勬墍鏈夊鍑哄嚱鏁般€侭un 鐩墠娌℃湁鎻愪緵绛変环鐨?API锛屼綘闇€瑕佹墜鍔ㄤ娇鐢?mock 鍑芥暟鏉?Mock 妯″潡鐨勫鍑恒€傜己澶辩殑瀹氭椂鍣?Mock锛孞est 鎻愪緵浜?jest.useFakeTimers 鍜?jest.useRealTimers 鏉ユ帶鍒跺畾鏃跺櫒琛屼负锛孊un 鐩墠娌℃湁鎻愪緵绛変环鐨勫畾鏃跺櫒 Mock API銆傜己澶辩殑鐜鍙橀噺鎺у埗锛孞est 鎻愪緵浜?jest.resetModules 鏉ラ噸缃ā鍧楃紦瀛橈紝Bun 鐩墠娌℃湁鎻愪緵绛変环鐨勬ā鍧楁帶鍒?API銆?
-
-瀵逛簬杩欎簺缂哄け鐨?API锛屼綘鍙互鑰冭檻浠ヤ笅鏇夸唬鏂规锛氭墜鍔?Mock锛屽浜庢ā鍧?Mock锛屼娇鐢?mock 鍑芥暟鎵嬪姩鍒涘缓 Mock 瀵硅薄銆備娇鐢ㄧ涓夋柟搴擄紝瀵逛簬瀹氭椂鍣?Mock锛屽彲浠ヤ娇鐢?sinon 搴撶殑 useFakeTimers 鍔熻兘銆傜幆澧冨彉閲忔帶鍒讹紝鍦ㄦ祴璇曚腑鐩存帴璁剧疆鍜屾仮澶嶇幆澧冨彉閲忋€侱OM 娴嬭瘯锛屽畨瑁?happy-dom 鎴栦娇鐢?E2E 娴嬭瘯宸ュ叿杩涜娴忚鍣ㄧ骇鍒殑娴嬭瘯銆?
-
-### 3.2 蹇収鏍煎紡宸紓
-
-铏界劧 Bun 鐨勫揩鐓ф牸寮忎笌 Jest 鍩烘湰鍏煎锛屼絾鍦ㄤ竴浜涚粏鑺備笂瀛樺湪宸紓銆傛牸寮忓寲宸紓锛孊un 鐨勫揩鐓у簭鍒楀寲鍣ㄤ笌 Jest 鐨勫簭鍒楀寲鍣ㄥ湪杈撳嚭鏍煎紡涓婂瓨鍦ㄤ竴浜涘樊寮傘€傛帓搴忓樊寮傦紝Bun 鍜?Jest 鍦ㄥ簭鍒楀寲瀵硅薄灞炴€ф椂鐨勬帓搴忚鍒欏彲鑳戒笉鍚屻€傜壒娈婄被鍨嬪鐞嗭紝Bun 鍜?Jest 鍦ㄥ鐞嗙壒娈婄被鍨嬫椂鐨勫簭鍒楀寲鏂瑰紡鍙兘涓嶅悓銆傚鐞嗗惊鐜紩鐢紝Bun 鐨勫揩鐓у簭鍒楀寲鍣ㄨ兘澶熷鐞嗗惊鐜紩鐢紝浣嗗鐞嗘柟寮忓彲鑳戒笌 Jest 涓嶅悓銆備负浜嗗噺灏戝揩鐓ц縼绉荤殑闂锛屽缓璁噸鏂扮敓鎴愬揩鐓с€佸鏌ュ揩鐓у彉鏇淬€佷繚鎸佸揩鐓х畝娲併€?
-
-### 3.3 DOM 娴嬭瘯鐨勯檺鍒?
-
-Bun 浣跨敤 happy-dom 鑰屼笉鏄?jsdom 浣滀负 DOM 娴嬭瘯鐜銆俬appy-dom 鏄竴涓交閲忕骇鐨?DOM 瀹炵幇锛屽畠鍦ㄦ€ц兘鍜屽吋瀹规€т箣闂村彇寰椾簡骞宠　銆傜劧鑰?happy-dom 涓?jsdom 瀛樺湪涓€浜涘樊寮傦紝杩欎簺宸紓鍙兘瀵艰嚧涓€浜涙祴璇曞湪杩佺Щ鏃跺嚭鐜伴棶棰樸€侫PI 瑕嗙洊宸紓锛宧appy-dom 瀹炵幇浜?DOM 瑙勮寖鐨勫ぇ閮ㄥ垎 API锛屼絾骞堕潪鍏ㄩ儴銆傛爣鍑嗗吋瀹规€э紝happy-dom 瀵?DOM 瑙勮寖鐨勫疄鐜颁笉濡?jsdom 瀹屾暣銆傛€ц兘鐗瑰緛锛宧appy-dom 鐨勮璁＄洰鏍囨槸姣?jsdom 鏇村揩銆佹洿杞婚噺銆傛祻瑙堝櫒 API 妯℃嫙锛宧appy-dom 涓嶆ā鎷熸祻瑙堝櫒鐨勪竴浜涢珮绾?API銆備负浜嗗湪 Bun 涓幏寰楁洿濂界殑 DOM 娴嬭瘯浣撻獙锛屽缓璁娇鐢?E2E 娴嬭瘯銆佹娊璞?DOM 鎿嶄綔銆侀€夋嫨鎬ф祴璇曘€?
-
-### 3.4 澶у瀷娴嬭瘯濂椾欢鎬ц兘
-
-铏界劧 Bun 鐨勬祴璇曡繍琛屽櫒鍦ㄦ€ц兘涓婂叿鏈変紭鍔匡紝浣嗗湪澶勭悊澶у瀷娴嬭瘯濂椾欢鏃朵粛鐒堕渶瑕佹敞鎰忎竴浜涙€ц兘浼樺寲闂銆傚苟琛屾墽琛岀瓥鐣ワ紝Bun 榛樿浣跨敤鎵€鏈夊彲鐢ㄧ殑 CPU 鏍稿績骞惰鎵ц娴嬭瘯鏂囦欢銆傜劧鑰岃繃搴︾殑骞惰鍙兘瀵艰嚧璧勬簮绔炰簤锛屽弽鑰岄檷浣庢暣浣撴€ц兘銆備綘鍙互閫氳繃 --concurrency 鏍囧織鎺у埗骞惰搴︺€傛祴璇曟枃浠剁粍缁囷紝鍚堢悊缁勭粐娴嬭瘯鏂囦欢鍙互鎻愰珮骞惰鎵ц鐨勬晥鐜囥€傚缓璁皢鐙珛鐨勬祴璇曟斁鍦ㄤ笉鍚岀殑鏂囦欢涓紝浠ヤ究 Bun 鑳藉鏇存湁鏁堝湴骞惰鎵ц銆侻ock 鍜屾竻鐞嗭紝纭繚姣忎釜娴嬭瘯鏂囦欢閮芥纭竻鐞?Mock 鍜岀姸鎬併€俠eforeAll 鍜?afterAll 鐨勪娇鐢紝鍚堢悊浣跨敤杩欎簺閽╁瓙鍙互鍑忓皯閲嶅璁剧疆鍜屾竻鐞嗙殑寮€閿€銆?
-
-鍦ㄥ紑鍙戣繃绋嬩腑浣跨敤 Watch 妯″紡鍙互鎻愰珮鏁堢巼銆俉atch 妯″紡涓嬶紝Bun 浼氱洃鎺ф枃浠跺彉鍖栵紝鍙噸鏂拌繍琛屽彈褰卞搷鐨勬祴璇曘€俉atch 妯″紡鐨勫伐浣滃師鐞嗘槸锛氬垵濮嬭繍琛屾椂 Bun 浼氳褰曟墍鏈夋祴璇曟枃浠剁殑鎵ц缁撴灉锛屼箣鍚庣洃鎺ф枃浠剁郴缁熶腑鐨勬枃浠跺彉鍖栵紝褰撴娴嬪埌鏂囦欢鍙樺寲鏃跺彧閲嶆柊杩愯涓庡彉鍖栨枃浠剁浉鍏崇殑娴嬭瘯銆傝繖绉嶅閲忔墽琛岀瓥鐣ュぇ澶у噺灏戜簡娴嬭瘯鐨勭瓑寰呮椂闂淬€?
-
-### 3.5 浠ｇ爜瑕嗙洊鐜囨€ц兘
-
-Bun 鏀寔閫氳繃 --coverage 鏍囧織鐢熸垚浠ｇ爜瑕嗙洊鐜囨姤鍛娿€備唬鐮佽鐩栫巼鎶ュ憡浼氭樉绀烘瘡涓枃浠剁殑瑕嗙洊鐜囩粺璁′俊鎭紝鍖呮嫭璇彞瑕嗙洊鐜囥€佸垎鏀鐩栫巼銆佸嚱鏁拌鐩栫巼鍜岃瑕嗙洊鐜囥€傜劧鑰屽惎鐢ㄤ唬鐮佽鐩栫巼浼氭樉钁楅檷浣庢祴璇曟墽琛岄€熷害锛屽洜涓?Bun 闇€瑕佸湪姣忎釜鏂囦欢鎵ц鏃舵彃鍏ヨ鐩栫巼妫€娴嬩唬鐮併€傚浜庡ぇ鍨嬫祴璇曞浠讹紝鍚敤瑕嗙洊鐜囧彲鑳藉鑷存祴璇曟椂闂村鍔犳暟鍊嶃€備负浜嗗湪鎬ц兘鍜岃鐩栫巼涔嬮棿鍙栧緱骞宠　锛屽缓璁彧鍦?CI 涓惎鐢ㄨ鐩栫巼銆佷娇鐢ㄨ鐩栫巼闃堝€笺€佽繘琛屽閲忚鐩栫巼妫€娴嬨€?
-
-### 3.6 鍐呭瓨娉勬紡椋庨櫓
-
-闀挎椂闂磋繍琛岀殑澶у瀷娴嬭瘯濂椾欢鍙兘闈复鍐呭瓨娉勬紡椋庨櫓銆傚唴瀛樻硠婕忛€氬父鐢变互涓嬪師鍥犲紩璧凤細鏈竻鐞嗙殑 Mock锛孧ock 鍑芥暟鍗犵敤鍐呭瓨锛屽鏋滄湭娓呯悊浼氶殢鐫€娴嬭瘯鎵ц涓嶆柇绉疮銆傚叏灞€鐘舵€侊紝娴嬭瘯淇敼浜嗗叏灞€鐘舵€佸鑷寸姸鎬佹薄鏌撱€傛湭鍏抽棴鐨勫彞鏌勶紝娴嬭瘯鎵撳紑浜嗘枃浠跺彞鏌勩€佺綉缁滆繛鎺ョ瓑璧勬簮浣嗘湭姝ｇ‘鍏抽棴銆備簨浠剁洃鍚櫒锛屾祴璇曟敞鍐屼簡浜嬩欢鐩戝惉鍣ㄤ絾鏈湪娴嬭瘯缁撴潫鍚庣Щ闄ゃ€備负浜嗛伩鍏嶅唴瀛樻硠婕忥紝寤鸿鍦?afterEach 鎴?afterAll 涓竻鐞?Mock 鍜岀姸鎬侊紝鍏抽棴鎵€鏈夊湪娴嬭瘯涓墦寮€鐨勮祫婧愶紝绉婚櫎鍦ㄦ祴璇曚腑娉ㄥ唽鐨勪簨浠剁洃鍚櫒銆?
-
-### 3.7 璺ㄥ钩鍙板吋瀹规€?
-
-Bun test 鍦ㄤ笉鍚屾搷浣滅郴缁熶笂鐨勮涓哄彲鑳界暐鏈夊樊寮傘€傛枃浠惰矾寰勫鐞嗭紝Windows 浣跨敤鍙嶆枩鏉犱綔涓鸿矾寰勫垎闅旂锛岃€?Unix 绯荤粺浣跨敤姝ｆ枩鏉犮€傝灏剧宸紓锛學indows 浣跨敤 CRLF 浣滀负琛屽熬绗︼紝鑰?Unix 绯荤粺浣跨敤 LF銆傜幆澧冨彉閲忥紝涓嶅悓鎿嶄綔绯荤粺涓婄殑鐜鍙橀噺鍚嶇О鍜屽€煎彲鑳戒笉鍚屻€傛枃浠舵潈闄愶紝Unix 绯荤粺鏈夋枃浠舵潈闄愮郴缁燂紝鑰?Windows 鐨勬潈闄愭ā鍨嬩笉鍚屻€備负浜嗙‘淇濇祴璇曠殑璺ㄥ钩鍙板吋瀹规€э紝寤鸿鍦?CI 涓娇鐢ㄥ涓搷浣滅郴缁熻繍琛屾祴璇曪紝浣跨敤 path 妯″潡澶勭悊鏂囦欢璺緞锛屽湪瀛楃涓叉瘮杈冨墠瑙勮寖鍖栬灏剧銆?
-
-### 3.8 娴嬭瘯鏁版嵁绠＄悊
-
-娴嬭瘯鏁版嵁绠＄悊鏄ぇ鍨嬫祴璇曞浠朵腑甯歌鐨勬寫鎴樸€傛祴璇曟暟鎹敓鎴愮瓥鐣ュ寘鎷‖缂栫爜鏁版嵁銆佸伐鍘傚嚱鏁般€丗ixture 鏂囦欢銆佺瀛愭暟鎹拰闅忔満鏁版嵁鐢熸垚銆傛祴璇曟暟鎹竻鐞嗙瓥鐣ュ寘鎷簨鍔″洖婊氥€佹竻鐞嗛挬瀛愩€佺嫭绔嬫暟鎹簱鍜屽唴瀛樻暟鎹簱銆傞€夋嫨鍚堥€傜殑娴嬭瘯鏁版嵁绠＄悊绛栫暐鍙栧喅浜庢祴璇曠殑绫诲瀷銆佹暟鎹噺銆佹€ц兘瑕佹眰鍜屽洟闃熺殑缁存姢鑳藉姏銆傚浜庡皬鍨嬮」鐩紝纭紪鐮佹暟鎹拰宸ュ巶鍑芥暟宸茬粡瓒冲锛涘浜庡ぇ鍨嬮」鐩紝Fixture 鏂囦欢鍜岀瀛愭暟鎹槸鏇村ソ鐨勯€夋嫨銆?
-
-## 4. 鍏稿瀷闂澶勭悊
-
-### 4.1 expect API 涓嶅伐浣?
-
-闂鎻忚堪锛氬湪娴嬭瘯鏂囦欢涓娇鐢?expect 鍑芥暟鏃跺嚭鐜?expect is not defined 閿欒銆傚師鍥犲垎鏋愶細Bun 鐨勬祴璇曡繍琛屽櫒榛樿涓嶆敞鍏ュ叏灞€鍙橀噺銆傚鏋滀綘鐩存帴浣跨敤 expect銆乨escribe銆乮t 绛夊嚱鏁拌€屾病鏈夊鍏ュ氨浼氶亣鍒拌繖涓敊璇€傝В鍐虫柟妗堬細浠?bun:test 妯″潡瀵煎叆鎵€鏈夐渶瑕佺殑 API锛屾垨鑰呭湪 bunfig.toml 涓惎鐢ㄥ叏灞€ API銆傝櫧鐒跺惎鐢ㄥ叏灞€ API 鍙互鍑忓皯瀵煎叆璇彞锛屼絾鏄惧紡瀵煎叆鏇村姞鏄庣‘鍜屽彲缁存姢锛屽缓璁湪澶у瀷椤圭洰涓樉寮忓鍏ャ€?
-
-### 4.2 Mock 涓嶅伐浣?
-
-闂鎻忚堪锛氬垱寤虹殑 Mock 鍑芥暟娌℃湁鎸夐鏈熷伐浣滐紝渚嬪璋冪敤璁℃暟涓嶆纭垨杩斿洖鍊间笉绗﹀悎棰勬湡銆傚師鍥犲垎鏋愶細Mock 鍒涘缓椤哄簭閿欒銆佸紩鐢ㄩ棶棰樸€佷綔鐢ㄥ煙闂閮藉彲鑳藉鑷?Mock 涓嶅伐浣溿€傝В鍐虫柟妗堬細纭繚 Mock 鍦ㄦ祴璇曚箣鍓嶅垱寤猴紝浣跨敤 spyOn 鏉ユ浛鎹㈠璞℃柟娉曪紝鍦?afterEach 涓仮澶?Mock銆侻ock 璋冪敤璁℃暟涓嶆纭殑闂鍙兘鐢卞紓姝ユ搷浣滄湭绛夊緟銆丮ock 琚噸缃€佸涓?Mock 瀹炰緥绛夊師鍥犲紩璧枫€?
-
-### 4.3 蹇収鏇存柊闂
-
-闂鎻忚堪锛氬揩鐓ф祴璇曞け璐ワ紝鏄剧ず瀹為檯杈撳嚭涓庡揩鐓т笉鍖归厤銆傚師鍥犲垎鏋愶細浠ｇ爜鍙樻洿瀵艰嚧杈撳嚭鍙樺寲銆侀潪纭畾鎬ц緭鍑哄寘鍚殢鏈烘暟鎴栨椂闂存埑銆佸簭鍒楀寲宸紓銆傝В鍐虫柟妗堬細瀹℃煡宸紓鎶ュ憡鍒ゆ柇鍙樺寲鏄惁涓洪鏈熴€傚浜庨潪纭畾鎬ц緭鍑猴紝浣跨敤 toMatchSnapshot 鐨勫弬鏁版潵蹇界暐鐗瑰畾灞炴€с€傚揩鐓ф祴璇曞簲璇ョ敤浜庨獙璇佺ǔ瀹氱殑杈撳嚭锛屽浜庡寘鍚潪纭畾鎬у厓绱犵殑杈撳嚭锛屽簲璇ヤ娇鐢ㄦ洿绮剧‘鐨勬柇瑷€銆?
-
-### 4.4 娴嬭瘯瓒呮椂
-
-闂鎻忚堪锛氭祴璇曡繍琛屾椂闂磋繃闀垮鑷存祴璇曞け璐ャ€傚師鍥犲垎鏋愶細寮傛鎿嶄綔鏈畬鎴愩€佹棤闄愬惊鐜€佽祫婧愮珵浜夈€傝В鍐虫柟妗堬細澧炲姞娴嬭瘯瓒呮椂鏃堕棿锛屽彲浠ュ湪鍗曚釜娴嬭瘯绾у埆鎴栧叏灞€璁剧疆瓒呮椂銆傜‘淇濆紓姝ユ搷浣滄纭畬鎴愩€傚浜庢秹鍙婂畾鏃跺櫒鐨勬祴璇曪紝閬垮厤浣跨敤鐪熷疄鐨?setTimeout锛岃€屾槸浣跨敤 Mock 瀹氭椂鍣ㄣ€?
-
-### 4.5 娴嬭瘯鏂囦欢鍙戠幇闂
-
-闂鎻忚堪锛歜un test 娌℃湁鎵惧埌娴嬭瘯鏂囦欢銆傚師鍥犲垎鏋愶細Bun 榛樿浣跨敤 glob 妯″紡鏉ュ彂鐜版祴璇曟枃浠讹紝濡傛灉娴嬭瘯鏂囦欢鍛藉悕涓嶇鍚堟ā寮忓氨涓嶄細琚彂鐜般€傝В鍐虫柟妗堬細纭繚娴嬭瘯鏂囦欢浣跨敤姝ｇ‘鐨勫懡鍚嶆ā寮忥紝涔熷彲浠ユ樉寮忔寚瀹氭祴璇曟枃浠惰矾寰勶紝鎴栧湪 bunfig.toml 涓嚜瀹氫箟娴嬭瘯鏂囦欢鍖归厤妯″紡銆?
-
-### 4.6 绫诲瀷閿欒
-
-闂鎻忚堪锛歍ypeScript 绫诲瀷閿欒瀵艰嚧娴嬭瘯鏃犳硶缂栬瘧銆傚師鍥犲垎鏋愶細Bun 鍘熺敓鏀寔 TypeScript锛屼絾鏌愪簺 TypeScript 閰嶇疆鎴栫被鍨嬪０鏄庡彲鑳藉鑷寸紪璇戦敊璇€傝В鍐虫柟妗堬細纭繚 tsconfig.json 涓寘鍚簡 bun:test 鐨勭被鍨嬪０鏄庯紝瀹夎鏈€鏂扮殑 bun-types 鍖咃紝鍦ㄦ祴璇曟枃浠朵腑浣跨敤姝ｇ‘鐨勭被鍨嬫敞瑙ｃ€?
-
-### 4.7 寮傛娴嬭瘯闂
-
-闂鎻忚堪锛氬紓姝ユ祴璇曠殑琛屼负涓嶇鍚堥鏈燂紝濡?Promise 鏈В鍐虫垨鏈嫆缁濄€傚師鍥犲垎鏋愶細蹇樿浣跨敤 await 鍏抽敭瀛椼€丳romise 琚嫆缁濅絾娌℃湁琚崟鑾枫€佸洖璋冩病鏈夎璋冪敤銆傝В鍐虫柟妗堬細纭繚寮傛娴嬭瘯姝ｇ‘浣跨敤 async/await銆傚浜庡洖璋冮鏍肩殑寮傛浠ｇ爜锛屼娇鐢?Promise 鍖呰銆?
-
-## 5. 蹇呭鐭ヨ瘑涓庢妧鑳?
-
-### 5.1 娴嬭瘯閲戝瓧濉旂悊璁?
-
-娴嬭瘯閲戝瓧濉旀槸涓€绉嶇敤浜庢寚瀵兼祴璇曠瓥鐣ョ殑姒傚康妯″瀷锛岀敱 Mike Cohn 鍦ㄣ€奡ucceeding with Agile銆嬩竴涔︿腑鎻愬嚭銆傚畠灏嗘祴璇曞垎涓轰笁涓眰娆★紝浠庡簳灞傚埌椤跺眰渚濇鏄細鍗曞厓娴嬭瘯銆侀泦鎴愭祴璇曞拰绔埌绔祴璇曘€傚崟鍏冩祴璇曚綅浜庨噾瀛楀鐨勫簳閮紝鏁伴噺鏈€澶氾紝娴嬭瘯浠ｇ爜鐨勬渶灏忓彲娴嬭瘯鍗曞厓锛屽湪闅旂鐨勭幆澧冧腑杩愯锛屼笉渚濊禆澶栭儴璧勬簮銆傞泦鎴愭祴璇曚綅浜庨噾瀛楀鐨勪腑閮紝娴嬭瘯澶氫釜鍗曞厓涔嬮棿鐨勪氦浜掞紝鍙兘娑夊強鏁版嵁搴撱€佹枃浠剁郴缁熸垨缃戠粶鏈嶅姟銆傜鍒扮娴嬭瘯浣嶄簬閲戝瓧濉旂殑椤堕儴锛屾暟閲忔渶灏戯紝浠庣敤鎴风殑瑙掑害娴嬭瘯鏁翠釜绯荤粺鐨勮涓恒€?
-
-娴嬭瘯閲戝瓧濉旂殑鏍稿績鍘熷垯鏄細娴嬭瘯搴旇鑷簳鍚戜笂缁勭粐锛屽簳灞傛祴璇曟暟閲忓鎵ц閫熷害蹇紝椤跺眰娴嬭瘯鏁伴噺灏戞墽琛岄€熷害鎱€備紭鍏堢紪鍐欏崟鍏冩祴璇曪紝鍗曞厓娴嬭瘯鐨勬姇鍏ヤ骇鍑烘瘮鏈€楂樸€傞泦鎴愭祴璇曞拰绔埌绔祴璇曚綔涓鸿ˉ鍏咃紝鐢ㄤ簬楠岃瘉鍗曞厓娴嬭瘯鏃犳硶瑕嗙洊鐨勫満鏅€侭un 鐨勬祴璇曡繍琛屽櫒瀵规祴璇曢噾瀛楀鐨勬瘡涓眰娆￠兘鎻愪緵浜嗘敮鎸侊細鍗曞厓娴嬭瘯浣跨敤 describe銆乮t銆乪xpect API 缂栧啓锛岄泦鎴愭祴璇曚娇鐢?Bun.serve 鍚姩娴嬭瘯鏈嶅姟鍣ㄨ繘琛?HTTP 娴嬭瘯锛岀鍒扮娴嬭瘯鍙互缁撳悎 Playwright 杩涜銆?
-
-### 5.2 Mock銆丼tub 鍜?Spy 鐨勫尯鍒?
-
-鍦ㄦ祴璇曚腑锛孧ock銆丼tub 鍜?Spy 鏄笁绉嶅父瑙佺殑娴嬭瘯鏇胯韩锛屽畠浠湁涓嶅悓鐨勭敤閫斿拰琛屼负銆係tub 鎻愪緵棰勮鐨勮繑鍥炲€硷紝鐢ㄤ簬鏇挎崲鐪熷疄渚濊禆锛岄€氬父涓嶈褰曡皟鐢ㄤ俊鎭€係py 鍖呰鐪熷疄鍑芥暟锛岃褰曡皟鐢ㄤ俊鎭絾涓嶆敼鍙樺嚱鏁扮殑琛屼负銆侻ock 缁撳悎浜?Stub 鍜?Spy 鐨勫姛鑳斤紝鏃㈠彲浠ラ璁捐繑鍥炲€煎張鍙互璁板綍璋冪敤淇℃伅銆傚湪瀹為檯娴嬭瘯涓紝閫夋嫨鍚堥€傜殑娴嬭瘯鏇胯韩绫诲瀷闈炲父閲嶈銆傚鏋滃彧闇€瑕佹浛鎹緷璧栵紝浣跨敤 Stub銆傚鏋滈渶瑕侀獙璇佽皟鐢ㄨ涓猴紝浣跨敤 Spy銆傚鏋滈渶瑕佸悓鏃舵浛鎹緷璧栧拰楠岃瘉琛屼负锛屼娇鐢?Mock銆?
-
-杩囧害浣跨敤 Mock 鐨勫父瑙侀棶棰樺寘鎷細娴嬭瘯涓庡疄鐜扮粏鑺傝繃搴﹁€﹀悎锛屽鑷撮噸鏋勬椂娴嬭瘯棰戠箒澶辫触锛汳ock 璁剧疆杩囦簬澶嶆潅锛屾祴璇曚唬鐮侀毦浠ョ悊瑙ｏ紱Mock 琛屼负涓庣湡瀹炶涓轰笉涓€鑷达紝瀵艰嚧娴嬭瘯缁撴灉涓嶅彲闈犮€備负浜嗛伩鍏嶈繖浜涢棶棰橈紝寤鸿浼樺厛浣跨敤鐪熷疄瀹炵幇锛屽叾娆′娇鐢?Stub 鎴?Spy锛屾渶鍚庝娇鐢?Mock銆侻ock 搴旇鐢ㄤ簬璺ㄨ秺妯″潡杈圭晫鐨勫閮ㄤ緷璧栵紝鑰屼笉鏄唴閮ㄥ疄鐜扮粏鑺傘€?
-
-### 5.3 TDD 鏂规硶璁?
-
-娴嬭瘯椹卞姩寮€鍙戞槸涓€绉嶈蒋浠跺紑鍙戞柟娉曡锛屽畠寮鸿皟鍦ㄧ紪鍐欏疄鐜颁唬鐮佷箣鍓嶅厛缂栧啓娴嬭瘯浠ｇ爜銆俆DD 鐨勬牳蹇冨惊鐜槸绾?缁?閲嶆瀯锛氱孩闃舵缂栧啓涓€涓け璐ョ殑娴嬭瘯锛屽畾涔変綘瑕佸疄鐜扮殑鍔熻兘鐨勯鏈熻涓恒€傜豢闃舵缂栧啓鏈€灏戠殑瀹炵幇浠ｇ爜浣挎祴璇曢€氳繃銆傞噸鏋勯樁娈靛湪娴嬭瘯閫氳繃鐨勫墠鎻愪笅浼樺寲浠ｇ爜鐨勮川閲忓拰缁撴瀯銆俆DD 鐨勫ソ澶勫寘鎷彁楂樹唬鐮佽川閲忋€佸噺灏戠己闄枫€佹彁渚涘畨鍏ㄧ綉銆佹敼鍠勪唬鐮佽璁″拰鏂囨。浣滅敤銆侭un 鐨勫揩閫熸祴璇曟墽琛屼娇寰?TDD 宸ヤ綔娴佹洿鍔犳祦鐣咃紝娴嬭瘯鍦ㄤ笉鍒?100 姣鐨勬椂闂村唴鍚姩锛岃浣犺兘澶熼绻佽繍琛屾祴璇曡€屼笉褰卞搷寮€鍙戞祦绋嬨€?
-
-### 5.4 浠ｇ爜瑕嗙洊鐜囨寚鏍?
-
-浠ｇ爜瑕嗙洊鐜囨槸琛￠噺娴嬭瘯璐ㄩ噺鐨勯噸瑕佹寚鏍囥€侭un 閫氳繃 --coverage 鏍囧織鎻愪緵浠ｇ爜瑕嗙洊鐜囨姤鍛娿€傚父瑙佺殑瑕嗙洊鐜囨寚鏍囧寘鎷鍙ヨ鐩栫巼銆佸垎鏀鐩栫巼銆佸嚱鏁拌鐩栫巼鍜岃瑕嗙洊鐜囥€傝鍙ヨ鐩栫巼琛￠噺娴嬭瘯鎵ц瑕嗙洊浜嗗灏戞潯璇彞锛岃繖鏄渶鍩烘湰鐨勮鐩栫巼鎸囨爣銆傚垎鏀鐩栫巼琛￠噺娴嬭瘯鎵ц瑕嗙洊浜嗗灏戜釜鍒嗘敮璺緞锛屽浜庡寘鍚潯浠惰鍙ョ殑浠ｇ爜鍒嗘敮瑕嗙洊鐜囨瘮璇彞瑕嗙洊鐜囨洿鏈夋剰涔夈€傚嚱鏁拌鐩栫巼琛￠噺娴嬭瘯鎵ц瑕嗙洊浜嗗灏戜釜鍑芥暟锛屽彲浠ュ府鍔╀綘鍙戠幇鏈祴璇曠殑鍑芥暟銆傝瑕嗙洊鐜囪　閲忔祴璇曟墽琛岃鐩栦簡澶氬皯琛屼唬鐮併€?
-
-鍦ㄤ娇鐢ㄤ唬鐮佽鐩栫巼鏃堕渶瑕佹敞鎰忥細瑕嗙洊鐜囦笉鏄洰鏍囷紝杩芥眰 100% 鐨勪唬鐮佽鐩栫巼鍙兘瀵艰嚧杩囧害娴嬭瘯鍜屼綆璐ㄩ噺鐨勬祴璇曘€傚叧娉ㄥ叧閿矾寰勶紝浼樺厛瑕嗙洊鏍稿績涓氬姟閫昏緫鍜屽鏉傝矾寰勩€傜粨鍚堝叾浠栨寚鏍囷紝浠ｇ爜瑕嗙洊鐜囧簲璇ヤ笌娴嬭瘯鍙淮鎶ゆ€с€佹祴璇曟墽琛岄€熷害绛夊叾浠栨寚鏍囩粨鍚堜娇鐢ㄣ€傝瀹氬悎鐞嗙洰鏍囷紝鏍稿績妯″潡鐨勮鐩栫巼搴旇杈惧埌 80% 浠ヤ笂銆?
-
-### 5.5 Test Runner 閫夊瀷瀵规瘮
-
-鍦ㄩ€夋嫨娴嬭瘯杩愯鍣ㄦ椂闇€瑕佽€冭檻澶氫釜鍥犵礌銆侭un test 鏄?Bun 鍐呯疆鐨勬祴璇曡繍琛屽櫒锛屾渶澶т紭鍔挎槸鍚姩閫熷害蹇拰闆堕厤缃紝Mock 鍔熻兘鐩稿鍩虹銆侸est 鏄洰鍓嶄娇鐢ㄦ渶骞挎硾鐨勬祴璇曟鏋讹紝鎷ユ湁鏈€鍏ㄩ潰鐨勫姛鑳介泦鍜屼赴瀵岀殑鎻掍欢鐢熸€侊紝浣嗗惎鍔ㄩ€熷害鎱€俈itest 鍩轰簬 Vite 鏋勫缓锛屽吋瀹?Jest 鐨勫ぇ閮ㄥ垎 API锛屽惎鍔ㄩ€熷害浠嬩簬 Bun test 鍜?Jest 涔嬮棿銆傚浜庢柊椤圭洰锛屽鏋滀娇鐢?Bun 杩愯鏃跺垯 Bun test 鏄嚜鐒堕€夋嫨锛屽鏋滀娇鐢?Node.js 鍒?Vitest 鏄洿濂界殑閫夋嫨銆傚浜庡凡鏈夊ぇ閲?Jest 娴嬭瘯鐨勯」鐩紝濡傛灉杩佺Щ鎴愭湰鍙帶鍙互鑰冭檻杩佺Щ锛屽惁鍒欏彲浠ョ户缁娇鐢?Jest銆?
-
-## 6. 绀轰緥浠ｇ爜涓庨厤缃?
-
-### 6.1 鍩虹娴嬭瘯绀轰緥璇﹁В
-
-鍩虹娴嬭瘯绀轰緥 math.test.ts 灞曠ず浜?Bun test 鐨勬牳蹇冨姛鑳姐€傝繖涓枃浠朵粠 bun:test 妯″潡瀵煎叆浜嗕笁涓牳蹇?API锛歞escribe 鐢ㄤ簬瀹氫箟娴嬭瘯濂椾欢锛宨t 鐢ㄤ簬瀹氫箟娴嬭瘯鐢ㄤ緥锛宔xpect 鐢ㄤ簬鍒涘缓鏂█銆傛樉寮忓鍏ョ殑濂藉鏄唬鐮佹洿鍔犳竻鏅帮紝渚濊禆鍏崇郴鏇村姞鏄庣‘銆俤escribe 鍑芥暟鍒涘缓涓€涓祴璇曞浠讹紝绗竴涓弬鏁版槸娴嬭瘯濂椾欢鐨勫悕绉帮紝绗簩涓弬鏁版槸涓€涓洖璋冨嚱鏁板寘鍚濂椾欢涓嬬殑鎵€鏈夋祴璇曠敤渚嬨€俰t 鍑芥暟瀹氫箟涓€涓祴璇曠敤渚嬶紝绗竴涓弬鏁版槸娴嬭瘯鐢ㄤ緥鐨勫悕绉帮紝绗簩涓弬鏁版槸鍥炶皟鍑芥暟鍖呭惈娴嬭瘯閫昏緫銆?
-
-toBe 鏂规硶浣跨敤 Object.is 杩涜涓ユ牸鐩哥瓑姣旇緝锛屽浜庡熀鏈被鍨嬫瘮杈冨€兼槸鍚︾浉绛夛紝瀵逛簬瀵硅薄绫诲瀷姣旇緝寮曠敤鏄惁鐩稿悓銆倀oEqual 鏂规硶杩涜娣卞眰鐩哥瓑姣旇緝锛岄€掑綊姣旇緝瀵硅薄鐨勬墍鏈夊睘鎬ц€屼笉鏄瘮杈冨紩鐢紝闈炲父閫傚悎楠岃瘉瀵硅薄鐨勫唴瀹规槸鍚︾浉绛夈€侭un test 鍘熺敓鏀寔寮傛娴嬭瘯锛屽彲浠ュ湪 it 鐨勫洖璋冨嚱鏁颁腑浣跨敤 async/await锛孊un 浼氱瓑寰?Promise 瀹屾垚鍚庡啀杩涜鏂█銆?
-
-### 6.2 Mock 娴嬭瘯绀轰緥璇﹁В
-
-Mock 娴嬭瘯绀轰緥 mock.test.ts 灞曠ず浜?Bun test 鐨?Mock 鍔熻兘銆傛枃浠跺鍏ヤ簡 Mock 鐩稿叧鐨?API锛宮ock 鐢ㄤ簬鍒涘缓 Mock 鍑芥暟锛宻pyOn 鐢ㄤ簬鍒涘缓 Spy銆俶ock 鍒涘缓涓€涓?Mock 鍑芥暟锛屽畠鐨勫疄鐜版槸杩斿洖棰勮鐨勫€笺€倀oHaveBeenCalledTimes 鏂█ Mock 鍑芥暟琚皟鐢ㄧ殑娆℃暟銆俿pyOn 鍦ㄥ璞′笂鍒涘缓涓€涓?Spy锛岀洃鎺ф柟娉曠殑璋冪敤銆係py 浼氳褰曟柟娉曠殑璋冪敤淇℃伅锛屽悓鏃朵繚鎸佹柟娉曠殑鍘熷琛屼负銆倀oHaveBeenCalledWith 鏂█鏂规硶琚皟鐢ㄦ椂浼犻€掔殑鍙傛暟銆俶ockRestore 鎭㈠鏂规硶鐨勫師濮嬪疄鐜帮紝杩欐槸閲嶈鐨勬竻鐞嗘楠ょ‘淇?Spy 涓嶄細褰卞搷鍏朵粬娴嬭瘯銆?
-
-### 6.3 API 闆嗘垚娴嬭瘯绀轰緥璇﹁В
-
-API 闆嗘垚娴嬭瘯绀轰緥 api.test.ts 灞曠ず浜嗗浣曚娇鐢?Bun 鐨勫唴缃?HTTP 鏈嶅姟鍣ㄨ繘琛岄泦鎴愭祴璇曘€俠eforeAll 閽╁瓙鍦ㄦ墍鏈夋祴璇曚箣鍓嶆墽琛屼竴娆★紝鍦ㄨ繖涓挬瀛愪腑浣跨敤 Bun.serve 鍚姩涓€涓?HTTP 鏈嶅姟鍣ㄣ€侭un.serve 鎺ュ彈閰嶇疆瀵硅薄鍖呮嫭绔彛鍙峰拰 fetch 澶勭悊鍑芥暟銆傛湇鍔″櫒瀹炵幇浜嗕笁涓矾鐢憋細GET 杩斿洖寰呭姙浜嬮」鍒楄〃锛孭OST 鍒涘缓鏂扮殑寰呭姙浜嬮」锛孏ET 鍋ュ悍妫€鏌ャ€傚浜庝笉鍖归厤鐨勮矾鐢辫繑鍥?404 鐘舵€佺爜銆俛fterAll 閽╁瓙鍦ㄦ墍鏈夋祴璇曚箣鍚庢墽琛屼竴娆★紝鍦ㄨ繖涓挬瀛愪腑鍋滄 HTTP 鏈嶅姟鍣ㄩ噴鏀剧鍙ｈ祫婧愩€?
-
-娴嬭瘯鐢ㄤ緥瑕嗙洊浜嗗洓涓吀鍨嬬殑 API 鍦烘櫙锛氬仴搴锋鏌ョ鐐归獙璇佸搷搴旂姸鎬佺爜涓?200锛屽緟鍔炰簨椤瑰垪琛ㄧ鐐归獙璇佸搷搴斾綋鏄竴涓暟缁勪笖鍖呭惈 title 瀛楁锛屽垱寤哄緟鍔炰簨椤圭鐐归獙璇佸搷搴旂姸鎬佺爜涓?201 鍜屽搷搴斾綋鍖呭惈姝ｇ‘鐨?id 鍜?title 瀛楁锛?04 閿欒澶勭悊楠岃瘉涓嶅瓨鍦ㄧ殑璺敱杩斿洖 404 鐘舵€佺爜銆?
-
-### 6.4 娴嬭瘯閰嶇疆涓庢墽琛?
-
-Bun 鐨勬祴璇曡繍琛屽櫒鏀寔閫氳繃鍛戒护琛屽弬鏁板拰閰嶇疆鏂囦欢杩涜閰嶇疆銆傚父鐢ㄧ殑鍛戒护琛屽弬鏁板寘鎷繍琛屾墍鏈夋祴璇曘€佽繍琛岀壒瀹氱洰褰曚笅鐨勬祴璇曘€佽繍琛屽尮閰嶆ā寮忕殑娴嬭瘯銆佸惎鐢ㄤ唬鐮佽鐩栫巼銆佽缃秴鏃舵椂闂淬€佽缃苟琛屽害銆佹洿鏂板揩鐓с€佷娇鐢?Watch 妯″紡銆佹寚瀹氭姤鍛婃牸寮忕瓑銆傚湪 bunfig.toml 涓厤缃祴璇曢€夐」鍙互鍚敤鍏ㄥ眬 API銆佽缃粯璁よ秴鏃舵椂闂淬€佽嚜瀹氫箟娴嬭瘯鏂囦欢鍖归厤妯″紡銆侀厤缃唬鐮佽鐩栫巼鍙傛暟绛夈€?
-
-### 6.5 CI/CD 闆嗘垚
-
-鍦?CI/CD 鐜涓娇鐢?Bun test 鍙互纭繚浠ｇ爜璐ㄩ噺銆侴itHub Actions 鐨勯厤缃寘鎷娇鐢?checkout 鍔ㄤ綔妫€鍑轰唬鐮侊紝浣跨敤 setup-bun 鍔ㄤ綔瀹夎 Bun锛岀劧鍚庤繍琛?bun install 鍜?bun test --coverage銆傚湪 CI/CD 鐜涓繍琛屾祴璇曟椂寤鸿鍚敤浠ｇ爜瑕嗙洊鐜囥€佷娇鐢?GitHub 鏍煎紡鐨勬姤鍛娿€佽缃悎鐞嗙殑瓒呮椂鏃堕棿銆佺紦瀛樹緷璧栧姞閫熷畨瑁呫€?
-
-### 6.6 娴嬭瘯妯″紡涓庢渶浣冲疄璺?
-
-鍦ㄧ紪鍐欐祴璇曟椂锛岄伒寰垚鐔熺殑娴嬭瘯妯″紡鍜屾渶浣冲疄璺靛彲浠ユ彁楂樻祴璇曠殑璐ㄩ噺鍜屽彲缁存姢鎬с€侴iven-When-Then 妯″紡灏嗘祴璇曞垎涓轰笁涓儴鍒嗭細缁欏畾娴嬭瘯鐨勫垵濮嬫潯浠跺拰涓婁笅鏂囷紝鎵ц鏌愪釜鎿嶄綔锛岄獙璇佹搷浣滅殑缁撴灉銆侽bject Mother 妯″紡浣跨敤涓撻棬鐨勫伐鍘傜被鎴栧嚱鏁版潵鍒涘缓娴嬭瘯瀵硅薄锛屽噺灏戞祴璇曚腑鐨勯噸澶嶄唬鐮併€俆est Fixture 妯″紡灏嗘祴璇曟暟鎹繚瀛樺湪鐙珛鐨勬枃浠朵腑閫傚悎澶ч噺娴嬭瘯鏁版嵁鐨勫満鏅€傝竟鐣屽€煎垎鏋愰€氳繃娴嬭瘯杈撳叆鍊肩殑杈圭晫鏉′欢鏉ュ彂鐜版綔鍦ㄧ殑閿欒銆傜瓑浠风被鍒掑垎灏嗚緭鍏ユ暟鎹垝鍒嗕负澶氫釜绛変环绫伙紝姣忎釜绛変环绫讳腑鐨勫€煎簲璇ヤ骇鐢熺浉鍚岀殑琛屼负銆?
-
-## 鎬荤粨
-
-鏈珷璇︾粏浠嬬粛浜?Bun 鐨勬祴璇曡繍琛屽櫒锛屽寘鎷叾浣跨敤鍦烘櫙銆佸疄鐜板師鐞嗐€佹綔鍦ㄩ闄╀笌浼樺寲銆佸吀鍨嬮棶棰樺鐞嗐€佸繀澶囩煡璇嗕笌鎶€鑳斤紝浠ュ強绀轰緥浠ｇ爜涓庨厤缃€傛垜浠粠澶氫釜缁村害娣卞叆鍓栨瀽浜?Bun test 鐨勬柟鏂归潰闈紝涓鸿鑰呮彁渚涗簡涓€涓叏闈㈣€屾繁鍏ョ殑瀛︿範鍙傝€冦€?
-
-Bun test 鏄竴涓珮鎬ц兘銆侀浂閰嶇疆鐨勬祴璇曡繍琛屽櫒锛屽畠鍐呯疆浜?Bun 杩愯鏃朵腑锛屾彁渚涗簡涓?Jest 楂樺害鍏煎鐨?API銆傚浜庡崟鍏冩祴璇曞拰 API 闆嗘垚娴嬭瘯锛孊un test 鎻愪緵浜嗕紭绉€鐨勬€ц兘鍜屼娇鐢ㄤ綋楠屻€傝櫧鐒跺湪 Mock 鍔熻兘鍜?DOM 娴嬭瘯鏂归潰杩樻湁寰呭畬鍠勶紝浣?Bun test 鐨勬暣浣撹〃鐜板凡缁忚冻澶熸弧瓒冲ぇ澶氭暟椤圭洰鐨勬祴璇曢渶姹傘€?
-
-Bun test 鐨勬牳蹇冧紭鍔垮湪浜庡叾鎬ц兘鍜岀畝娲佹€с€傚畠鏃犻渶閰嶇疆鍗冲彲浣跨敤锛屽師鐢熸敮鎸?TypeScript 鍜?ESM锛屽惎鍔ㄩ€熷害蹇紝骞惰鎵ц鏁堢巼楂樸€傝繖浜涚壒鎬т娇寰?Bun test 鎴愪负鐜颁唬 JavaScript 椤圭洰娴嬭瘯鐨勪紭绉€閫夋嫨銆侭un test 鐨勪富瑕佸眬闄愭€у寘鎷?Mock 鍔熻兘涓嶅鍏ㄩ潰銆丏OM 娴嬭瘯鏀寔鏈夐檺銆佹彃浠剁敓鎬佽緝灏忋€丄PI 瑕嗙洊缂哄彛銆傚敖绠″瓨鍦ㄨ繖浜涘眬闄愭€э紝Bun test 鐨勫彂灞曢€熷害寰堝揩锛孊un 鍥㈤槦姝ｅ湪绉瀬娣诲姞鏂板姛鑳藉拰鏀硅繘鐜版湁鍔熻兘銆?
-
-閫氳繃鏈珷鐨勫涔狅紝浣犲簲璇ヨ兘澶熶娇鐢?Bun test 缂栧啓鍗曞厓娴嬭瘯銆侀泦鎴愭祴璇曞拰蹇収娴嬭瘯锛岀悊瑙?Bun test 鐨勫唴閮ㄥ疄鐜板師鐞嗗寘鎷?Mock 鏈哄埗鍜屽揩鐓ф瘮杈冪畻娉曪紝璇嗗埆鍜岃В鍐?Bun test 鐨勫父瑙侀棶棰樺 Mock 涓嶅伐浣溿€佸揩鐓ф洿鏂般€佹祴璇曡秴鏃剁瓑锛屽簲鐢?TDD 鏂规硶璁哄拰娴嬭瘯閲戝瓧濉旂悊璁烘潵鎸囧娴嬭瘯绛栫暐锛岄厤缃拰浼樺寲 Bun test 鐨勬墽琛屾彁楂樻祴璇曟晥鐜囷紝閫夋嫨鍚堥€傜殑娴嬭瘯杩愯鍣ㄦ牴鎹」鐩渶姹傚仛鍑哄悎鐞嗙殑鎶€鏈€夊瀷銆?
-
-## 闄勫綍 A锛欱un test 涓?Jest 鍖归厤鍣ㄥ鐓ц〃
-
-涓轰簡鏂逛究浠?Jest 杩佺Щ鍒?Bun test锛屼笅琛ㄥ垪鍑轰簡甯哥敤鍖归厤鍣ㄧ殑瀵圭収鍏崇郴锛?
-
-| 鍔熻兘 | Jest 鍖归厤鍣?| Bun test 鍖归厤鍣?| 琛屼负宸紓 |
-|------|------------|----------------|---------|
-| 涓ユ牸鐩哥瓑 | toBe(value) | toBe(value) | 鏃犲樊寮?|
-| 娣卞害鐩哥瓑 | toEqual(value) | toEqual(value) | 鏃犲樊寮?|
-| 涓ユ牸娣卞害鐩哥瓑 | toStrictEqual(value) | toStrictEqual(value) | 鏃犲樊寮?|
-| 鐪熷€兼鏌?| toBeTruthy() | toBeTruthy() | 鏃犲樊寮?|
-| 鍋囧€兼鏌?| toBeFalsy() | toBeFalsy() | 鏃犲樊寮?|
-| 绌哄€兼鏌?| toBeNull() | toBeNull() | 鏃犲樊寮?|
-| 鏈畾涔夋鏌?| toBeUndefined() | toBeUndefined() | 鏃犲樊寮?|
-| 宸插畾涔夋鏌?| toBeDefined() | toBeDefined() | 鏃犲樊寮?|
-| 鍖呭惈妫€鏌?| toContain(item) | toContain(item) | 鏃犲樊寮?|
-| 鎶涘嚭寮傚父 | toThrow(error) | toThrow(error) | 鏃犲樊寮?|
-| 蹇収鍖归厤 | toMatchSnapshot() | toMatchSnapshot() | 鏍煎紡涓嶅悓 |
-| 鍐呰仈蹇収 | toMatchInlineSnapshot() | toMatchInlineSnapshot() | 鏍煎紡涓嶅悓 |
-| 瀵硅薄鍖归厤 | toMatchObject(obj) | toMatchObject(obj) | 鏃犲樊寮?|
-| 鏁扮粍闀垮害 | toHaveLength(n) | toHaveLength(n) | 鏃犲樊寮?|
-| 灞炴€у瓨鍦?| toHaveProperty(key) | toHaveProperty(key) | 鏃犲樊寮?|
-| 澶т簬 | toBeGreaterThan(n) | toBeGreaterThan(n) | 鏃犲樊寮?|
-| 灏忎簬 | toBeLessThan(n) | toBeLessThan(n) | 鏃犲樊寮?|
-| 澶т簬绛変簬 | toBeGreaterThanOrEqual(n) | toBeGreaterThanOrEqual(n) | 鏃犲樊寮?|
-| 灏忎簬绛変簬 | toBeLessThanOrEqual(n) | toBeLessThanOrEqual(n) | 鏃犲樊寮?|
-| 瀛楃涓插尮閰?| toMatch(regexp) | toMatch(regexp) | 鏃犲樊寮?|
-| 瀹炰緥妫€鏌?| toBeInstanceOf(Class) | toBeInstanceOf(Class) | 鏃犲樊寮?|
-| Mock 琚皟鐢?| toHaveBeenCalled() | toHaveBeenCalled() | 鏃犲樊寮?|
-| Mock 璋冪敤娆℃暟 | toHaveBeenCalledTimes(n) | toHaveBeenCalledTimes(n) | 鏃犲樊寮?|
-| Mock 璋冪敤鍙傛暟 | toHaveBeenCalledWith(...) | toHaveBeenCalledWith(...) | 鏃犲樊寮?|
-
-## 闄勫綍 B锛氬父瑙侀敊璇唬鐮佷笌淇
-
-浠ヤ笅鍒楀嚭 Bun test 浣跨敤杩囩▼涓渶甯歌鐨勯敊璇唬鐮佺ず渚嬪強鍏朵慨澶嶆柟娉曘€傝繖浜涢敊璇ā寮忔潵鑷簬澶ч噺瀹為檯椤圭洰鐨勮縼绉荤粡楠岋紝瑕嗙洊浜嗕粠瀵煎叆闂鍒?Mock 閰嶇疆绛夊悇涓柟闈㈢殑甯歌闄烽槺銆?
-
-閿欒妯″紡涓€锛氬叏灞€鍙橀噺鏈鍏ャ€傝繖鏄粠 Jest 杩佺Щ鍒?Bun test 鏃舵渶甯搁亣鍒扮殑闂銆傚湪 Jest 涓?describe銆乮t銆乪xpect 鏄叏灞€鍙敤鐨勶紝浣嗗湪 Bun test 涓繀椤讳粠 bun:test 妯″潡鏄惧紡瀵煎叆銆備慨澶嶆柟娉曟槸鍦ㄦ祴璇曟枃浠堕《閮ㄦ坊鍔犲鍏ヨ鍙ャ€傚鏋滈」鐩腑鏈夊ぇ閲忔祴璇曟枃浠堕渶瑕佷慨鏀癸紝鍙互鑰冭檻鍦?bunfig.toml 涓惎鐢ㄥ叏灞€ API 妯″紡銆?
-
-閿欒妯″紡浜岋細Mock 鍑芥暟瀵煎叆閿欒銆傛湁浜涘紑鍙戣€呬細灏濊瘯浠?jest 鎴?@jest/globals 瀵煎叆 Mock 鍑芥暟锛岃繖鍦?Bun test 涓笉鍙敤銆備慨澶嶆柟娉曟槸灏嗗鍏ユ簮鏀逛负 bun:test锛屽苟灏?jest.fn 鏀逛负 mock锛屽皢 jest.spyOn 鏀逛负 spyOn銆?
-
-閿欒妯″紡涓夛細蹇収鏂囦欢鏍煎紡涓嶅吋瀹广€備粠 Jest 杩佺Щ杩囨潵鐨勫揩鐓ф枃浠跺彲鑳芥棤娉曡 Bun test 姝ｇ‘瑙ｆ瀽銆備慨澶嶆柟娉曟槸鍒犻櫎鏃х殑 __snapshots__ 鐩綍锛岀劧鍚庤繍琛?bun test --update-snapshots 閲嶆柊鐢熸垚蹇収銆傚湪閲嶆柊鐢熸垚蹇収鍚庯紝闇€瑕佷粩缁嗗鏌ュ揩鐓у唴瀹圭‘淇濇墍鏈夊€奸兘鏄鏈熺殑銆?
-
-閿欒妯″紡鍥涳細妯″潡妯℃嫙鏈敓鏁堛€傚湪 Bun test 涓娇鐢ㄦā鍧楁ā鎷熸椂锛屽鏋滄ā鎷熸敞鍐屽彂鐢熷湪妯″潡棣栨瀵煎叆涔嬪悗锛屾ā鎷熷皢涓嶄細鐢熸晥銆備慨澶嶆柟娉曟槸灏嗘ā鎷熸敞鍐屾斁鍦ㄦ墍鏈夊鍏ヨ鍙ヤ箣鍓嶏紝鎴栬€呬娇鐢ㄥ姩鎬佸鍏ュ湪妯℃嫙娉ㄥ唽涔嬪悗鍔犺浇妯″潡銆?
-
-閿欒妯″紡浜旓細寮傛娴嬭瘯鏈瓑寰呫€傚鏋滃紓姝ユ祴璇曚腑蹇樿浣跨敤 await 鍏抽敭瀛楋紝娴嬭瘯鍙兘浼氬湪寮傛鎿嶄綔瀹屾垚涔嬪墠灏辩粨鏉燂紝瀵艰嚧鏂█琚烦杩囨垨缁撴灉涓嶇ǔ瀹氥€備慨澶嶆柟娉曟槸纭繚鎵€鏈夊紓姝ユ搷浣滈兘浣跨敤浜?await锛屾垨鑰呭皢 Promise 浣滀负娴嬭瘯鍑芥暟鐨勮繑鍥炲€笺€?
-
-閿欒妯″紡鍏細瓒呮椂閰嶇疆涓嶅綋銆傚浜庢秹鍙婄綉缁滆姹傛垨鏁版嵁搴撴搷浣滅殑闆嗘垚娴嬭瘯锛岄粯璁ょ殑 5 绉掕秴鏃跺彲鑳戒笉澶熴€備慨澶嶆柟娉曟槸涓鸿繖浜涙祴璇曞崟鐙缃洿闀跨殑瓒呮椂鏃堕棿锛屾垨鑰呭湪 bunfig.toml 涓鍔犲叏灞€瓒呮椂閰嶇疆銆?
-
-閿欒妯″紡涓冿細娴嬭瘯闂寸姸鎬佹硠婕忋€傚鏋滄祴璇曠敤渚嬩箣闂村叡浜簡鍙彉鐘舵€侊紝涓€涓祴璇曠殑淇敼鍙兘浼氬奖鍝嶅叾浠栨祴璇曠殑缁撴灉銆備慨澶嶆柟娉曟槸鍦?beforeEach 涓噸缃叡浜姸鎬侊紝鎴栬€呬娇鐢ㄥ眬閮ㄥ彉閲忔浛浠ｅ叏灞€鍙橀噺銆?
-
-閿欒妯″紡鍏細Spy 鏈仮澶嶃€備娇鐢?spyOn 鍚庡鏋滄病鏈夎皟鐢?mockRestore锛孲py 鐨勭姸鎬佷細褰卞搷鍚庣画娴嬭瘯銆備慨澶嶆柟娉曟槸鍦?afterEach 涓粺涓€鎭㈠鎵€鏈?Spy锛屾垨鑰呬负姣忎釜娴嬭瘯鐢ㄤ緥鍒涘缓鐙珛鐨?Spy 瀹炰緥銆?
-
-## 闄勫綍 C锛氭€ц兘鍩哄噯娴嬭瘯鏁版嵁
-
-浠ヤ笅鍩哄噯娴嬭瘯鏁版嵁灞曠ず浜?Bun test 鍦ㄤ笉鍚岃妯￠」鐩腑鐨勬€ц兘琛ㄧ幇銆傛祴璇曠幆澧冧负 4 鏍?CPU銆?6GB 鍐呭瓨銆丼SD 纭洏锛屾搷浣滅郴缁熶负 Ubuntu 22.04 LTS銆傛祴璇曢」鐩寘鍚笉鍚屾暟閲忕殑娴嬭瘯鏂囦欢锛屾瘡涓枃浠跺寘鍚?5 鍒?10 涓祴璇曠敤渚嬶紝娴嬭瘯鍐呭娑电洊绾嚱鏁版祴璇曘€丮ock 娴嬭瘯鍜屽揩鐓ф祴璇曘€?
-
-灏忓瀷椤圭洰娴嬭瘯缁撴灉锛氶」鐩寘鍚?50 涓祴璇曟枃浠讹紝绾?350 涓祴璇曠敤渚嬨€侭un test 鍐峰惎鍔ㄦ椂闂?0.12 绉掞紝鎬绘墽琛屾椂闂?0.8 绉掞紝鍐呭瓨宄板€?120MB銆侸est 鍐峰惎鍔ㄦ椂闂?2.1 绉掞紝鎬绘墽琛屾椂闂?5.2 绉掞紝鍐呭瓨宄板€?350MB銆俈itest 鍐峰惎鍔ㄦ椂闂?0.8 绉掞紝鎬绘墽琛屾椂闂?2.1 绉掞紝鍐呭瓨宄板€?280MB銆?
-
-涓瀷椤圭洰娴嬭瘯缁撴灉锛氶」鐩寘鍚?200 涓祴璇曟枃浠讹紝绾?1500 涓祴璇曠敤渚嬨€侭un test 鍐峰惎鍔ㄦ椂闂?0.18 绉掞紝鎬绘墽琛屾椂闂?3.5 绉掞紝鍐呭瓨宄板€?380MB銆侸est 鍐峰惎鍔ㄦ椂闂?3.8 绉掞紝鎬绘墽琛屾椂闂?22.5 绉掞紝鍐呭瓨宄板€?900MB銆俈itest 鍐峰惎鍔ㄦ椂闂?1.2 绉掞紝鎬绘墽琛屾椂闂?8.5 绉掞紝鍐呭瓨宄板€?650MB銆?
-
-澶у瀷椤圭洰娴嬭瘯缁撴灉锛氶」鐩寘鍚?500 涓祴璇曟枃浠讹紝绾?4000 涓祴璇曠敤渚嬨€侭un test 鍐峰惎鍔ㄦ椂闂?0.25 绉掞紝鎬绘墽琛屾椂闂?8.2 绉掞紝鍐呭瓨宄板€?850MB銆侸est 鍐峰惎鍔ㄦ椂闂?5.5 绉掞紝鎬绘墽琛屾椂闂?48.5 绉掞紝鍐呭瓨宄板€?1.8GB銆俈itest 鍐峰惎鍔ㄦ椂闂?1.8 绉掞紝鎬绘墽琛屾椂闂?18.5 绉掞紝鍐呭瓨宄板€?1.2GB銆?
-
-浠庤繖浜涙暟鎹彲浠ョ湅鍑猴紝Bun test 鍦ㄥ悇绉嶈妯＄殑椤圭洰涓兘琛ㄧ幇鍑烘樉钁楃殑鎬ц兘浼樺娍銆傚湪澶у瀷椤圭洰涓紝Bun test 鐨勬€绘墽琛屾椂闂翠粎涓?Jest 鐨?17%锛屽唴瀛樺嘲鍊间粎涓?Jest 鐨?47%銆傝繖绉嶆€ц兘浼樺娍鍦?CI/CD 鐜涓挨涓烘槑鏄撅紝鍥犱负 CI 鐜鐨勮祫婧愰€氬父鏇村姞鍙楅檺锛屾祴璇曟墽琛屾椂闂存槸 CI 娴佹按绾夸腑鏈€鍏抽敭鐨勭摱棰堜箣涓€銆?
-
-闄や簡鍐峰惎鍔ㄥ拰鎬绘墽琛屾椂闂村锛孊un test 鍦ㄥ閲忔祴璇曞満鏅腑鐨勮〃鐜颁篃闈炲父鍑鸿壊銆傚綋鍙慨鏀逛竴涓枃浠舵椂锛孊un test 鐨?Watch 妯″紡鍙互鍦?0.15 绉掑唴閲嶆柊杩愯鐩稿叧娴嬭瘯锛岃€?Jest 闇€瑕?4.5 绉掞紝Vitest 闇€瑕?0.6 绉掋€傝繖绉嶆瀬閫熺殑澧為噺娴嬭瘯鍙嶉瀵逛簬 TDD 宸ヤ綔娴佹潵璇磋嚦鍏抽噸瑕侊紝鍥犱负瀹冨厑璁稿紑鍙戣€呴绻佽繍琛屾祴璇曡€屼笉浼氭墦鏂紑鍙戣妭濂忋€?
-
-## 闄勫綍 D锛欱un test 鐗堟湰婕旇繘涓庢湭鏉ヨ矾绾垮浘
-
-Bun test 鑷?Bun 1.0 鍙戝竷浠ユ潵缁忓巻浜嗗涓増鏈殑婕旇繘锛屾瘡涓増鏈兘甯︽潵浜嗘柊鐨勫姛鑳藉拰鏀硅繘銆備簡瑙ｈ繖浜涚増鏈彉鍖栨湁鍔╀簬浣犺鍒掑崌绾х瓥鐣ュ拰璇勪及鏂板姛鑳藉椤圭洰鐨勫奖鍝嶃€?
-
-Bun 1.0 鐗堟湰鏄?Bun test 鐨勯涓寮忕増鏈紝鎻愪緵浜嗗熀鏈殑娴嬭瘯鍔熻兘锛屽寘鎷?describe銆乮t銆乪xpect API锛屼互鍙婂熀纭€鐨?Mock 鍜屽揩鐓ф敮鎸併€傝繖涓増鏈凡缁忚兘澶熸弧瓒冲ぇ澶氭暟椤圭洰鐨勬祴璇曢渶姹傦紝浣嗕竴浜涢珮绾у姛鑳藉鍙傛暟鍖栨祴璇曞拰妯″潡妯℃嫙杩樹笉瀹屽杽銆?
-
-Bun 1.1 鐗堟湰鏀硅繘浜嗘祴璇曡繍琛屽櫒鐨勬€ц兘锛屽紩鍏ヤ簡鏇撮珮鏁堢殑骞惰鎵ц鏈哄埗鍜屾洿蹇殑鏂囦欢鍙戠幇绠楁硶銆傚悓鏃惰繖涓増鏈繕澧炲姞浜嗗 happy-dom 鐨勬洿濂芥敮鎸佸拰浠ｇ爜瑕嗙洊鐜囨姤鍛婄殑鏀硅繘銆侻ock 鍔熻兘涔熷緱鍒颁簡澧炲己锛屾敮鎸佷簡鏇村 Jest 鍏煎鐨?API銆?
-
-Bun 1.2 鐗堟湰杩涗竴姝ョ缉灏忎簡涓?Jest 鐨勫姛鑳藉樊璺濓紝澧炲姞浜嗗 toMatchObject 鍜?toHaveProperty 绛夊尮閰嶅櫒鐨勬敮鎸併€傚揩鐓ф祴璇曠殑鏍煎紡涔熷緱鍒颁簡鏀硅繘锛屼笌 Jest 鐨勫吋瀹规€ф洿濂姐€傛澶栬繖涓増鏈繕寮曞叆浜嗘祴璇曡秴鏃剁殑鍏ㄥ眬閰嶇疆鍜屾洿濂界殑閿欒娑堟伅鏍煎紡銆?
-
-灞曟湜鏈潵锛孊un 鍥㈤槦璁″垝鍦ㄥ悗缁増鏈腑瀹炵幇浠ヤ笅鍔熻兘锛氬畬鏁寸殑鍙傛暟鍖栨祴璇曟敮鎸侊紝鍖呮嫭 describe.each 鍜?it.each锛涙敼杩涚殑妯″潡妯℃嫙鏈哄埗锛屾敮鎸佹洿澶?Jest 鍏煎鐨?API锛涘唴缃殑瀹氭椂鍣?Mock 鍔熻兘锛屾棤闇€绗笁鏂瑰簱鍗冲彲妯℃嫙 setTimeout 鍜?setInterval锛涙洿濂界殑 DOM 娴嬭瘯鏀寔锛屽寘鎷鏇村娴忚鍣?API 鐨勬ā鎷燂紱浠ュ強鏇翠赴瀵岀殑鎶ュ憡鏍煎紡鍜?CI/CD 闆嗘垚閫夐」銆?
-
-闅忕潃 Bun 鐢熸€佺郴缁熺殑涓嶆柇鎴愮啛鍜屽彂灞曪紝Bun test 鏈夋湜鎴愪负 JavaScript 鍜?TypeScript 娴嬭瘯棰嗗煙鐨勪富娴侀€夋嫨涔嬩竴銆傚畠涓嶄粎浠呮槸涓€涓洿蹇殑 Jest 鏇夸唬鍝侊紝鏇存槸涓€绉嶅叏鏂扮殑娴嬭瘯浣撻獙鈥斺€旈浂閰嶇疆銆佹瀬閫熷惎鍔ㄣ€佸師鐢?TypeScript 鏀寔銆佷笌 Bun 杩愯鏃舵繁搴﹂泦鎴愩€傚浜庢鍦ㄨ€冭檻閫夋嫨娴嬭瘯妗嗘灦鐨勫洟闃熸潵璇达紝Bun test 鏄竴涓€煎緱璁ょ湡鑰冭檻鐨勯€夋嫨銆?
-
-## 闄勫綍 E锛氱ぞ鍖鸿祫婧愪笌瀛︿範璺緞
-
-瑕佹繁鍏ュ涔?Bun test锛屽彲浠ュ弬鑰冧互涓嬬ぞ鍖鸿祫婧愬拰瀛︿範璺緞銆傝繖浜涜祫婧愭兜鐩栦簡浠庡叆闂ㄥ埌楂樼骇鐨勫悇涓眰娆★紝閫傚悎涓嶅悓姘村钩鐨勫紑鍙戣€呫€?
-
-瀹樻柟鏂囨。鏄涔?Bun test 鐨勬渶浣宠捣鐐广€侭un 鐨勫畼鏂规枃妗ｈ缁嗕粙缁嶄簡 bun:test 妯″潡鐨勬墍鏈?API锛屽寘鎷畬鏁寸殑鍖归厤鍣ㄥ垪琛ㄣ€丮ock 鍑芥暟鏂囨。鍜屽揩鐓ф祴璇曟寚鍗椼€傚畼鏂规枃妗ｈ繕鎻愪緵浜嗗ぇ閲忕殑绀轰緥浠ｇ爜鍜岃縼绉绘寚鍗楋紝甯姪浣犲揩閫熶笂鎵嬨€?
-
-寮€婧愰」鐩唬鐮佹槸瀛︿範 Bun test 瀹炴垬搴旂敤鐨勫疂璐佃祫婧愩€侴itHub 涓婃湁璁稿浣跨敤 Bun 鐨勫紑婧愰」鐩紝瀹冧滑鐨勬祴璇曚唬鐮佸彲浠ヤ綔涓哄涔犲弬鑰冦€傞€氳繃闃呰杩欎簺椤圭洰鐨勬祴璇曟枃浠讹紝浣犲彲浠ヤ簡瑙?Bun test 鍦ㄥ疄闄呴」鐩腑鐨勪娇鐢ㄦā寮忓拰缁勭粐鏂瑰紡銆?
-
-绀惧尯鏁欑▼鍜屽崥瀹㈡枃绔犳彁渚涗簡涓板瘜鐨勫涔犳潗鏂欍€傝澶氬紑鍙戣€呭垎浜簡浠栦滑浠?Jest 杩佺Щ鍒?Bun test 鐨勭粡楠岋紝鍖呮嫭杩佺Щ杩囩▼涓亣鍒扮殑闂鍜岃В鍐虫柟妗堛€傝繖浜涚涓€鎵嬬殑缁忛獙瀵逛簬璁″垝杩佺Щ鐨勫洟闃熸潵璇撮潪甯告湁浠峰€笺€?
-
-瀛︿範璺緞寤鸿锛氶鍏堥槄璇诲畼鏂规枃妗ｇ殑蹇€熷叆闂ㄦ寚鍗楋紝浜嗚В Bun test 鐨勫熀鏈敤娉曞拰鏍稿績姒傚康銆傜劧鍚庨€氳繃缂栧啓绠€鍗曠殑娴嬭瘯鐢ㄤ緥鐔熸倝 describe銆乮t銆乪xpect 绛夊熀鏈?API銆傛帴鐫€瀛︿範 Mock 鍜?Spy 鐨勪娇鐢ㄦ柟娉曪紝鎺屾彙娴嬭瘯闅旂鐨勬妧宸с€備箣鍚庢繁鍏ヤ簡瑙ｅ揩鐓ф祴璇曞拰浠ｇ爜瑕嗙洊鐜囩瓑楂樼骇鍔熻兘銆傛渶鍚庨€氳繃瀹為檯椤圭洰鐨勬祴璇曠紪鍐欐潵宸╁浐鎵€瀛︾煡璇嗐€?
-
-鎺ㄨ崘鐨勫疄璺甸」鐩寘鎷細涓轰竴涓紑婧愬伐鍏峰簱缂栧啓鍗曞厓娴嬭瘯锛岃鐩栧悇绉嶅伐鍏峰嚱鏁扮殑姝ｅ父鍜岃竟鐣屾儏鍐碉紱涓轰竴涓?REST API 鏈嶅姟缂栧啓闆嗘垚娴嬭瘯锛屼娇鐢?Bun.serve 鍒涘缓娴嬭瘯鏈嶅姟鍣紱涓轰竴涓?CLI 宸ュ叿缂栧啓娴嬭瘯锛岄獙璇佸懡浠よ鍙傛暟瑙ｆ瀽鍜岃緭鍑烘牸寮忥紱涓轰竴涓暟鎹鐞嗙閬撶紪鍐欐祴璇曪紝楠岃瘉鏁版嵁杞崲鐨勬纭€у拰鎬ц兘銆?
-
-## 闄勫綍 F锛欱un test 鍦ㄥ井鏈嶅姟鏋舵瀯涓殑搴旂敤
-
-寰湇鍔℃灦鏋勬槸鐜颁唬鍚庣寮€鍙戠殑涓绘祦鏋舵瀯妯″紡涔嬩竴銆傚湪寰湇鍔℃灦鏋勪腑锛屾瘡涓湇鍔＄嫭绔嬮儴缃层€佺嫭绔嬫墿灞曪紝鏈嶅姟涔嬮棿閫氳繃缃戠粶閫氫俊銆傝繖绉嶆灦鏋勬ā寮忓娴嬭瘯鎻愬嚭浜嗘柊鐨勬寫鎴樸€侭un test 鍑€熷叾蹇€熺殑鍚姩閫熷害鍜屽唴缃殑 HTTP 鏈嶅姟鍣ㄨ兘鍔涳紝鍦ㄥ井鏈嶅姟娴嬭瘯涓叿鏈夌嫭鐗圭殑浼樺娍銆?
-
-寰湇鍔℃祴璇曠殑鏍稿績鎸戞垬鍖呮嫭锛氭湇鍔′緷璧栵紝涓€涓井鏈嶅姟閫氬父渚濊禆澶氫釜鍏朵粬寰湇鍔★紝娴嬭瘯鏃堕渶瑕佸鐞嗚繖浜涗緷璧栧叧绯伙紱鏁版嵁涓€鑷存€э紝澶氫釜鏈嶅姟鍏变韩鏁版嵁鏃讹紝娴嬭瘯鏁版嵁鐨勯殧绂诲拰绠＄悊鍙樺緱鏇村姞澶嶆潅锛涚綉缁滈棶棰橈紝缃戠粶寤惰繜銆佽秴鏃躲€佽繛鎺ヤ腑鏂瓑闂鍦ㄥ井鏈嶅姟鏋舵瀯涓洿鍔犲父瑙侊紱閮ㄧ讲鐜锛屽井鏈嶅姟鐨勬祴璇曠幆澧冮€氬父姣斿崟浣撳簲鐢ㄦ洿鍔犲鏉傘€?
-
-Bun test 鍦ㄥ井鏈嶅姟娴嬭瘯涓殑搴旂敤鍦烘櫙鍖呮嫭锛氬崟涓井鏈嶅姟鐨勫崟鍏冩祴璇曪紝浣跨敤 Bun test 鐨?describe 鍜?it API 缂栧啓鏈嶅姟鐨勪笟鍔￠€昏緫娴嬭瘯锛涘崟涓井鏈嶅姟鐨勯泦鎴愭祴璇曪紝浣跨敤 Bun.serve 鍚姩鏈嶅姟瀹炰緥锛屾祴璇?API 绔偣鐨勬纭€э紱澶氫釜寰湇鍔＄殑闆嗘垚娴嬭瘯锛屽湪娴嬭瘯涓惎鍔ㄥ涓?Bun.serve 瀹炰緥锛屾ā鎷熷井鏈嶅姟涔嬮棿鐨勮皟鐢紱濂戠害娴嬭瘯锛屼娇鐢?Bun test 楠岃瘉寰湇鍔′箣闂寸殑 API 濂戠害鏄惁琚伒瀹堛€?
-
-鍦ㄥ井鏈嶅姟娴嬭瘯涓紝Mock 绛栫暐鐨勯€夋嫨灏や负閲嶈銆傚浜庢湇鍔″唴閮ㄧ殑渚濊禆锛屽缓璁娇鐢ㄧ湡瀹炵殑瀹炵幇锛涘浜庡閮ㄦ湇鍔＄殑渚濊禆锛屽缓璁娇鐢?Mock 鏉ユā鎷熴€傝繖鏍峰彲浠ュ钩琛℃祴璇曠殑閫熷害鍜屽彲闈犳€с€侭un test 鐨勫揩閫熷惎鍔ㄧ壒鎬т娇寰楀湪娴嬭瘯涓惎鍔ㄥ涓湇鍔″疄渚嬪彉寰楀彲琛岋紝涓嶄細鏄捐憲澧炲姞娴嬭瘯鎵ц鏃堕棿銆?
-
-浠ヤ笅鏄竴涓ā鎷熷井鏈嶅姟璋冪敤閾剧殑娴嬭瘯绀轰緥銆傚亣璁炬垜浠湁涓変釜寰湇鍔★細鐢ㄦ埛鏈嶅姟銆佽鍗曟湇鍔″拰鏀粯鏈嶅姟銆傚湪娴嬭瘯涓紝鎴戜滑鍚姩璁㈠崟鏈嶅姟瀹炰緥锛屽苟浣跨敤 Mock 鏉ユā鎷熺敤鎴锋湇鍔″拰鏀粯鏈嶅姟鐨勮涓恒€傝繖鏍锋垜浠彲浠ュ湪涓嶄緷璧栧叾浠栫湡瀹炴湇鍔＄殑鎯呭喌涓嬫祴璇曡鍗曟湇鍔＄殑瀹屾暣鍔熻兘銆?
+mock.test.ts展示了bun test的Mock功能。下面提供一个完整的示例。
 
 ```typescript
-import { describe, it, expect, beforeAll, afterAll, mock } from "bun:test";
+// mock.test.ts
+import { describe, test, expect, mock, spyOn } from 'bun:test';
 
-// 妯℃嫙鐢ㄦ埛鏈嶅姟
-function startMockUserService(port: number) {
+interface UserService {
+  getUser(id: number): Promise<{ id: number; name: string }>;
+  createUser(name: string): Promise<{ id: number; name: string }>;
+}
+
+class UserController {
+  constructor(private userService: UserService) {}
+
+  async getUserName(id: number): Promise<string> {
+    const user = await this.userService.getUser(id);
+    return user.name;
+  }
+
+  async registerUser(name: string): Promise<{ id: number; name: string }> {
+    if (!name || name.trim().length === 0) {
+      throw new Error('用户名不能为空');
+    }
+    if (name.length < 2) {
+      throw new Error('用户名至少需要2个字符');
+    }
+    return this.userService.createUser(name.trim());
+  }
+}
+
+describe('Mock函数测试', () => {
+  test('mock()创建基本的Mock函数', () => {
+    const fn = mock(() => 42);
+
+    expect(fn()).toBe(42);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    fn(1, 2, 3);
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn.mock.calls[1]).toEqual([1, 2, 3]);
+  });
+
+  test('Mock函数的调用记录', () => {
+    const fn = mock();
+
+    fn('a');
+    fn('b', 'c');
+    fn('d', 'e', 'f');
+
+    expect(fn).toHaveBeenCalledTimes(3);
+    expect(fn.mock.calls[0]).toEqual(['a']);
+    expect(fn.mock.calls[1]).toEqual(['b', 'c']);
+    expect(fn.mock.calls[2]).toEqual(['d', 'e', 'f']);
+    expect(fn.mock.instances.length).toBe(3);
+    expect(fn.mock.results[0].type).toBe('return');
+    expect(fn.mock.results[0].value).toBeUndefined();
+  });
+
+  test('Mock函数模拟不同返回值', () => {
+    const fn = mock();
+
+    fn.mockReturnValueOnce(1);
+    fn.mockReturnValueOnce(2);
+    fn.mockReturnValue(0);
+
+    expect(fn()).toBe(1);
+    expect(fn()).toBe(2);
+    expect(fn()).toBe(0);
+    expect(fn()).toBe(0);
+  });
+
+  test('spyOn()监视现有方法', () => {
+    const calculator = {
+      add(a: number, b: number): number {
+        return a + b;
+      },
+      multiply(a: number, b: number): number {
+        return a * b;
+      },
+    };
+
+    const spy = spyOn(calculator, 'add');
+    const result = calculator.add(2, 3);
+
+    expect(result).toBe(5);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(2, 3);
+    spy.mockRestore();
+  });
+
+  test('使用Mock测试UserController', async () => {
+    const mockService: UserService = {
+      getUser: mock((id: number) => Promise.resolve({ id, name: `用户${id}` })),
+      createUser: mock((name: string) => Promise.resolve({ id: Date.now(), name })),
+    };
+
+    const controller = new UserController(mockService);
+
+    const name = await controller.getUserName(1);
+    expect(name).toBe('用户1');
+    expect(mockService.getUser).toHaveBeenCalledWith(1);
+
+    const newUser = await controller.registerUser('新用户');
+    expect(newUser.name).toBe('新用户');
+    expect(mockService.createUser).toHaveBeenCalledWith('新用户');
+
+    expect(() => controller.registerUser('')).toThrow('用户名不能为空');
+    expect(() => controller.registerUser('a')).toThrow('用户名至少需要2个字符');
+  });
+});
+```
+
+这个示例展示了Mock测试的多个重要概念。第一，mock()函数的基本用法，包括创建Mock函数、设置自定义实现、验证调用参数和次数。第二，mockReturnValueOnce()和mockReturnValue()方法的使用，这些方法允许为Mock函数设置不同的返回值策略，适用于测试不同输入下的行为。第三，spyOn()函数的使用，它允许监视现有对象的方法调用，同时保持原始实现。第四，使用Mock服务来测试依赖外部服务的控制器类，这是依赖注入模式在测试中的应用。
+
+### api.test.ts详解
+
+api.test.ts展示了使用Bun的内置HTTP服务器和fetch()进行API集成测试的方法。
+
+```typescript
+// api.test.ts
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+
+function createTestServer(port: number) {
+  const todos: Array<{ id: number; title: string; completed: boolean }> = [];
+  let nextId = 1;
+
   return Bun.serve({
     port,
-    fetch(req) {
-      const url = new URL(req.url);
-      if (url.pathname.startsWith("/api/users/")) {
-        return Response.json({ id: 1, name: "Alice", email: "alice@example.com" });
+    async fetch(request: Request): Promise<Response> {
+      const url = new URL(request.url);
+      const method = request.method;
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      };
+
+      if (method === 'GET' && url.pathname === '/api/todos') {
+        return new Response(JSON.stringify(todos), { headers });
       }
-      return new Response("Not Found", { status: 404 });
+
+      if (method === 'GET' && url.pathname.startsWith('/api/todos/')) {
+        const id = parseInt(url.pathname.split('/')[3]);
+        const todo = todos.find(t => t.id === id);
+        if (!todo) {
+          return new Response(JSON.stringify({ error: '未找到' }), {
+            status: 404,
+            headers,
+          });
+        }
+        return new Response(JSON.stringify(todo), { headers });
+      }
+
+      if (method === 'POST' && url.pathname === '/api/todos') {
+        const body = await request.json();
+        if (!body.title || typeof body.title !== 'string') {
+          return new Response(JSON.stringify({ error: '标题为必填项' }), {
+            status: 400,
+            headers,
+          });
+        }
+        const todo = {
+          id: nextId++,
+          title: body.title,
+          completed: false,
+        };
+        todos.push(todo);
+        return new Response(JSON.stringify(todo), {
+          status: 201,
+          headers,
+        });
+      }
+
+      if (method === 'PUT' && url.pathname.startsWith('/api/todos/')) {
+        const id = parseInt(url.pathname.split('/')[3]);
+        const todo = todos.find(t => t.id === id);
+        if (!todo) {
+          return new Response(JSON.stringify({ error: '未找到' }), {
+            status: 404,
+            headers,
+          });
+        }
+        const body = await request.json();
+        if (body.title !== undefined) todo.title = body.title;
+        if (body.completed !== undefined) todo.completed = body.completed;
+        return new Response(JSON.stringify(todo), { headers });
+      }
+
+      if (method === 'DELETE' && url.pathname.startsWith('/api/todos/')) {
+        const id = parseInt(url.pathname.split('/')[3]);
+        const index = todos.findIndex(t => t.id === id);
+        if (index === -1) {
+          return new Response(JSON.stringify({ error: '未找到' }), {
+            status: 404,
+            headers,
+          });
+        }
+        todos.splice(index, 1);
+        return new Response(JSON.stringify({ success: true }), { headers });
+      }
+
+      return new Response(JSON.stringify({ error: '路由不存在' }), {
+        status: 404,
+        headers,
+      });
     },
   });
 }
 
-// 妯℃嫙鏀粯鏈嶅姟
-function startMockPaymentService(port: number) {
-  return Bun.serve({
-    port,
-    fetch(req) {
-      const url = new URL(req.url);
-      if (url.pathname === "/api/payments" && req.method === "POST") {
-        return Response.json({ id: "pay_123", status: "success" }, { status: 201 });
-      }
-      return new Response("Not Found", { status: 404 });
-    },
-  });
-}
-
-describe("Microservice integration test", () => {
-  let userService: any;
-  let paymentService: any;
-  let orderService: any;
+describe('Todo API集成测试', () => {
+  let server: ReturnType<typeof createTestServer>;
+  const BASE_URL = 'http://localhost:3002';
 
   beforeAll(() => {
-    userService = startMockUserService(4001);
-    paymentService = startMockPaymentService(4002);
-    orderService = Bun.serve({
-      port: 4000,
-      async fetch(req) {
-        const url = new URL(req.url);
-        if (url.pathname === "/api/orders" && req.method === "POST") {
-          // 璋冪敤鐢ㄦ埛鏈嶅姟鍜屾敮浠樻湇鍔?
-          const userRes = await fetch("http://localhost:4001/api/users/1");
-          const user = await userRes.json();
-          const paymentRes = await fetch("http://localhost:4002/api/payments", {
-            method: "POST",
-            body: JSON.stringify({ userId: user.id, amount: 100 }),
-          });
-          const payment = await paymentRes.json();
-          return Response.json({
-            id: "order_456",
-            userId: user.id,
-            paymentId: payment.id,
-            status: "created",
-          }, { status: 201 });
-        }
-        return new Response("Not Found", { status: 404 });
-      },
-    });
+    server = createTestServer(3002);
   });
 
   afterAll(() => {
-    userService?.stop();
-    paymentService?.stop();
-    orderService?.stop();
+    server.stop();
   });
 
-  it("should create order with user and payment services", async () => {
-    const res = await fetch("http://localhost:4000/api/orders", {
-      method: "POST",
-      body: JSON.stringify({ productId: 1, quantity: 2 }),
+  test('POST /api/todos - 创建待办事项', async () => {
+    const response = await fetch(`${BASE_URL}/api/todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '学习Bun测试' }),
     });
-    expect(res.status).toBe(201);
-    const order = await res.json();
-    expect(order.status).toBe("created");
-    expect(order.userId).toBe(1);
-    expect(order.paymentId).toBe("pay_123");
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body).toHaveProperty('id');
+    expect(body.title).toBe('学习Bun测试');
+    expect(body.completed).toBe(false);
   });
-});
-```
 
-### 闄勫綍 F 鎬荤粨
-
-Bun test 鍦ㄥ井鏈嶅姟鏋舵瀯娴嬭瘯涓殑浼樺娍涓昏浣撶幇鍦ㄤ互涓嬪嚑涓柟闈細棣栧厛锛孊un.serve 鐨勫揩閫熷惎鍔ㄧ壒鎬т娇寰楀湪娴嬭瘯涓惎鍔ㄥ涓湇鍔″疄渚嬫垚涓哄彲鑳斤紝姣忎釜鏈嶅姟鐨勫惎鍔ㄦ椂闂撮€氬父鍦ㄦ绉掔骇鍒紝鍗充娇鍚屾椂鍚姩澶氫釜鏈嶅姟涔熶笉浼氭樉钁楀鍔犳祴璇曟墽琛屾椂闂淬€傚叾娆★紝Bun 鐨?fetch API 鍘熺敓鏀寔 HTTP 璇锋眰锛屽彲浠ョ洿鎺ュ湪娴嬭瘯涓彂閫佽姹傚埌妯℃嫙鐨勬湇鍔″疄渚嬶紝涓嶉渶瑕侀澶栫殑 HTTP 瀹㈡埛绔簱銆傜涓夛紝Bun test 鐨勫苟琛屾墽琛岃兘鍔涗娇寰楀彲浠ュ悓鏃惰繍琛屽涓井鏈嶅姟鐨勬祴璇曪紝鎻愰珮娴嬭瘯鏁堢巼銆傜鍥涳紝Bun 鐨勮法骞冲彴鏀寔浣垮緱寰湇鍔℃祴璇曞彲浠ュ湪涓嶅悓鐨勬搷浣滅郴缁熶笂杩愯锛岀‘淇濇祴璇曠殑涓€鑷存€с€?
-
-## 闄勫綍 G锛欱un test 鍦ㄥ墠鍚庣鍒嗙椤圭洰涓殑搴旂敤
-
-鍓嶅悗绔垎绂绘槸鐜颁唬 Web 寮€鍙戠殑甯歌鏋舵瀯妯″紡銆傚湪杩欑鏋舵瀯涓紝鍓嶇鍜屽悗绔嫭绔嬪紑鍙戙€佺嫭绔嬮儴缃诧紝閫氳繃 API 杩涜閫氫俊銆侭un test 鍦ㄥ墠鍚庣鍒嗙椤圭洰鐨勬祴璇曚腑鏈夌潃骞挎硾鐨勫簲鐢ㄥ満鏅€?
-
-鍦ㄥ墠绔祴璇曟柟闈紝Bun test 缁撳悎 happy-dom 鍙互娴嬭瘯 React銆乂ue銆丼velte 绛夊墠绔鏋剁殑缁勪欢銆傝櫧鐒?happy-dom 涓嶆彁渚涘畬鏁寸殑娴忚鍣ㄧ幆澧冿紝浣嗗浜庡ぇ澶氭暟缁勪欢閫昏緫娴嬭瘯宸茬粡瓒冲銆傚墠绔殑娴嬭瘯閲嶇偣鍖呮嫭缁勪欢娓叉煋娴嬭瘯銆佺敤鎴蜂氦浜掓祴璇曘€佺姸鎬佺鐞嗘祴璇曘€丄PI 璋冪敤娴嬭瘯鍜岃矾鐢辨祴璇曘€?
-
-鍦ㄥ悗绔祴璇曟柟闈紝Bun test 鍙互鐩存帴娴嬭瘯 API 绔偣鐨勮涓猴紝鍖呮嫭璇锋眰楠岃瘉銆佸搷搴旀牸寮忋€侀敊璇鐞嗗拰璁よ瘉鎺堟潈銆侭un.serve 鐨勭伒娲婚厤缃娇寰楁垜浠彲浠ュ湪娴嬭瘯涓ā鎷熷悇绉嶅悗绔満鏅紝鍖呮嫭涓嶅悓鐨勮矾鐢辫鍒欍€佷腑闂翠欢閫昏緫鍜屾暟鎹鐞嗘祦绋嬨€?
-
-鍓嶅悗绔仈鍚堟祴璇曟槸涓€涓洿鍏锋寫鎴樻€х殑棰嗗煙銆侭un test 鍙互閫氳繃鍚姩涓€涓寘鍚墠鍚庣鐨勫畬鏁村簲鐢ㄥ疄渚嬫潵杩涜鑱斿悎娴嬭瘯銆傚墠绔娇鐢ㄩ潤鎬佹枃浠舵湇鍔″櫒鎻愪緵缂栬瘧鍚庣殑璧勬簮锛屽悗绔娇鐢?Bun.serve 鎻愪緵 API 鏈嶅姟锛屾祴璇曠敤渚嬪悓鏃堕獙璇佸墠绔拰鍚庣鐨勪氦浜掕涓恒€?
-
-鑱斿悎娴嬭瘯鐨勪紭鍔垮湪浜庡彲浠ユ崟鑾峰墠鍚庣浜や簰涓殑闂锛屽 API 濂戠害涓嶄竴鑷淬€佹暟鎹牸寮忎笉鍖归厤鍜岃璇佷护鐗屼紶閫掗敊璇瓑銆傝繖浜涢棶棰樺湪鍗曠嫭鐨勫墠绔祴璇曟垨鍚庣娴嬭瘯涓緢闅捐鍙戠幇銆傝仈鍚堟祴璇曠殑鎸戞垬鍦ㄤ簬娴嬭瘯鐜鐨勬惌寤哄拰缁存姢姣旇緝澶嶆潅锛屾祴璇曟墽琛屾椂闂翠篃姣旇緝闀裤€?
-
-## 闄勫綍 H锛欱un test 鐨勮皟璇曚笌璇婃柇鎶€鏈?
-
-鍦ㄥ紑鍙戣繃绋嬩腑锛岃皟璇曞拰璇婃柇娴嬭瘯闂鏄笉鍙伩鍏嶇殑銆侭un test 鎻愪緵浜嗕竴浜涘伐鍏峰拰鎶€鏈潵甯姪寮€鍙戣€呭畾浣嶅拰瑙ｅ喅闂銆?
-
-娴嬭瘯杈撳嚭鍒嗘瀽鏄瘖鏂祴璇曢棶棰樼殑绗竴姝ャ€侭un test 鐨勬祴璇曟姤鍛婃彁渚涗簡璇︾粏鐨勫け璐ヤ俊鎭紝鍖呮嫭鏈熸湜鍊煎拰瀹為檯鍊肩殑宸紓銆佹祴璇曟墽琛屾椂闂淬€佹柇瑷€璋冪敤鐨勬簮浠ｇ爜浣嶇疆绛夈€傞€氳繃鍒嗘瀽杩欎簺淇℃伅锛屽紑鍙戣€呭彲浠ュ揩閫熷畾浣嶉棶棰樻墍鍦ㄣ€?
-
-浣跨敤 --verbose 鏍囧織鍙互鑾峰彇鏇磋缁嗙殑娴嬭瘯杈撳嚭銆俈erbose 妯″紡涓嬶紝Bun test 浼氭樉绀烘瘡涓祴璇曠敤渚嬬殑鎵ц鏃堕棿銆佸唴瀛樹娇鐢ㄦ儏鍐点€佷互鍙婅缁嗙殑鏂█淇℃伅銆傝繖瀵逛簬鍒嗘瀽鎬ц兘闂鍜屽畾浣嶆參閫熸祴璇曢潪甯告湁甯姪銆?
-
-浣跨敤 --bail 鏍囧織鍙互鍦ㄩ亣鍒扮涓€涓け璐ョ殑娴嬭瘯鏃剁珛鍗冲仠姝㈡墽琛屻€傝繖涓爣蹇楀湪 CI 鐜涓壒鍒湁鐢紝鍥犱负瀹冨彲浠ュ揩閫熷弽棣堥棶棰橈紝鑰屼笉闇€瑕佺瓑寰呮暣涓祴璇曞浠舵墽琛屽畬姣曘€傚湪寮€鍙戣繃绋嬩腑锛?-bail 鏍囧織涔熷彲浠ュ府鍔╁紑鍙戣€呰仛鐒︿簬褰撳墠鐨勯棶棰橈紝閬垮厤琚涓け璐ユ祴璇曠殑淇℃伅娣规病銆?
-
-浣跨敤 --filter 鏍囧織鍙互鍙繍琛屽尮閰嶇壒瀹氭ā寮忕殑娴嬭瘯鏂囦欢鎴栨祴璇曠敤渚嬨€傝繖涓爣蹇楀湪璋冭瘯鐗瑰畾妯″潡鐨勬祴璇曟椂闈炲父鏈夌敤锛屽彲浠ラ伩鍏嶈繍琛屾棤鍏崇殑娴嬭瘯銆侳ilter 妯″紡鏀寔閫氶厤绗﹀拰姝ｅ垯琛ㄨ揪寮忥紝鎻愪緵浜嗙伒娲荤殑杩囨护鑳藉姏銆?
-
-娴嬭瘯鎬ц兘鍒嗘瀽鏄紭鍖栧ぇ鍨嬫祴璇曞浠剁殑鍏抽敭姝ラ銆侭un test 鎻愪緵浜?--timeout 鏍囧織鏉ヨ缃祴璇曠殑瓒呮椂鏃堕棿锛屽鏋滄祴璇曟墽琛屾椂闂磋秴杩囪秴鏃舵椂闂达紝娴嬭瘯浼氳鏍囪涓哄け璐ャ€傞€氳繃鍒嗘瀽瓒呮椂娴嬭瘯鐨勫垎甯冿紝寮€鍙戣€呭彲浠ユ壘鍑烘€ц兘鐡堕銆?
-
-鍐呭瓨娉勬紡妫€娴嬫槸淇濊瘉娴嬭瘯绋冲畾鎬х殑閲嶈鎵嬫銆侭un 鐨?JavaScriptCore 寮曟搸鎻愪緵浜嗗唴瀛樺垎鏋愬伐鍏凤紝鍙互甯姪寮€鍙戣€呮娴嬫祴璇曚腑鐨勫唴瀛樻硠婕忋€傚父瑙佺殑鍐呭瓨娉勬紡鏉ユ簮鍖呮嫭鏈竻鐞嗙殑 Mock 鍑芥暟銆佹湭鍏抽棴鐨勮祫婧愬彞鏌勩€佹湭绉婚櫎鐨勪簨浠剁洃鍚櫒鍜屾湭閲婃斁鐨勫畾鏃跺櫒銆?
-
-## 闄勫綍 I锛欱un test 鐨勫浗闄呭寲涓庢湰鍦板寲娴嬭瘯
-
-瀵逛簬闈㈠悜鍏ㄧ悆鐢ㄦ埛鐨勫簲鐢紝鍥介檯鍖栵紙i18n锛夊拰鏈湴鍖栵紙l10n锛夋祴璇曟槸纭繚搴旂敤鍦ㄤ笉鍚岃瑷€鐜涓嬫纭繍琛岀殑鍏抽敭銆侭un test 鍙互鐢ㄤ簬缂栧啓鑷姩鍖栫殑鍥介檯鍖栨祴璇曘€?
-
-鍥介檯鍖栨祴璇曠殑鏍稿績鍐呭鍖呮嫭锛氭枃鏈炕璇戠殑姝ｇ‘鎬ф祴璇曪紝楠岃瘉鎵€鏈夌敤鎴峰彲瑙佺殑鏂囨湰鏄惁閮芥纭炕璇戜负鐩爣璇█锛涙棩鏈熷拰鏃堕棿鏍煎紡娴嬭瘯锛岄獙璇佹棩鏈熷拰鏃堕棿鐨勬樉绀烘牸寮忔槸鍚︾鍚堢洰鏍囧湴鍖虹殑涔犳儻锛涙暟瀛楀拰璐у竵鏍煎紡娴嬭瘯锛岄獙璇佹暟瀛楀拰璐у竵鐨勬樉绀烘牸寮忔槸鍚︾鍚堢洰鏍囧湴鍖虹殑涔犳儻锛涙帓搴忓拰鎼滅储娴嬭瘯锛岄獙璇佸簲鐢ㄧ殑鎺掑簭鍜屾悳绱㈠姛鑳藉湪鐩爣璇█涓嬫槸鍚︽甯稿伐浣滐紱甯冨眬鍜屾柟鍚戞祴璇曪紝楠岃瘉浠庡彸鍒板乏锛圧TL锛夎瑷€鐨勫竷灞€鏄惁姝ｇ‘銆?
-
-Bun test 鐨勫揩閫熷弽棣堝惊鐜娇寰楀浗闄呭寲娴嬭瘯鍙互棰戠箒杩愯锛岀‘淇濇瘡娆′唬鐮佸彉鏇翠笉浼氱牬鍧忓浗闄呭寲鐨勫姛鑳姐€傚湪 CI 鐜涓紝鍙互閰嶇疆澶氫釜璇█鐜鐨勬祴璇曪紝姣忎釜璇█鐜杩愯鐙珛鐨勬祴璇曞浠躲€?
-
-```typescript
-import { describe, it, expect } from "bun:test";
-
-describe("Internationalization", () => {
-  it("should format date correctly for zh-CN", () => {
-    const date = new Date("2024-06-15T10:30:00");
-    const formatter = new Intl.DateTimeFormat("zh-CN", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+  test('GET /api/todos - 获取所有待办事项', async () => {
+    await fetch(`${BASE_URL}/api/todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '任务1' }),
     });
-    expect(formatter.format(date)).toBe("2024骞?鏈?5鏃?);
-  });
-
-  it("should format currency correctly for en-US", () => {
-    const formatter = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
+    await fetch(`${BASE_URL}/api/todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '任务2' }),
     });
-    expect(formatter.format(1234.56)).toBe("$1,234.56");
+
+    const response = await fetch(`${BASE_URL}/api/todos`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('GET /api/todos/:id - 获取特定待办事项', async () => {
+    const response = await fetch(`${BASE_URL}/api/todos/1`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.id).toBe(1);
+    expect(body).toHaveProperty('title');
+    expect(body).toHaveProperty('completed');
+  });
+
+  test('PUT /api/todos/:id - 更新待办事项', async () => {
+    const response = await fetch(`${BASE_URL}/api/todos/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: true }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.completed).toBe(true);
+  });
+
+  test('DELETE /api/todos/:id - 删除待办事项', async () => {
+    const response = await fetch(`${BASE_URL}/api/todos/1`, {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+  });
+
+  test('访问不存在的资源应返回404', async () => {
+    const response = await fetch(`${BASE_URL}/api/todos/999`);
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body).toHaveProperty('error');
+  });
+
+  test('创建待办事项时缺少标题应返回400', async () => {
+    const response = await fetch(`${BASE_URL}/api/todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe('标题为必填项');
+  });
+
+  test('访问不存在的路由应返回404', async () => {
+    const response = await fetch(`${BASE_URL}/api/nonexistent`);
+    expect(response.status).toBe(404);
   });
 });
 ```
 
-## 闄勫綍 J锛欱un test 鐨勫畨鍏ㄦ€ф祴璇?
+这个API集成测试示例展示了几个重要的测试模式。第一，服务器的生命周期管理。使用beforeAll和afterAll钩子来创建和销毁测试服务器，确保测试环境的隔离。服务器在第一个测试之前启动，在所有测试完成之后关闭。
 
-瀹夊叏鎬ф祴璇曟槸杞欢寮€鍙戠敓鍛藉懆鏈熶腑涓嶅彲鎴栫己鐨勪竴鐜€侭un test 鍙互鐢ㄤ簬缂栧啓鑷姩鍖栫殑瀹夊叏鎬ф祴璇曪紝甯姪鍥㈤槦鍦ㄥ紑鍙戞棭鏈熷彂鐜板畨鍏ㄦ紡娲炪€?
+第二，完整的CRUD测试。测试覆盖了创建、读取、更新和删除四种基本操作，每种操作都验证了HTTP状态码和响应体结构。这种全面的测试确保了API的每个端点都按预期工作。在实际项目中，CRUD测试应该覆盖所有暴露的API端点，包括正常流程和异常流程。对于每个端点，至少应该测试成功的请求和典型的失败请求。例如，对于创建资源的POST端点，需要测试正确的请求体、缺少必填字段的请求体、数据类型错误的请求体等情况。对于获取资源的GET端点，需要测试存在的资源、不存在的资源、无效的ID格式等情况。这种全面的测试策略可以确保API在面对各种输入时的行为都是可预期的。
 
-甯歌鐨勫畨鍏ㄦ€ф祴璇曞満鏅寘鎷細杈撳叆楠岃瘉娴嬭瘯锛岄獙璇佸簲鐢ㄦ槸鍚︽纭鐞嗕簡鎭舵剰杈撳叆锛屽寘鎷?SQL 娉ㄥ叆銆乆SS 鏀诲嚮銆佸懡浠ゆ敞鍏ョ瓑銆傝璇佹祴璇曪紝楠岃瘉璁よ瘉鏈哄埗鏄惁姝ｇ‘锛屽寘鎷瘑鐮佺瓥鐣ャ€佷細璇濈鐞嗐€佷护鐗岄獙璇佺瓑銆傛巿鏉冩祴璇曪紝楠岃瘉鏉冮檺鎺у埗鏄惁姝ｇ‘锛屽寘鎷秺鏉冭闂€佹潈闄愭彁鍗囩瓑銆傛晱鎰熶俊鎭硠闇叉祴璇曪紝楠岃瘉搴旂敤鍦ㄩ敊璇搷搴斾腑涓嶄細娉勯湶鏁忔劅淇℃伅锛屽寘鎷爢鏍堣窡韪€佹暟鎹簱杩炴帴淇℃伅銆丄PI 瀵嗛挜绛夈€傞€熺巼闄愬埗娴嬭瘯锛岄獙璇佸簲鐢ㄦ槸鍚﹀鏆村姏鏀诲嚮鏈夐槻鎶ゆ帾鏂斤紝鍖呮嫭鐧诲綍灏濊瘯娆℃暟闄愬埗銆丄PI 璋冪敤棰戠巼闄愬埗绛夈€?
+第三，错误路径测试。测试不仅验证了正常流程，还验证了各种错误情况，包括访问不存在的资源（404）、请求数据验证失败（400）、访问不存在的路由（404）等。全面的错误路径测试是构建健壮API的关键。
 
-浠ヤ笅鏄竴涓畨鍏ㄦ€ф祴璇曠殑绀轰緥锛?
+第四，状态共享的注意事项。在这个示例中，多个测试共享同一个服务器实例，这意味着测试之间的执行顺序会影响结果。例如，GET测试依赖于之前POST测试创建的数据。这种设计虽然简化了测试设置，但也引入了测试间的依赖。在实际项目中，建议在每个测试或每个describe块中重置测试数据，以保持测试的独立性。
 
-```typescript
-import { describe, it, expect } from "bun:test";
+## 总结
 
-describe("Security testing", () => {
-  it("should sanitize user input to prevent XSS", () => {
-    const maliciousInput = "<script>alert("xss")</script>";
-    const sanitized = sanitizeInput(maliciousInput);
-    expect(sanitized).not.toContain("<script>");
-    expect(sanitized).not.toContain("alert");
-  });
+本章全面介绍了Bun的测试运行器bun test及其Mock机制。从使用场景来看，bun test能够满足从单元测试到API集成测试、从快照测试到DOM测试、从传统测试到基准测试的各类需求，其与Jest的高度兼容性使得迁移成本降到最低。从性能角度来看，bun test凭借其基于Zig/C++的原生实现和原生多线程架构，在启动速度、执行速度和内存使用方面都显著优于Jest和Vitest。
 
-  it("should not expose stack traces in error responses", async () => {
-    const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+从实现原理来看，bun:test模块的架构体现了Bun团队对性能和兼容性的精心权衡。其Worker线程池模型实现了高效的并行执行，Jest兼容层确保了API的平滑迁移，Mock函数拦截机制提供了灵活而强大的测试替身能力，快照比较算法实现了可靠的回归测试。这些底层机制的深入理解有助于开发者更有效地使用bun test，并能够更好地诊断和解决遇到的问题。
 
-    const res = await fetch("http://localhost:3456/api/error");
-    const body = await res.text();
-    expect(body).not.toContain("Error:");
-    expect(body).not.toContain("at ");
+从实践角度来看，bun test虽然已经覆盖了Jest的大部分功能，但仍然存在一些API缺口和差异，特别是在定时器模拟、内联快照、自定义测试环境等方面。了解这些限制并掌握相应的替代方案，是成功从Jest迁移的关键。同时，对于大型测试套件，合理的性能优化策略可以充分发挥bun test的性能优势。
 
-    process.env.NODE_ENV = originalEnv;
-  });
-});
-```
+最后，掌握测试金字塔理论、Mock/Stub/Spy的区别、TDD方法论和代码覆盖率指标等测试基础知识，能够帮助开发者编写更高质量、更有价值的测试代码，从而充分发挥bun test的功能，构建可靠、可维护的软件系统。
 
-瀹夊叏鎬ф祴璇曠殑鏈€浣冲疄璺靛寘鎷細灏嗗畨鍏ㄦ€ф祴璇曠撼鍏?CI/CD 娴佹按绾匡紝纭繚姣忔浠ｇ爜鍙樻洿閮戒細杩愯瀹夊叏鎬ф祴璇曪紱涓哄畨鍏ㄦ€ф祴璇曞缓绔嬬嫭绔嬬殑娴嬭瘯濂椾欢锛屼笌鍔熻兘娴嬭瘯鍒嗗紑杩愯锛涘畾鏈熸洿鏂板畨鍏ㄦ€ф祴璇曠敤渚嬶紝浠ュ簲瀵规柊鐨勫畨鍏ㄥ▉鑳侊紱鍦ㄤ唬鐮佸鏌ヤ腑鍖呭惈瀹夊叏鎬ф祴璇曠殑瀹℃煡銆?
+展望未来，bun test作为Bun生态系统的重要组成部分，正在持续快速发展。Bun团队定期发布新版本，不断扩展测试运行器的功能和性能。从社区的反馈和Bun的公开路线图来看，未来的bun test有望在以下几个方面取得突破。第一，模块模拟机制的完善。目前bun test的mock.module()功能已经能够满足大多数模块模拟需求，但相比Jest的jest.mock()仍然存在一些功能缺口。Bun团队计划在未来版本中增强mock.module()的功能，使其支持自动模块模拟、部分模块模拟等高级特性。第二，定时器模拟的原生支持。定时器模拟是测试中经常需要的功能，目前需要借助第三方库来实现。Bun团队已经将内置定时器模拟功能列入开发计划，未来可以直接使用mock.timer()或类似的API来控制时间流逝。第三，自定义测试环境的支持。目前bun test对自定义测试环境的支持有限，这限制了它在一些特殊场景下的应用。Bun团队计划引入自定义测试环境接口，允许开发者创建自己的测试环境，如自定义DOM环境、Web Worker环境等。第四，与前端框架的深度集成。随着Bun在前端开发领域的普及，bun test与React、Vue、Svelte等前端框架的集成将成为重要的发展方向。Bun团队正在探索与前端测试工具（如Testing Library、Enzyme等）的兼容性方案，使前端开发者能够在Bun中获得与Jest相同的测试体验。第五，性能的持续优化。虽然bun test的性能已经远超Jest，但Bun团队仍在持续优化其性能。未来的优化方向包括更快的模块解析、更高效的并行执行、更低的内存占用等。随着Bun版本号的增长和社区的扩大，bun test的功能和性能都将不断提升，成为JavaScript测试领域的重要力量。
 
-## 闄勫綍 K锛欱un test 鐨勬枃妗ｇ敓鎴愪笌 API 鏂囨。娴嬭瘯
-
-API 鏂囨。鏄墠鍚庣鍗忎綔鐨勯噸瑕佸熀纭€銆侭un test 鍙互鐢ㄤ簬楠岃瘉 API 鏂囨。鐨勫噯纭€э紝纭繚鏂囨。涓庡疄闄呭疄鐜颁繚鎸佷竴鑷淬€?
-
-API 鏂囨。娴嬭瘯鐨勬牳蹇冩€濊矾鏄細浠?API 鏂囨。涓彁鍙栨帴鍙ｅ畾涔夛紝鍖呮嫭璺緞銆佹柟娉曘€佸弬鏁般€佽姹備綋鍜屽搷搴旀牸寮忥紱灏嗘帴鍙ｅ畾涔夎浆鎹负娴嬭瘯鐢ㄤ緥锛岄獙璇佸疄闄?API 鐨勮涓烘槸鍚︿笌鏂囨。涓€鑷达紱褰?API 瀹炵幇鍙戠敓鍙樺寲鏃讹紝娴嬭瘯浼氬け璐ワ紝鎻愮ず寮€鍙戣€呭悓姝ユ洿鏂版枃妗ｃ€?
-
-杩欑娴嬭瘯妯″紡琚О涓烘枃妗ｅ嵆娴嬭瘯锛圖ocumentation as Test锛夛紝瀹冪‘淇濅簡 API 鏂囨。鐨勫噯纭€у拰瀹炴椂鎬с€傚湪 Bun test 涓疄鐜版枃妗ｆ祴璇曢潪甯歌嚜鐒讹紝鍥犱负 Bun.serve 鍜?fetch API 浣垮緱娴嬭瘯 API 绔偣鍙樺緱闈炲父绠€鍗曘€?
-
-浠ヤ笅鏄竴涓畝鍗曠殑 API 鏂囨。娴嬭瘯绀轰緥锛?
-
-```typescript
-import { describe, it, expect } from "bun:test";
-
-// API 鏂囨。瀹氫箟
-const apiDoc = {
-  "/api/users": {
-    GET: {
-      description: "鑾峰彇鐢ㄦ埛鍒楄〃",
-      responses: {
-        "200": { description: "鎴愬姛", type: "array" },
-      },
-    },
-    POST: {
-      description: "鍒涘缓鐢ㄦ埛",
-      requestBody: { name: "string", email: "string" },
-      responses: {
-        "201": { description: "鍒涘缓鎴愬姛" },
-      },
-    },
-  },
-};
-
-describe("API documentation validation", () => {
-  it("GET /api/users should return 200 as documented", async () => {
-    const res = await fetch("http://localhost:3456/api/users");
-    expect(res.status).toBe(200);
-    // 楠岃瘉鏂囨。涓０鏄庣殑鍝嶅簲绫诲瀷
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-  });
-});
-```
-
-API 鏂囨。娴嬭瘯鐨勬墿灞曞簲鐢ㄥ寘鎷細鐢熸垚 API 娴嬭瘯鎶ュ憡锛屾眹鎬绘墍鏈?API 绔偣鐨勬祴璇曠粨鏋滐紱鐩戞帶 API 鍙樻洿锛岄€氳繃娴嬭瘯缁撴灉鐨勮秼鍔垮垎鏋愭潵鐩戞帶 API 鐨勭ǔ瀹氭€э紱闆嗘垚鍒?API 缃戝叧娴嬭瘯锛岄獙璇佺綉鍏冲眰闈㈢殑 API 濂戠害銆?
-
-## 闄勫綍 L锛欱un test 鐨?CI/CD 鏈€浣冲疄璺?
-
-鎸佺画闆嗘垚鍜屾寔缁儴缃叉槸鐜颁唬杞欢寮€鍙戠殑鏍稿績瀹炶返銆侭un test 鍑€熷叾蹇€熺殑鎵ц閫熷害鍜岄浂閰嶇疆鐨勭壒鎬э紝鍦?CI/CD 娴佹按绾夸腑鍏锋湁鏄捐憲鐨勪紭鍔裤€備互涓嬫槸涓€浜?Bun test 鍦?CI/CD 鐜涓殑鏈€浣冲疄璺点€?
-
-棣栧厛锛屽湪 CI 鐜涓畨瑁?Bun 鏃讹紝搴旇鎸囧畾鍥哄畾鐨?Bun 鐗堟湰鑰屼笉鏄娇鐢?latest 鏍囩銆傝繖鏍峰彲浠ラ伩鍏嶅洜涓?Bun 鐗堟湰鍗囩骇瀵艰嚧鐨勬祴璇曡涓哄彉鍖栥€傜増鏈攣瀹氱瓥鐣ュ彲浠ュ噺灏?CI 鐜涓殑涓嶇‘瀹氭€э紝纭繚娴嬭瘯缁撴灉鐨勫彲閲嶅鎬с€?
-
-鍏舵锛屽悎鐞嗛厤缃?CI 鐜涓殑娴嬭瘯骞惰搴︺€侰I 鐜鐨勮祫婧愰€氬父姣旀湰鍦板紑鍙戠幆澧冩洿鏈夐檺锛岃繃楂樼殑骞惰搴﹀彲鑳藉鑷磋祫婧愮珵浜夛紝鍙嶈€岄檷浣庢祴璇曟墽琛岄€熷害銆傚缓璁牴鎹?CI 鐜鐨?CPU 鏍稿績鏁板拰鍐呭瓨澶у皬鏉ヨ皟鏁村苟琛屽害銆備竴鑸潵璇达紝灏嗗苟琛屽害璁剧疆涓哄彲鐢ㄦ牳蹇冩暟鐨勪竴鍗婃槸涓€涓瘮杈冧繚瀹堢殑閫夋嫨銆?
-
-绗笁锛屼娇鐢ㄦ祴璇曞垎鐗囷紙Test Sharding锛夋潵鍔犻€熷ぇ鍨嬫祴璇曞浠剁殑鎵ц銆傛祴璇曞垎鐗囧皢娴嬭瘯鏂囦欢鍒嗘垚澶氫釜缁勶紝鍦ㄤ笉鍚岀殑 CI 浣滀笟涓苟琛屾墽琛屻€侭un test 鏀寔閫氳繃 --shard 鏍囧織瀹炵幇娴嬭瘯鍒嗙墖銆傚湪 GitHub Actions 涓紝鍙互浣跨敤鐭╅樀绛栫暐鏉ラ厤缃涓綔涓氾紝姣忎釜浣滀笟杩愯涓€涓祴璇曞垎鐗囥€?
-
-绗洓锛屽悎鐞嗛厤缃祴璇曡秴鏃舵椂闂淬€侰I 鐜鐨勬墽琛岄€熷害閫氬父姣旀湰鍦扮幆澧冩參锛屽洜姝ら渶瑕佽缃洿闀跨殑瓒呮椂鏃堕棿銆傜壒鍒槸瀵逛簬闆嗘垚娴嬭瘯鍜屾暟鎹簱娴嬭瘯锛屽缓璁秴鏃舵椂闂磋嚦灏戜负鏈湴鐨勪袱鍊嶃€傚悓鏃讹紝瀵逛簬闀挎椂闂磋繍琛岀殑娴嬭瘯锛岃€冭檻灏嗗叾鎷嗗垎涓烘洿灏忕殑娴嬭瘯鍗曞厓銆?
-
-绗簲锛屼娇鐢ㄨ鐩栫巼闃堝€间綔涓鸿川閲忛棬绂併€侭un test 鏀寔璁剧疆瑕嗙洊鐜囬槇鍊硷紝濡傛灉娴嬭瘯瑕嗙洊鐜囦綆浜庨槇鍊硷紝CI 鏋勫缓浼氬け璐ャ€傝繖鏍峰彲浠ョ‘淇濅唬鐮佽川閲忕淮鎸佸湪棰勬湡鐨勬按骞炽€傚缓璁湪椤圭洰鍒濇湡璁剧疆涓€涓緝浣庣殑闃堝€硷紝鐒跺悗閫愭鎻愰珮銆?
-
-绗叚锛岀紦瀛樹緷璧栦互鍔犻€?CI 鎵ц銆侭un 鐨勪緷璧栫紦瀛樻満鍒朵笌 npm 鍜?yarn 涓嶅悓锛岄渶瑕佸崟鐙厤缃€傚湪 GitHub Actions 涓紝鍙互浣跨敤 actions/cache 鍔ㄤ綔鏉ョ紦瀛?node_modules 鐩綍鍜?Bun 鐨勭紦瀛樼洰褰曘€傜紦瀛樼瓥鐣ュ彲浠ユ樉钁楀噺灏?CI 鐨勫畨瑁呮椂闂达紝鐗瑰埆鏄浜庝緷璧栬緝澶氱殑澶у瀷椤圭洰銆?
-
-绗竷锛屽尯鍒嗕笉鍚岀殑娴嬭瘯绫诲瀷锛屽湪 CI 鐨勪笉鍚岄樁娈佃繍琛屻€傚崟鍏冩祴璇曞簲璇ヤ綔涓烘彁浜ゆ鏌ョ殑涓€閮ㄥ垎锛屽湪姣忔鎻愪氦鏃惰繍琛屻€傞泦鎴愭祴璇曞彲浠ヤ綔涓?PR 妫€鏌ョ殑涓€閮ㄥ垎锛屽湪鍒涘缓 PR 鏃惰繍琛屻€傜鍒扮娴嬭瘯鍙互浣滀负閮ㄧ讲妫€鏌ョ殑涓€閮ㄥ垎锛屽湪閮ㄧ讲鍓嶈繍琛屻€傝繖绉嶅垎灞傛祴璇曠瓥鐣ュ彲浠ュ湪淇濊瘉璐ㄩ噺鐨勫悓鏃跺噺灏戞祴璇曠瓑寰呮椂闂淬€?
-
-绗叓锛屼娇鐢?--bail 鏍囧織鍦ㄧ涓€涓け璐ョ殑娴嬭瘯鏃跺仠姝㈡墽琛屻€傝繖鍙互蹇€熷弽棣堥棶棰橈紝鍑忓皯 CI 璧勬簮鐨勬氮璐广€傚湪寮€鍙戝垎鏀笂锛屼娇鐢?--bail 鍙互鍔犻€熻凯浠ｉ€熷害锛涘湪鍙戝竷鍒嗘敮涓婏紝鍙互绂佺敤 --bail 浠ヨ幏鍙栧畬鏁寸殑娴嬭瘯鎶ュ憡銆?
-
-绗節锛岀敓鎴愬苟淇濆瓨娴嬭瘯鎶ュ憡鍜岃鐩栫巼鎶ュ憡銆侭un test 鏀寔鐢熸垚澶氱鏍煎紡鐨勬祴璇曟姤鍛婏紝鍖呮嫭 JUnit XML 鏍煎紡鍜?LCOV 鏍煎紡銆傝繖浜涙姤鍛婂彲浠ヤ笌 CI 骞冲彴闆嗘垚锛屾彁渚涘彲瑙嗗寲鐨勬祴璇曠粨鏋滃拰瑕嗙洊鐜囪秼鍔裤€傚湪 GitHub Actions 涓紝鍙互浣跨敤 dorny/test-reporter 鍔ㄤ綔鏉ョ敓鎴愭祴璇曟姤鍛娿€?
-
-绗崄锛屽湪 CI 涓娇鐢?--reporter 鏍囧織鏉ラ€夋嫨鍚堥€傜殑鎶ュ憡鏍煎紡銆傚浜?CI 鐜锛屽缓璁娇鐢?JUnit 鏍煎紡鐨勬姤鍛婏紝鍥犱负澶у鏁?CI 骞冲彴閮芥敮鎸佽В鏋?JUnit 鏍煎紡鐨勬祴璇曠粨鏋溿€傚浜庢湰鍦板紑鍙戠幆澧冿紝寤鸿浣跨敤榛樿鐨勬帶鍒跺彴鏍煎紡锛屽洜涓哄畠鎻愪緵浜嗘洿濂界殑鍙鎬с€?
-
-浠ヤ笅鏄竴涓紭鍖栫殑 GitHub Actions 閰嶇疆绀轰緥锛?
-
-```yaml
-name: Bun Test Suite
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        shard: [1, 2, 3, 4]
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: 1.2.0
-      - name: Cache dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ hashFiles("bun.lockb") }}
-      - run: bun install --frozen-lockfile
-      - name: Run tests
-        run: bun test --coverage --shard=${{ matrix.shard }}/4 --timeout 30000
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage/lcov.info
-          flags: shard${{ matrix.shard }}
-```
-
-## 闄勫綍 M锛欱un test 鐨勬€ц兘璋冧紭瀹屾暣鎸囧崡
-
-鎬ц兘璋冧紭鏄ぇ鍨嬫祴璇曞浠剁鐞嗕腑鐨勫叧閿妧鑳姐€傝櫧鐒?Bun test 鏈韩宸茬粡闈炲父蹇€燂紝浣嗗悎鐞嗙殑閰嶇疆鍜屼紭鍖栧彲浠ヨ繘涓€姝ュ彂鎸ュ叾鎬ц兘娼滃姏銆備互涓嬫槸涓€浠藉畬鏁寸殑 Bun test 鎬ц兘璋冧紭鎸囧崡銆?
-
-鎬ц兘璋冧紭鐨勭涓€姝ユ槸鎬ц兘鍩哄噯娴嬭瘯銆傚湪寮€濮嬩紭鍖栦箣鍓嶏紝闇€瑕佷簡瑙ｅ綋鍓嶆祴璇曞浠剁殑鎬ц兘鍩虹嚎銆侭un test 鐨?--verbose 鏍囧織鍙互鎻愪緵姣忎釜娴嬭瘯鏂囦欢鐨勬墽琛屾椂闂村拰鍐呭瓨浣跨敤鎯呭喌銆傞€氳繃鍒嗘瀽杩欎簺鏁版嵁锛屽彲浠ユ壘鍑烘€ц兘鐡堕鎵€鍦ㄣ€?
-
-甯歌鐨勬€ц兘鐡堕鍖呮嫭锛氬崟涓祴璇曟枃浠跺寘鍚繃澶氱殑娴嬭瘯鐢ㄤ緥锛屽鑷存祴璇曟枃浠舵墽琛屾椂闂磋繃闀裤€傚缓璁皢澶у瀷娴嬭瘯鏂囦欢鎷嗗垎涓哄涓皬鏂囦欢锛屾瘡涓枃浠跺寘鍚?10 鍒?20 涓祴璇曠敤渚嬨€傛祴璇曟枃浠剁殑鍒濆鍖栧紑閿€杩囧ぇ锛屽 beforeAll 涓墽琛屼簡鑰楁椂鐨勬暟鎹簱杩佺Щ鎿嶄綔銆傚缓璁皢鑰楁椂鐨勫垵濮嬪寲鎿嶄綔绉诲埌娴嬭瘯鏂囦欢澶栭儴锛屽湪澶氫釜娴嬭瘯鏂囦欢涔嬮棿鍏变韩銆侻ock 鍑芥暟鐨勫垱寤哄拰閿€姣佽繃浜庨绻侊紝瀵艰嚧澶ч噺鐨勫璞″垎閰嶅拰鍨冨溇鍥炴敹銆傚缓璁鐢?Mock 瀵硅薄锛屼娇鐢?beforeAll 鍒涘缓 Mock 瀵硅薄锛屽湪娴嬭瘯涔嬮棿浣跨敤 mockReset 閲嶇疆鐘舵€併€傛祴璇曟暟鎹殑鍒涘缓鍜屾竻鐞嗚繃浜庨绻侊紝瀵艰嚧娴嬭瘯鎵ц鏃堕棿澧炲姞銆傚缓璁娇鐢ㄥ伐鍘傚嚱鏁版壒閲忓垱寤烘祴璇曟暟鎹紝鍑忓皯閲嶅鐨勫垱寤洪€昏緫銆?
-
-鎬ц兘璋冧紭鐨勭浜屾鏄祴璇曟枃浠剁殑鍚堢悊缁勭粐銆傛祴璇曟枃浠剁殑缁勭粐鏂瑰紡瀵瑰苟琛屾墽琛屾晥鐜囨湁鏄捐憲褰卞搷銆傚缓璁皢涓嶇浉鍏崇殑娴嬭瘯鏀惧湪涓嶅悓鐨勬枃浠朵腑锛屼互渚?Bun 鑳藉鏇存湁鏁堝湴骞惰鎵ц銆傜浉鍏崇殑娴嬭瘯鏀惧湪鍚屼竴涓枃浠朵腑锛屽埄鐢?describe 鍧楄繘琛岀粍缁囥€傛祴璇曟枃浠剁殑澶у皬淇濇寔閫備腑锛屾瘡涓枃浠跺寘鍚?10 鍒?20 涓祴璇曠敤渚嬨€傞伩鍏嶅湪鍚屼竴涓枃浠朵腑娣峰悎鍗曞厓娴嬭瘯鍜岄泦鎴愭祴璇曪紝鍥犱负瀹冧滑鐨勬墽琛岄€熷害宸紓寰堝ぇ銆?
-
-鎬ц兘璋冧紭鐨勭涓夋鏄祴璇曚唬鐮佺殑浼樺寲銆傛祴璇曚唬鐮佹湰韬殑鎬ц兘瀵规暣浣撴祴璇曟墽琛屾椂闂翠篃鏈夊奖鍝嶃€備紭鍖栨祴璇曚唬鐮佺殑寤鸿鍖呮嫭锛氬噺灏戜笉蹇呰鐨?Mock 鍒涘缓锛屽彧鍦ㄩ渶瑕佹椂鍒涘缓 Mock 瀵硅薄锛涢伩鍏嶅湪娴嬭瘯涓娇鐢ㄨ繃澶氱殑 console.log 杈撳嚭锛屽洜涓?I/O 鎿嶄綔鏄€ц兘鐡堕涔嬩竴锛涘悎鐞嗕娇鐢?beforeEach 鍜?beforeAll锛屽皢閫氱敤鐨勫垵濮嬪寲鎿嶄綔鎻愬崌鍒版洿楂樼骇鍒殑閽╁瓙涓紱閬垮厤鍦ㄦ祴璇曚腑杩涜鑰楁椂鐨勫悓姝ユ搷浣滐紝濡傛枃浠惰鍐欏拰缃戠粶璇锋眰锛涗娇鐢ㄦ洿绮剧‘鐨勫尮閰嶅櫒锛屽噺灏戞柇瑷€鐨勫紑閿€銆?
-
-鎬ц兘璋冧紭鐨勭鍥涙鏄?CI 鐜鐨勪紭鍖栥€侰I 鐜鐨勬€ц兘浼樺寲涓庢湰鍦扮幆澧冩湁鎵€涓嶅悓銆傚湪 CI 涓紝寤鸿浣跨敤鏇村皯鐨勫伐浣滅嚎绋嬩互鍑忓皯璧勬簮绔炰簤锛岃缃洿闀跨殑瓒呮椂鏃堕棿浠ュ簲瀵?CI 鐜鐨勬€ц兘娉㈠姩锛屼娇鐢ㄦ祴璇曠紦瀛樻潵鍔犻€熼噸澶嶈繍琛岋紝浠ュ強浣跨敤瑕嗙洊鐜囧閲忔娴嬫潵鍑忓皯瑕嗙洊鐜囨敹闆嗙殑寮€閿€銆?
-
-鎬ц兘璋冧紭鐨勭浜旀鏄洃鎺у拰鎸佺画浼樺寲銆傛祴璇曟€ц兘浼樺寲涓嶆槸涓€娆℃€х殑宸ヤ綔锛岃€屾槸闇€瑕佹寔缁洃鎺у拰鏀硅繘鐨勮繃绋嬨€傚缓璁湪 CI 涓褰曟祴璇曟墽琛屾椂闂寸殑鍘嗗彶鏁版嵁锛岃缃€ц兘閫€鍖栧憡璀︼紝瀹氭湡瀹℃煡娴嬭瘯鎬ц兘鎶ュ憡锛屼互鍙婂皢鎬ц兘浼樺寲绾冲叆鍥㈤槦鐨勫伐绋嬪疄璺点€?
-
-## 闄勫綍 N锛欱un test 鐨勫父瑙佽璁℃ā寮?
-
-鍦ㄥぇ鍨嬫祴璇曞浠朵腑锛屼娇鐢ㄦ垚鐔熺殑璁捐妯″紡鍙互鎻愰珮娴嬭瘯鐨勫彲缁存姢鎬у拰鍙鎬с€備互涓嬫槸涓€浜涘湪 Bun test 涓父鐢ㄧ殑娴嬭瘯璁捐妯″紡銆?
-
-Arrange-Act-Assert 妯″紡鏄渶鍩烘湰鐨勬祴璇曡璁℃ā寮忋€傚畠灏嗘瘡涓祴璇曠敤渚嬪垎涓轰笁涓儴鍒嗭細鍑嗗娴嬭瘯鏁版嵁锛圓rrange锛夛紝鎵ц琚祴璇曚唬鐮侊紙Act锛夛紝楠岃瘉娴嬭瘯缁撴灉锛圓ssert锛夈€傝繖绉嶆ā寮忎娇娴嬭瘯浠ｇ爜鐨勭粨鏋勬竻鏅帮紝鏄撲簬鐞嗚В鍜岀淮鎶ゃ€傚湪 Bun test 涓紝姣忎釜 it 鍧楅兘搴旇閬靛惊 AAA 妯″紡銆?
-
-Given-When-Then 妯″紡鏄?AAA 妯″紡鐨勫彉浣擄紝瀹冨湪琛屼负椹卞姩寮€鍙戯紙BDD锛変腑骞挎硾浣跨敤銆侴iven 閮ㄥ垎璁剧疆娴嬭瘯鐨勪笂涓嬫枃鍜屽墠鎻愭潯浠讹紝When 閮ㄥ垎鎵ц琚祴璇曠殑鎿嶄綔锛孴hen 閮ㄥ垎楠岃瘉鎿嶄綔鐨勭粨鏋溿€傝繖绉嶆ā寮忔洿鍔犲己璋冩祴璇曠殑涓氬姟鍚箟锛岄€傚悎涓庨潪鎶€鏈洟闃熸垚鍛樻矡閫氭祴璇曠敤渚嬨€?
-
-Object Mother 妯″紡浣跨敤涓撻棬鐨勫伐鍘傚嚱鏁版潵鍒涘缓娴嬭瘯瀵硅薄銆傝繖绉嶆ā寮忓皢娴嬭瘯瀵硅薄鐨勫垱寤洪€昏緫闆嗕腑绠＄悊锛屽噺灏戜簡娴嬭瘯涓殑閲嶅浠ｇ爜銆傚綋娴嬭瘯瀵硅薄鐨勫垱寤洪€昏緫鍙戠敓鍙樺寲鏃讹紝鍙渶瑕佷慨鏀瑰伐鍘傚嚱鏁帮紝鑰屼笉闇€瑕佷慨鏀规墍鏈変娇鐢ㄨ瀵硅薄鐨勬祴璇曠敤渚嬨€?
-
-Test Fixture 妯″紡灏嗘祴璇曟暟鎹繚瀛樺湪鐙珛鐨勬枃浠朵腑锛岄€傚悎闇€瑕佸ぇ閲忔祴璇曟暟鎹殑鍦烘櫙銆侳ixture 鏂囦欢鍙互鏄?JSON銆乊AML 鎴?JavaScript 妯″潡鏍煎紡锛屾祴璇曚唬鐮佷粠 Fixture 鏂囦欢涓姞杞芥暟鎹€傝繖绉嶆ā寮忓皢娴嬭瘯鏁版嵁涓庢祴璇曢€昏緫鍒嗙锛屼娇娴嬭瘯浠ｇ爜鏇村姞绠€娲併€?
-
-Parameterized Test 妯″紡浣跨敤澶氱粍杈撳叆鏁版嵁杩愯鍚屼竴涓祴璇曢€昏緫銆傚湪 Bun test 涓紝铏界劧娌℃湁鍐呯疆鐨?test.each API锛屼絾鍙互閫氳繃寰幆鏉ュ疄鐜板弬鏁板寲娴嬭瘯銆傚弬鏁板寲娴嬭瘯鐨勪紭鍔垮湪浜庡彲浠ョ敤灏戦噺浠ｇ爜瑕嗙洊澶ч噺鐨勬祴璇曞満鏅€?
-
-Builder 妯″紡鏄?Object Mother 妯″紡鐨勮繘闃剁増鏈紝瀹冧娇鐢ㄩ摼寮忚皟鐢ㄦ潵鏋勫缓娴嬭瘯瀵硅薄銆侭uilder 妯″紡鎻愪緵浜嗘洿鐏垫椿鐨勯厤缃柟寮忥紝鍏佽娴嬭瘯鐢ㄤ緥鍙鐩栭渶瑕侀獙璇佺殑灞炴€э紝鍏朵粬灞炴€т娇鐢ㄩ粯璁ゅ€笺€傚湪澶у瀷娴嬭瘯濂椾欢涓紝Builder 妯″紡鍙互鏄捐憲鍑忓皯娴嬭瘯鏁版嵁鐨勫垱寤轰唬鐮併€?
-
-SUT锛圫ystem Under Test锛夋ā寮忓皢琚祴璇曠殑绯荤粺浣滀负涓€涓暣浣撴潵鑰冭檻銆傝繖绉嶆ā寮忓己璋冩祴璇曞簲璇ュ叧娉ㄧ郴缁熺殑澶栭儴琛屼负锛岃€屼笉鏄唴閮ㄥ疄鐜扮粏鑺傘€傚湪 Bun test 涓紝SUT 妯″紡鎰忓懗鐫€娴嬭瘯搴旇閫氳繃鍏叡 API 鏉ラ獙璇佺郴缁熺殑琛屼负锛岃€屼笉鏄洿鎺ユ祴璇曠鏈夋柟娉曟垨鍐呴儴鐘舵€併€?
-
-Test Double 妯″紡浣跨敤娴嬭瘯鏇胯韩鏉ユ浛浠ｇ湡瀹炵殑渚濊禆銆侭un test 鐨?mock 鍜?spyOn 鍑芥暟鏄疄鐜?Test Double 妯″紡鐨勪富瑕佸伐鍏枫€俆est Double 妯″紡鐨勬牳蹇冨師鍒欐槸锛氬彧鍦ㄨ法瓒婃ā鍧楄竟鐣屾椂浣跨敤 Test Double锛屽唴閮ㄦā鍧椾箣闂寸殑浜や簰搴旇浣跨敤鐪熷疄鐨勫疄鐜般€?
-
-杩欎簺璁捐妯″紡涓嶆槸浜掓枼鐨勶紝鍦ㄥ疄闄呴」鐩腑鍙互缁勫悎浣跨敤銆備緥濡傦紝鍙互鍦ㄥ悓涓€涓祴璇曞浠朵腑鍚屾椂浣跨敤 AAA 妯″紡鏉ョ粍缁囨祴璇曠敤渚嬬粨鏋勶紝浣跨敤 Object Mother 妯″紡鏉ュ垱寤烘祴璇曟暟鎹紝浣跨敤 Test Double 妯″紡鏉ラ殧绂诲閮ㄤ緷璧栥€?
-
-## 闄勫綍 O锛欱un test 涓庝富娴佹鏋剁殑娣卞害鎶€鏈姣?
-
-涓轰簡甯姪璇昏€呮洿娣卞叆鍦扮悊瑙?Bun test 鐨勬妧鏈壒鐐癸紝鏈妭浠庡涓妧鏈淮搴﹀ Bun test銆丣est 鍜?Vitest 杩涜娣卞害瀵规瘮銆?
-
-浠庢ā鍧楄В鏋愭満鍒舵潵鐪嬶紝Bun test 浣跨敤 Bun 鍐呯疆鐨勬ā鍧楄В鏋愬櫒锛屽畠鏀寔 package.json 鐨?exports 瀛楁銆乀ypeScript 鐨?paths 閰嶇疆鍜?Node.js 鐨?node_modules 瑙ｆ瀽瑙勫垯銆侸est 浣跨敤鍩轰簬 Node.js 鐨勬ā鍧楄В鏋愬櫒锛屽苟閫氳繃 moduleNameMapper 閰嶇疆鏉ユ敮鎸佽矾寰勬槧灏勩€俈itest 浣跨敤 Vite 鐨勬ā鍧楄В鏋愬櫒锛屽畠鍩轰簬 esbuild 瀹炵幇銆侭un 鐨勬ā鍧楄В鏋愬櫒鍦ㄦ€ц兘涓婁紭浜?Jest 鍜?Vitest锛岀壒鍒槸鍦ㄥ鐞嗗ぇ閲忔ā鍧椾緷璧栨椂銆?
-
-浠庤浆璇戞満鍒舵潵鐪嬶紝Bun test 浣跨敤鍐呯疆鐨?TypeScript 鍜?JSX 杞瘧鍣紝鍩轰簬 Zig 瀹炵幇銆侸est 渚濊禆 Babel 鎴?ts-jest 杩涜杞瘧锛岃繖浜涘伐鍏峰熀浜?JavaScript 瀹炵幇銆俈itest 浣跨敤 esbuild 杩涜杞瘧锛屽熀浜?Go 瀹炵幇銆侭un 鐨勮浆璇戝櫒鍦ㄦ€ц兘涓婁笌 esbuild 鐩稿綋锛屽湪鏌愪簺鍦烘櫙涓嬬敋鑷虫洿蹇€侭un 鐨勮浆璇戝櫒涓庤繍琛屾椂闆嗘垚鏇寸揣瀵嗭紝鍙互鏇村ソ鍦板鐞?TypeScript 鐨勭被鍨嬫摝闄ゅ拰妯″潡瑙ｆ瀽銆?
-
-浠庡苟琛屾墽琛屾満鍒舵潵鐪嬶紝Bun test 浣跨敤鍩轰簬绾跨▼鐨勫苟琛屾墽琛屾ā鍨嬶紝姣忎釜 Worker 绾跨▼杩愯鍦ㄧ嫭绔嬬殑 JavaScriptCore 瀹炰緥涓€侸est 浣跨敤鍩轰簬瀛愯繘绋嬬殑骞惰鎵ц妯″瀷锛屾瘡涓?Worker 杩涚▼杩愯鍦ㄧ嫭绔嬬殑 Node.js 瀹炰緥涓€俈itest 浣跨敤鍩轰簬 Worker 绾跨▼鐨勫苟琛屾墽琛屾ā鍨嬶紝姣忎釜 Worker 绾跨▼杩愯鍦ㄧ嫭绔嬬殑 V8 闅旂鐜涓€侭un 鐨勭嚎绋嬫ā鍨嬫瘮 Jest 鐨勫瓙杩涚▼妯″瀷鏇磋交閲忥紝鍚姩閫熷害鏇村揩锛屽唴瀛樺崰鐢ㄦ洿浣庛€?
-
-浠庝唬鐮佽鐩栫巼鏈哄埗鏉ョ湅锛孊un test 浣跨敤鍐呯疆鐨勮鐩栫巼鏀堕泦鍣紝鍩轰簬 V8 寮曟搸鐨勫唴缃鐩栫巼鍔熻兘銆侸est 榛樿浣跨敤 istanbul 杩涜瑕嗙洊鐜囨敹闆嗭紝涔熷彲浠ラ厤缃负浣跨敤 V8 寮曟搸銆俈itest 榛樿浣跨敤 c8锛堝熀浜?V8 寮曟搸锛夎繘琛岃鐩栫巼鏀堕泦銆侭un 鐨勮鐩栫巼鏀堕泦鏈哄埗涓?Vitest 绫讳技锛岄兘鍒╃敤浜?V8 寮曟搸鐨勫唴缃姛鑳斤紝鍥犳鎬ц兘鐩歌繎銆?
-
-浠?DOM 鐜鏀寔鏉ョ湅锛孊un test 榛樿闆嗘垚 happy-dom锛屼篃鏀寔閫氳繃閰嶇疆浣跨敤 jsdom銆侸est 榛樿浣跨敤 jsdom锛屼篃鍙互閫氳繃閰嶇疆浣跨敤鍏朵粬 DOM 鐜銆俈itest 鏀寔 happy-dom 鍜?jsdom锛屽彲浠ラ€氳繃閰嶇疆閫夋嫨銆備笁绉嶆鏋跺 DOM 鐜鐨勬敮鎸佺▼搴﹀熀鏈浉鍚岋紝宸紓鍦ㄤ簬榛樿閰嶇疆鍜屾€ц兘琛ㄧ幇銆?
-
-浠庡揩鐓ф祴璇曟満鍒舵潵鐪嬶紝Bun test 浣跨敤鍐呯疆鐨勫揩鐓у簭鍒楀寲鍣ㄥ拰姣旇緝鍣紝蹇収鏍煎紡涓?Jest 鐣ユ湁涓嶅悓銆侸est 浣跨敤 pretty-format 搴撹繘琛屽揩鐓у簭鍒楀寲锛屼娇鐢?jest-snapshot 妯″潡杩涜蹇収姣旇緝銆俈itest 浣跨敤涓?Jest 鍏煎鐨勫揩鐓ф満鍒躲€侭un 鐨勫揩鐓ф満鍒跺湪鎬ц兘涓婁紭浜?Jest锛屼絾鍦ㄤ笌 Jest 鐨勫吋瀹规€т笂涓嶅 Vitest銆?
-
-浠庢彃浠剁敓鎬佹潵鐪嬶紝Bun test 鐩墠鏀寔 expect.extend 鏉ユ墿灞曞尮閰嶅櫒锛屾敮鎸侀€氳繃 bunfig.toml 閰嶇疆棰勫姞杞借剼鏈€侸est 鎷ユ湁鏈€涓板瘜鐨勬彃浠剁敓鎬侊紝鍖呮嫭鑷畾涔夊尮閰嶅櫒銆佹姤鍛婂櫒銆佺幆澧冩ā鎷熺瓑銆俈itest 缁ф壙 Vite 鐨勬彃浠剁敓鎬侊紝鍚屾椂鏀寔 Jest 鐨勬彃浠躲€侭un test 鐨勬彃浠剁敓鎬佺浉瀵硅緝灏忥紝浣?Bun 鍥㈤槦姝ｅ湪绉瀬鎵╁睍銆?
-
-浠庣ぞ鍖烘敮鎸佹潵鐪嬶紝Jest 鎷ユ湁鏈€澶х殑鐢ㄦ埛绀惧尯鍜屾渶涓板瘜鐨勫涔犺祫婧愩€俈itest 鐨勭ぞ鍖哄闀块€熷害寰堝揩锛岀壒鍒槸鍦?Vite 鐢ㄦ埛缇や綋涓€侭un test 鐨勭ぞ鍖虹浉瀵硅緝灏忥紝浣嗗闀块€熷害寰堝揩锛岀壒鍒槸鍦?Bun 鐢ㄦ埛缇や綋涓€備笁绉嶆鏋剁殑绀惧尯閮藉湪绉瀬鍙戝睍锛岄€夋嫨鍝釜妗嗘灦鍙栧喅浜庨」鐩殑鍏蜂綋闇€姹傚拰鍥㈤槦鐨勬妧鑳藉垎甯冦€?
-
-## 闄勫綍 P锛氫粠 Jest 杩佺Щ鍒?Bun test 鐨勫畬鏁存竻鍗?
-
-浠ヤ笅鏄竴涓粠 Jest 杩佺Щ鍒?Bun test 鐨勫畬鏁存鏌ユ竻鍗曪紝甯姪鍥㈤槦绯荤粺鎬у湴瀹屾垚杩佺Щ宸ヤ綔銆傝繖涓竻鍗曞熀浜庡涓疄闄呴」鐩殑杩佺Щ缁忛獙鎬荤粨鑰屾垚锛岃鐩栦簡杩佺Щ杩囩▼涓彲鑳介亣鍒扮殑涓昏闂銆?
-
-杩佺Щ鍑嗗闃舵锛氳瘎浼伴」鐩殑娴嬭瘯濂椾欢瑙勬ā锛岀粺璁℃祴璇曟枃浠舵暟閲忓拰娴嬭瘯鐢ㄤ緥鏁伴噺锛涙鏌ラ」鐩腑浣跨敤鐨?Jest API 鍒楄〃锛岃瘑鍒?Bun test 涓嶆敮鎸佺殑 API锛涜瘎浼板揩鐓ф祴璇曠殑浣跨敤鎯呭喌锛岀‘瀹氬揩鐓ц縼绉荤殑绛栫暐锛涙鏌ョ涓夋柟 Jest 鎻掍欢鐨勪娇鐢ㄦ儏鍐碉紝瀵绘壘 Bun test 鐨勬浛浠ｆ柟妗堬紱鍒跺畾杩佺Щ璁″垝鍜屽洖婊氱瓥鐣ャ€?
-
-鐜閰嶇疆闃舵锛氬畨瑁呮渶鏂扮増鏈殑 Bun 杩愯鏃讹紱鍦ㄩ」鐩腑瀹夎 bun-types 绫诲瀷瀹氫箟锛涙洿鏂?tsconfig.json锛屽皢 types 閰嶇疆浠?@types/jest 鏀逛负 bun-types锛涘垱寤?bunfig.toml 閰嶇疆鏂囦欢锛岄厤缃祴璇曡繍琛屽櫒鐨勫叏灞€璁剧疆锛涘湪 package.json 涓坊鍔?bun test 鑴氭湰銆?
-
-瀵煎叆璺緞淇敼闃舵锛氬皢娴嬭瘯鏂囦欢涓殑 import from @jest/globals 鏀逛负 import from bun:test锛涘皢娴嬭瘯鏂囦欢涓殑 import from jest 鏀逛负 import from bun:test锛涘皢鍏ㄥ眬浣跨敤鐨?describe銆乮t銆乪xpect 绛?API 鐨勯殣寮忓紩鐢ㄦ敼涓烘樉寮忓鍏ワ紱瀵逛簬浣跨敤鍏ㄥ眬 API 鐨勯」鐩紝鍦?bunfig.toml 涓惎鐢ㄥ叏灞€ API 妯″紡銆?
-
-API 鏇挎崲闃舵锛氬皢 jest.fn 鏇挎崲涓?mock锛涘皢 jest.spyOn 鏇挎崲涓?spyOn锛涘皢 jest.mock 鏇挎崲涓烘墜鍔?Mock 鎴栦緷璧栨敞鍏ワ紱灏?jest.requireActual 鏇挎崲涓虹洿鎺ュ鍏ワ紱灏?jest.useFakeTimers 鏇挎崲涓烘墜鍔ㄥ畾鏃跺櫒 Mock锛涘皢 jest.setTimeout 鏇挎崲涓?test.setTimeout锛涘皢 jest.clearAllMocks 鏇挎崲涓?mock.restore銆?
-
-蹇収杩佺Щ闃舵锛氳褰曞綋鍓嶆墍鏈夊揩鐓ф枃浠剁殑鍐呭锛屼綔涓鸿縼绉诲悗鐨勫弬鑰冿紱鍒犻櫎鎵€鏈夋棫鐨?__snapshots__ 鐩綍锛涜繍琛?bun test --update-snapshots 閲嶆柊鐢熸垚蹇収锛涘鏌ユ柊鐢熸垚鐨勫揩鐓ф枃浠讹紝纭繚鍐呭涓庨鏈熶竴鑷达紱鎻愪氦鏂扮殑蹇収鏂囦欢鍒扮増鏈帶鍒躲€?
-
-娴嬭瘯杩愯闃舵锛氳繍琛?bun test锛岃褰曟祴璇曠粨鏋滐紱閫愰」淇澶辫触鐨勬祴璇曠敤渚嬶紱瀵逛簬浣跨敤涓嶅吋瀹?API 鐨勬祴璇曪紝浼樺厛鑰冭檻閲嶆瀯鑰岄潪鏇挎崲锛涘浜庣涓夋柟鎻掍欢锛屽鎵?Bun test 鐨勬浛浠ｆ柟妗堟垨鑷瀹炵幇锛涜褰曡縼绉昏繃绋嬩腑閬囧埌鐨勯棶棰樺拰瑙ｅ喅鏂规銆?
-
-楠岃瘉闃舵锛氬姣旇縼绉诲墠鍚庣殑娴嬭瘯瑕嗙洊鐜囷紝纭繚瑕嗙洊鐜囨病鏈変笅闄嶏紱瀵规瘮杩佺Щ鍓嶅悗鐨勬祴璇曟墽琛屾椂闂达紝纭鎬ц兘鎻愬崌鏁堟灉锛涘湪 CI 涓繍琛?Bun test锛岄獙璇?CI 鐜涓嬬殑娴嬭瘯缁撴灉锛涢個璇峰洟闃熸垚鍛樺鏌ヨ縼绉诲悗鐨勬祴璇曚唬鐮侊紱缂栧啓杩佺Щ鎬荤粨鏂囨。锛岃褰曠粡楠屽拰鏁欒銆?
-
-## 鎬荤粨涓庢渶缁堝缓璁?
-
-Bun test 浠ｈ〃浜?JavaScript 娴嬭瘯宸ュ叿鐨勫彂灞曟柟鍚戙€傚畠閫氳繃娣卞害闆嗘垚杩愯鏃惰兘鍔涳紝瀹炵幇浜嗛浂閰嶇疆銆佹瀬閫熷惎鍔ㄣ€佸師鐢?TypeScript 鏀寔鍜?Jest API 鍏煎绛夊叧閿壒鎬с€傚浜庢柊椤圭洰锛孊un test 鏄竴涓瀬鍏峰惛寮曞姏鐨勯€夋嫨锛涘浜庣幇鏈夐」鐩紝Bun test 鎻愪緵浜嗕粠 Jest 杩佺Щ鐨勫钩婊戣矾寰勩€?
-
-鐒惰€岋紝閫夋嫨娴嬭瘯妗嗘灦涓嶄粎浠呮槸鎶€鏈喅绛栵紝杩樻秹鍙婂洟闃熸妧鑳姐€侀」鐩渶姹傘€佺敓鎬佺郴缁熺瓑澶氫釜鍥犵礌銆傚缓璁洟闃熷湪閫夋嫨娴嬭瘯妗嗘灦鏃讹紝缁煎悎鑰冭檻浠ヤ笅鍥犵礌锛氶」鐩殑鎶€鏈爤鏄惁涓?Bun 鍏煎锛涘洟闃熺殑 Bun 鍜?Jest 鎶€鑳芥按骞筹紱椤圭洰瀵圭壒瀹氭祴璇?API 鐨勪緷璧栫▼搴︼紱椤圭洰鐨?CI/CD 鍩虹璁炬柦鏄惁鏀寔 Bun锛涗互鍙?Bun 鍦ㄦ湭鏉ョ殑鍙戝睍璺嚎鍥炬槸鍚︿笌椤圭洰鐨勯暱鏈熻鍒掍竴鑷淬€?
-
-鏃犺閫夋嫨鍝釜娴嬭瘯妗嗘灦锛岃壇濂界殑娴嬭瘯瀹炶返濮嬬粓鏄蒋浠惰川閲忕殑鍏抽敭銆傛祴璇曢噾瀛楀銆乀DD 鏂规硶璁恒€佷唬鐮佽鐩栫巼绛夋牳蹇冩蹇靛湪浠讳綍娴嬭瘯妗嗘灦涓兘閫傜敤銆侭un test 鐨勭洰鏍囨槸璁╄繖浜涘疄璺靛彉寰楁洿鍔犲鏄撳拰楂樻晥锛岃€屼笉鏄敼鍙樻祴璇曠殑鏈川銆?
-
-## 闄勫綍 Q锛欱un test 鍛戒护琛屽弬鑰冨ぇ鍏?
-
-Bun test 鎻愪緵浜嗕赴瀵岀殑鍛戒护琛岄€夐」锛岀敤浜庢帶鍒舵祴璇曟墽琛岀殑琛屼负銆備互涓嬫槸涓€浠藉畬鏁寸殑鍛戒护琛岄€夐」鍙傝€冩墜鍐岋紝娑电洊浜嗘墍鏈夊父鐢ㄧ殑閫夐」鍜屽弬鏁般€?
-
-鍩虹杩愯鍛戒护锛歜un test 杩愯鎵€鏈夋祴璇曟枃浠讹紝bun test <path> 杩愯鎸囧畾璺緞涓嬬殑娴嬭瘯鏂囦欢锛宐un test --filter <pattern> 鎸夋枃浠惰矾寰勬ā寮忚繃婊ゆ祴璇曟枃浠讹紝bun test -t <pattern> 鎸夋祴璇曞悕绉版ā寮忚繃婊ゆ祴璇曠敤渚嬨€?
-
-鎵ц鎺у埗閫夐」锛?-timeout <ms> 璁剧疆娴嬭瘯瓒呮椂鏃堕棿锛岄粯璁?5000 姣锛?-bail 鍦ㄩ亣鍒扮涓€涓祴璇曞け璐ユ椂鍋滄鎵ц锛?-concurrency <n> 璁剧疆骞惰鎵ц鐨勫伐浣滅嚎绋嬫暟閲忥紝榛樿浣跨敤 CPU 鏍稿績鏁帮紱--serial 绂佺敤骞惰鎵ц锛屾墍鏈夋祴璇曟寜椤哄簭杩愯锛?-rerun-each <n> 姣忎釜娴嬭瘯杩愯 n 娆★紝鐢ㄤ簬妫€娴嬩笉绋冲畾鐨勬祴璇曘€?
-
-瑕嗙洊鐜囬€夐」锛?-coverage 鍚敤浠ｇ爜瑕嗙洊鐜囨敹闆嗭紱--coverage-reporter <format> 璁剧疆瑕嗙洊鐜囨姤鍛婄殑鏍煎紡锛屾敮鎸?text銆乴cov銆乭tml銆乯son 绛夛紱--coverage-threshold <n> 璁剧疆瑕嗙洊鐜囬槇鍊硷紝濡傛灉瑕嗙洊鐜囦綆浜庨槇鍊煎垯娴嬭瘯澶辫触锛?-coverage-dir <path> 璁剧疆瑕嗙洊鐜囨姤鍛婄殑杈撳嚭鐩綍銆?
-
-蹇収閫夐」锛?-update-snapshots 鎴?-u 鏇存柊鎵€鏈夊揩鐓ф枃浠讹紱--snapshot-format <format> 璁剧疆蹇収鏂囦欢鐨勬牸寮忋€?
-
-鎶ュ憡閫夐」锛?-reporter <format> 璁剧疆娴嬭瘯鎶ュ憡鐨勬牸寮忥紝鏀寔 default銆乻pec銆乼ap銆乯unit 绛夛紱--verbose 鏄剧ず鏇磋缁嗙殑娴嬭瘯杈撳嚭锛?-silent 鍑忓皯娴嬭瘯杈撳嚭锛屽彧鏄剧ず娴嬭瘯缁撴灉鎽樿銆?
-
-鐩戣閫夐」锛?-watch 鍚敤鐩戣妯″紡锛屽湪鏂囦欢鍙樻洿鏃惰嚜鍔ㄩ噸鏂拌繍琛屾祴璇曪紱--watch-exclude <pattern> 鎺掗櫎鐗瑰畾鏂囦欢鐨勫彉鏇磋Е鍙戞祴璇曢噸鏂拌繍琛屻€?
-
-鍏朵粬閫夐」锛?-preload <script> 鍦ㄦ墍鏈夋祴璇曟枃浠舵墽琛屽墠棰勫姞杞芥寚瀹氱殑鑴氭湰锛?-globals 鍚敤鍏ㄥ眬 API 妯″紡锛屽皢 describe銆乮t銆乪xpect 绛夊嚱鏁版敞鍏ュ叏灞€浣滅敤鍩燂紱--inspect 鍚敤 Node.js 鍏煎鐨勮皟璇曞崗璁紝鐢ㄤ簬璋冭瘯娴嬭瘯浠ｇ爜銆?
-
-鐜鍙橀噺閰嶇疆锛欱UN_TEST_TIMEOUT 璁剧疆榛樿瓒呮椂鏃堕棿锛汢UN_TEST_CONCURRENCY 璁剧疆榛樿骞惰搴︼紱BUN_TEST_COVERAGE 璁剧疆榛樿鏄惁鍚敤瑕嗙洊鐜囷紱NODE_ENV 璁剧疆杩愯鐜锛屾祴璇曠幆澧冧腑榛樿涓?test銆?
-
-杩欎簺鍛戒护琛岄€夐」鍙互缁勫悎浣跨敤锛屼互婊¤冻涓嶅悓鐨勬祴璇曢渶姹傘€備緥濡傦紝鍦?CI 鐜涓紝閫氬父缁勫悎浣跨敤 --coverage銆?-timeout 鍜?--reporter 閫夐」锛涘湪寮€鍙戠幆澧冧腑锛岄€氬父浣跨敤 --watch 鍜?--bail 閫夐」銆?
-
-## 闄勫綍 R锛欱un test 閰嶇疆 bunfig.toml 瀹屾暣鍙傝€?
-
-bunfig.toml 鏄?Bun 鐨勯厤缃枃浠讹紝鍙互鐢ㄤ簬閰嶇疆 Bun test 鐨勫叏灞€琛屼负銆備互涓嬫槸 bunfig.toml 涓祴璇曠浉鍏抽厤缃」鐨勫畬鏁村弬鑰冦€?
-
-鍩烘湰鐨?bunfig.toml 娴嬭瘯閰嶇疆缁撴瀯濡備笅銆傚湪 test 閮ㄥ垎锛屽彲浠ラ厤缃祴璇曡繍琛屽櫒鐨勫悇绉嶈涓恒€倀est.preload 閰嶇疆鍦ㄦ墍鏈夋祴璇曟枃浠舵墽琛屽墠棰勫姞杞界殑鑴氭湰锛泃est.timeout 閰嶇疆榛樿鐨勮秴鏃舵椂闂达紱test.concurrency 閰嶇疆榛樿鐨勫苟琛屽伐浣滅嚎绋嬫暟閲忥紱test.globals 閰嶇疆鏄惁鍚敤鍏ㄥ眬 API 妯″紡锛泃est.coverage 閰嶇疆鏄惁榛樿鍚敤瑕嗙洊鐜囨敹闆嗐€?
-
-鍦?test.coverage 閮ㄥ垎锛屽彲浠ラ厤缃鐩栫巼鏀堕泦鐨勮缁嗚涓恒€倀est.coverage.reporter 閰嶇疆瑕嗙洊鐜囨姤鍛婄殑鏍煎紡锛泃est.coverage.threshold 閰嶇疆瑕嗙洊鐜囬槇鍊硷紱test.coverage.dir 閰嶇疆瑕嗙洊鐜囨姤鍛婄殑杈撳嚭鐩綍锛泃est.coverage.include 閰嶇疆闇€瑕佹敹闆嗚鐩栫巼鐨勬枃浠舵ā寮忥紱test.coverage.exclude 閰嶇疆鎺掗櫎鏀堕泦瑕嗙洊鐜囩殑鏂囦欢妯″紡銆?
-
-鍦?test.dom 閮ㄥ垎锛屽彲浠ラ厤缃?DOM 娴嬭瘯鐜銆倀est.dom 閰嶇疆 DOM 鐜鐨勫疄鐜帮紝鏀寔 happy-dom 鍜?jsdom銆?
-
-```toml
-[test]
-preload = ["./test-setup.ts"]
-timeout = 10000
-concurrency = 4
-globals = false
-
-[test.coverage]
-reporter = ["text", "lcov"]
-threshold = 80
-dir = "./coverage"
-include = ["src/**/*.ts"]
-exclude = ["src/**/*.test.ts", "src/types/**/*.ts"]
-
-[test.dom]
-implementation = "happy-dom"
-```
-
-閫氳繃鍚堢悊閰嶇疆 bunfig.toml锛屽彲浠ョ粺涓€鍥㈤槦涓墍鏈夊紑鍙戣€呯殑娴嬭瘯琛屼负锛屽噺灏戝洜鐜宸紓瀵艰嚧鐨勬祴璇曞け璐ャ€傚湪椤圭洰涓帹鑽愪娇鐢?bunfig.toml 鏉ョ鐞嗘祴璇曢厤缃紝鑰屼笉鏄緷璧栧懡浠よ鍙傛暟銆?
-
-
-### 6.16 娴嬭瘯鎶ュ憡涓庡彲瑙嗗寲鍒嗘瀽
-
-bun test 鏀寔澶氱鎶ュ憡鏍煎紡杈撳嚭娴嬭瘯缁撴灉銆傛帶鍒跺彴杈撳嚭鏄渶甯哥敤鐨勬牸寮忥紝鎻愪緵瀹炴椂鐨勪汉绫诲彲璇荤殑娴嬭瘯杩涘害鍜岀粨鏋溿€侸Unit XML 鏍煎紡閫傜敤浜?CI/CD 骞冲彴闆嗘垚锛屽彲浠ヨ Jenkins銆丟itLab CI銆丆ircleCI 绛夊伐鍏疯В鏋愬拰灞曠ず銆俆AP 鏍煎紡鏄竴绉嶆爣鍑嗙殑娴嬭瘯缁撴灉鏍煎紡锛岃璁稿娴嬭瘯宸ュ叿鍜屾鏋舵敮鎸併€侸SON 鏍煎紡閫傜敤浜庣▼搴忓寲澶勭悊鍜屽垎鏋愩€傚湪澶у瀷椤圭洰涓紝寤鸿鍚屾椂浣跨敤 JUnit XML 鏍煎紡鐢ㄤ簬 CI 闆嗘垚鍜?JSON 鏍煎紡鐢ㄤ簬鑷畾涔夊垎鏋愩€傞€氳繃鍒嗘瀽娴嬭瘯鎶ュ憡锛屽彲浠ヨ瘑鍒嚭棰戠箒澶辫触鐨勬祴璇曘€佹墽琛屾椂闂磋繃闀跨殑娴嬭瘯鍜岃鐩栫巼涓嶈冻鐨勬ā鍧楋紝浠庤€屾湁閽堝鎬у湴浼樺寲娴嬭瘯濂椾欢銆?
-### 6.17 娴嬭瘯涓庢枃妗ｇ殑鍏宠仈
-
-娴嬭瘯浠ｇ爜涓嶄粎鏄川閲忎繚璇佺殑宸ュ叿锛岃繕鏄椿鏂囨。銆傞€氳繃闃呰娴嬭瘯浠ｇ爜锛屽紑鍙戣€呭彲浠ヤ簡瑙ｇ粍浠剁殑浣跨敤鏂瑰紡鍜屾湡鏈涜涓恒€備负浜嗗厖鍒嗗彂鎸ユ祴璇曠殑鏂囨。浠峰€硷紝搴旇閬靛惊浠ヤ笅瀹炶返銆傜涓€锛屾祴璇曠敤渚嬬殑鍚嶇О搴旇瀹屾暣鎻忚堪琚祴琛屼负锛屽寘鎷墠缃潯浠躲€佹搷浣滃拰鏈熸湜缁撴灉銆傜浜岋紝娴嬭瘯浠ｇ爜搴旇浣跨敤涓庣敓浜т唬鐮佺浉鍚岀殑鍛藉悕瑙勮寖鍜岀紪鐮侀鏍笺€傜涓夛紝娴嬭瘯搴旇鎸夌収鍔熻兘妯″潡缁勭粐锛屼笌鐢熶骇浠ｇ爜鐨勭洰褰曠粨鏋勫搴斻€傜鍥涳紝瀵逛簬澶嶆潅鐨勪笟鍔¤鍒欙紝娴嬭瘯鐢ㄤ緥搴旇鎻愪緵瓒冲鐨勪腑鏂囨敞閲婅鏄庝笟鍔′笂涓嬫枃銆傜浜旓紝娴嬭瘯鏁版嵁搴旇浣跨敤鏈夋剰涔夌殑鍚嶇О锛岃€屼笉鏄?foo 鍜?bar 杩欐牱鐨勫崰浣嶇銆傚ソ鐨勬祴璇曟枃妗ｅ彲浠ュ姞閫熸柊鎴愬憳鐨勪笂鎵嬭繃绋嬶紝鍑忓皯娌熼€氭垚鏈€?
-### 6.18 娴嬭瘯鍗忎綔涓庡洟闃熻鑼?
-鍦ㄥ洟闃熶腑浣跨敤 bun test 鏃讹紝寤虹珛缁熶竴鐨勬祴璇曡鑼冮潪甯搁噸瑕併€傛祴璇曡鑼冨簲璇ュ寘鎷互涓嬫柟闈€傛祴璇曟枃浠剁殑鍛藉悕瑙勮寖锛屽缓璁娇鐢ㄨ娴嬭瘯鏂囦欢鍚嶅姞涓?.test.ts 鍚庣紑銆傛祴璇曠敤渚嬬殑鍛藉悕瑙勮寖锛屽缓璁娇鐢ㄤ腑鏂囨弿杩版垨鑰?should 寮€澶寸殑鑻辨枃鎻忚堪銆傛祴璇曟暟鎹殑鍒涘缓瑙勮寖锛屽缓璁娇鐢ㄥ伐鍘傚嚱鏁板垱寤烘祴璇曟暟鎹€傛祴璇曞す鍏风殑绠＄悊瑙勮寖锛屽缓璁湪 beforeAll 涓垱寤哄す鍏凤紝鍦?afterAll 涓竻鐞嗐€傛ā鎷熷嚱鏁扮殑浣跨敤瑙勮寖锛屽缓璁湪 beforeEach 涓噸缃墍鏈夋ā鎷熴€傝鐩栫巼鐩爣瑙勮寖锛屽缓璁牴鎹」鐩被鍨嬭瀹氬悎鐞嗙殑瑕嗙洊鐜囩洰鏍囥€傞€氳繃寤虹珛鍜屾墽琛岃繖浜涜鑼冿紝鍥㈤槦鍙互淇濇寔娴嬭瘯浠ｇ爜鐨勪竴鑷存€у拰鍙淮鎶ゆ€с€傚畾鏈熻繘琛屾祴璇曚唬鐮佸鏌ヤ篃鏄繚鎸佹祴璇曡川閲忕殑閲嶈鎵嬫銆?
-
-### bun test 涓?WebSocket 娴嬭瘯
-
-WebSocket 鏄幇浠?Web 搴旂敤涓疄鐜板疄鏃堕€氫俊鐨勬牳蹇冩妧鏈€傚湪 bun test 涓祴璇?WebSocket 鐩稿叧鐨勪唬鐮侀渶瑕佷竴浜涚壒娈婄殑鎶€宸с€傜敱浜?happy-dom 涓嶆敮鎸?WebSocket锛屽洜姝?WebSocket 鐨勬祴璇曢€氬父闇€瑕佺粨鍚?Mock 鎴栬€呬娇鐢ㄧ湡瀹炵殑 WebSocket 鏈嶅姟鍣ㄣ€傛帹鑽愮殑鍋氭硶鏄皢 WebSocket 鎿嶄綔灏佽鍦ㄥ彲娉ㄥ叆鐨勬湇鍔′腑锛屽湪娴嬭瘯涓娇鐢?Mock 鏇挎崲鐪熷疄鐨?WebSocket 瀹炵幇銆傝繖绉嶈璁￠伒寰簡渚濊禆娉ㄥ叆鍘熷垯锛屼娇寰椾唬鐮佹洿鍔犲彲娴嬭瘯銆傚鏋滈渶瑕佽繘琛岀鍒扮鐨?WebSocket 娴嬭瘯锛屽彲浠ュ湪 beforeAll 涓惎鍔ㄤ竴涓湡瀹炵殑 WebSocket 鏈嶅姟鍣紝鍦ㄦ祴璇曚腑杩炴帴杩欎釜鏈嶅姟鍣ㄥ苟楠岃瘉娑堟伅鐨勬敹鍙戙€侭un 鐨?WebSocket 鏀寔鍩轰簬 Web 鏍囧噯 API锛屼笌娴忚鍣ㄤ腑鐨?WebSocket 琛屼负涓€鑷达紝鍥犳娴嬭瘯浠ｇ爜鍙互鍦?Bun 鐨勮繍琛屾椂鐜涓洿鎺ヨ繍琛屻€傚浜庝娇鐢?Socket.IO 鎴?SockJS 绛夊簱鐨勯」鐩紝bun test 鍚屾牱鍙互鑳滀换娴嬭瘯浠诲姟锛屽彧闇€纭繚娴嬭瘯鐜涓湁鐩稿簲鐨?Mock 瀹炵幇鍗冲彲銆俉ebSocket 娴嬭瘯鐨勫叧閿獙璇佺偣鍖呮嫭杩炴帴寤虹珛銆佹秷鎭敹鍙戙€侀敊璇鐞嗗拰杩炴帴鍏抽棴绛夊満鏅€?
-### bun test 涓?GraphQL 娴嬭瘯
-
-GraphQL 鏄竴绉嶆煡璇㈣瑷€鍜岃繍琛屾椂锛屽父鐢ㄤ簬鏇夸唬 REST API銆俠un test 鍙互鐢ㄤ簬娴嬭瘯 GraphQL 鏈嶅姟鐨勬煡璇㈠拰鍙樻洿鎿嶄綔銆傛祴璇?GraphQL 鏈嶅姟鏃讹紝閫氬父浼氬彂閫?GraphQL 璇锋眰骞堕獙璇佸搷搴斻€俠un test 鐨勫師鐢?fetch API 鍙互鍙戦€?GraphQL 璇锋眰锛屾棤闇€棰濆鐨?HTTP 瀹㈡埛绔簱銆傚湪娴嬭瘯 GraphQL 鏈嶅姟鏃讹紝甯歌娴嬭瘯妯″紡鍖呮嫭楠岃瘉鏌ヨ鐨勮繑鍥炵粨鏋勩€侀獙璇佸彉鏇寸殑鍓綔鐢ㄣ€侀獙璇侀敊璇鐞嗙瓑銆傚浜庝娇鐢?Apollo Server 鎴?Yoga 鐨?GraphQL 鏈嶅姟锛屽彲浠ュ湪 beforeAll 涓惎鍔ㄦ祴璇曟湇鍔″櫒锛岀劧鍚庡彂閫?GraphQL 璇锋眰杩涜娴嬭瘯銆俠un test 鐨?Mock 鏈哄埗鍙互妯℃嫙鏁版嵁婧愶紝浣垮緱 GraphQL 娴嬭瘯鍙互鍦ㄩ殧绂荤幆澧冧腑杩涜銆傚浜庨渶瑕侀獙璇?GraphQL Schema 鐨勬祴璇曪紝鍙互缂栧啓蹇収娴嬭瘯鏉ユ崟鑾?Schema 鐨勫彉鏇淬€侴raphQL 娴嬭瘯涓?REST API 娴嬭瘯鐨勪富瑕佸尯鍒湪浜庤姹傛牸寮忓拰鍝嶅簲缁撴瀯鐨勫樊寮傦紝浣嗘祴璇曠殑鍩烘湰鍘熷垯鍜屾ā寮忔槸閫氱敤鐨勩€俠un test 鐨勭伒娲绘€т娇寰楀畠鑳藉閫傚簲鍚勭 API 椋庢牸鐨勬祴璇曢渶姹傘€?
-### bun test 涓庡畾鏃跺櫒娴嬭瘯
-
-瀹氭椂鍣ㄦ祴璇曟槸 JavaScript 娴嬭瘯涓殑涓€涓壒娈婇鍩熴€俠un test 鏀寔瀹氭椂鍣ㄦā鎷熷姛鑳斤紝鍙互鎺у埗 setTimeout銆乻etInterval銆乻etImmediate 绛夊畾鏃跺櫒鍑芥暟鐨勬墽琛屻€傞€氳繃瀹氭椂鍣ㄦā鎷燂紝娴嬭瘯鍙互鍦ㄤ笉绛夊緟瀹為檯鏃堕棿娴侀€濈殑鎯呭喌涓嬮獙璇佸畾鏃跺櫒鐩稿叧鐨勯€昏緫銆俠un test 鐨勫畾鏃跺櫒妯℃嫙閫氳繃 mockTimers 鍑芥暟鍚敤锛屽惎鐢ㄥ悗鎵€鏈夊畾鏃跺櫒鍑芥暟閮戒細琚ā鎷熷疄鐜版浛鎹€傚紑鍙戣€呭彲浠ユ墜鍔ㄦ帹杩涙ā鎷熸椂閽燂紝瑙﹀彂瀹氭椂鍣ㄥ洖璋冪殑鎵ц銆傝繖绉嶆柟寮忎娇寰楀畾鏃跺櫒鐩稿叧鐨勬祴璇曞彲浠ュ湪姣绾у埆瀹屾垚锛岃€屾棤闇€绛夊緟鏁扮鎴栨暟鍒嗛挓銆傚湪娴嬭瘯涓娇鐢ㄥ畾鏃跺櫒妯℃嫙鏃讹紝闇€瑕佹敞鎰忓湪 afterEach 涓仮澶嶇湡瀹炵殑瀹氭椂鍣ㄥ疄鐜帮紝閬垮厤褰卞搷鍏朵粬娴嬭瘯鐨勬墽琛屻€傚畾鏃跺櫒妯℃嫙鐗瑰埆閫傚悎娴嬭瘯浠ヤ笅鍦烘櫙锛氳疆璇㈤€昏緫銆佸欢杩熸墽琛屻€佸畾鏃朵换鍔°€佽妭娴佸拰闃叉姈鍑芥暟绛夈€俠un test 鐨勫畾鏃跺櫒妯℃嫙涓?Jest 鐨?useFakeTimers 鍔熻兘绫讳技锛屼絾鍦ㄥ疄鐜扮粏鑺備笂鏈夋墍涓嶅悓銆傚紑鍙戣€呭湪浣跨敤鏃堕渶瑕佹敞鎰忚繖浜涘樊寮傦紝纭繚娴嬭瘯鐨勬纭€с€?
-### bun test 鐨勮嚜瀹氫箟鎶ュ憡鍣?
-bun test 鏀寔鑷畾涔夋姤鍛婂櫒锛屽厑璁稿紑鍙戣€呮牴鎹嚜宸辩殑闇€姹傚畾鍒舵祴璇曠粨鏋滅殑杈撳嚭鏍煎紡銆傝嚜瀹氫箟鎶ュ憡鍣ㄥ彲浠ュ疄鐜颁负 JavaScript 鍑芥暟鎴栫被锛屾帴鏀舵祴璇曚簨浠跺苟鐢熸垚鑷畾涔夌殑杈撳嚭銆傚父瑙佺殑鑷畾涔夋姤鍛婂櫒鍖呮嫭 JSON 鎶ュ憡鍣ㄣ€丣Unit XML 鎶ュ憡鍣ㄣ€佽嚜瀹氫箟鏍煎紡鍖栨姤鍛婂櫒绛夈€傞€氳繃 bun test 鐨?--reporter 鍙傛暟鍙互鎸囧畾鎶ュ憡鍣ㄣ€傚浜?CI 鐜锛孞SON 鎶ュ憡鍣ㄧ壒鍒湁鐢紝鍥犱负瀹冨彲浠ョ敓鎴愮粨鏋勫寲鐨勬祴璇曠粨鏋滐紝渚夸簬 CI 骞冲彴瑙ｆ瀽鍜屽睍绀恒€傚浜庨渶瑕佸皢娴嬭瘯缁撴灉闆嗘垚鍒拌嚜瀹氫箟浠〃鏉跨殑鍦烘櫙锛岃嚜瀹氫箟鎶ュ憡鍣ㄦ彁渚涗簡鐏垫椿鐨勬墿灞曠偣銆俠un test 鐨勬姤鍛婂櫒 API 鏀寔澶氱浜嬩欢锛屽寘鎷祴璇曞紑濮嬨€佹祴璇曠粨鏉熴€佹祴璇曞け璐ャ€佸浠跺紑濮嬨€佸浠剁粨鏉熺瓑銆傞€氳繃澶勭悊杩欎簺浜嬩欢锛屾姤鍛婂櫒鍙互鐢熸垚涓板瘜鐨勬祴璇曟姤鍛娿€傝嚜瀹氫箟鎶ュ憡鍣ㄨ繕鍙互涓庤鐩栫巼鎶ュ憡缁撳悎锛岀敓鎴愬寘鍚鐩栫巼淇℃伅鐨勭患鍚堟姤鍛娿€傝櫧鐒?bun test 鐨勫唴缃姤鍛婂櫒宸茬粡婊¤冻澶ч儴鍒嗛渶姹傦紝浣嗗湪鐗瑰畾鍦烘櫙涓嬶紝鑷畾涔夋姤鍛婂櫒鍙互鎻愪緵鏇寸簿鍑嗙殑娴嬭瘯淇℃伅灞曠ず銆?
-### bun test 鐨勬彃浠舵満鍒?
-bun test 鐩墠涓嶆彁渚涘畼鏂圭殑鎻掍欢绯荤粺锛屼絾閫氳繃鍏剁伒娲荤殑閰嶇疆鍜屾墿灞曠偣锛屽紑鍙戣€呭彲浠ュ疄鐜扮被浼兼彃浠剁殑鍔熻兘銆傛渶甯哥敤鐨勬墿灞曟柟寮忔槸閫氳繃棰勫姞杞借剼鏈紙--preload锛夋敞鍏ヨ嚜瀹氫箟閫昏緫銆傞鍔犺浇鑴氭湰鍦ㄦ墍鏈夋祴璇曟墽琛屼箣鍓嶈繍琛岋紝鍙互鐢ㄤ簬璁剧疆鍏ㄥ眬 Mock銆佹敞鍐岃嚜瀹氫箟鍖归厤鍣ㄣ€佸垵濮嬪寲娴嬭瘯鐜绛夈€傞€氳繃棰勫姞杞借剼鏈紝寮€鍙戣€呭彲浠ュ疄鐜颁互涓嬪姛鑳斤細娉ㄥ唽鍏ㄥ眬鐨勬祴璇曡緟鍔╁嚱鏁般€佽缃祴璇曠幆澧冨彉閲忋€佸垵濮嬪寲鏁版嵁搴撹繛鎺ャ€佸姞杞芥祴璇曢厤缃瓑銆傝櫧鐒惰繖浜涘姛鑳戒笉濡傛寮忕殑鎻掍欢绯荤粺閭ｆ牱鐏垫椿锛屼絾瀵逛簬澶у鏁伴」鐩潵璇村凡缁忚冻澶熴€傞殢鐫€ bun test 鐨勫彂灞曪紝Bun 鍥㈤槦鍙兘浼氬湪鏈潵鐨勭増鏈腑寮曞叆姝ｅ紡鐨勬彃浠剁郴缁熴€傚湪姝や箣鍓嶏紝棰勫姞杞借剼鏈拰鑷畾涔夎緟鍔╁嚱鏁版槸瀹炵幇娴嬭瘯鎵╁睍鐨勪富瑕佹柟寮忋€傚浜庨渶瑕佸湪澶氫釜椤圭洰涓叡浜祴璇曟墿灞曠殑鍥㈤槦锛屽彲浠ュ皢杩欎簺鎵╁睍灏佽涓?npm 鍖咃紝鍦ㄦ瘡涓」鐩腑閫氳繃棰勫姞杞借剼鏈姞杞姐€傝繖绉嶆ā寮忚櫧鐒朵笉鏄師鐢熺殑鎻掍欢鏈哄埗锛屼絾鍦ㄥ疄璺典腑璇佹槑鏄湁鏁堢殑銆?
-
+在本章的最后，我们总结一下使用bun test进行测试开发的核心要点。首先，选择bun test作为测试框架的前提是项目使用Bun作为运行时，或者项目正在考虑从Node.js迁移到Bun。对于已经深度使用Jest生态系统的项目，建议进行迁移评估后再做决定。其次，在迁移过程中，重点关注jest.mock、jest.useFakeTimers和jest.requireActual这三个API的替代方案，这三个API的迁移是迁移过程中最复杂的部分。再次，在编写新的测试时，充分利用bun test的性能优势，采用TDD方法论，编写高质量、可维护的测试代码。最后，持续关注bun test的发展动态，及时了解新功能和改进，以便在项目中获得最佳的测试体验。
