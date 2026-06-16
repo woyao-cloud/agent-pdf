@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-ch07
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      echo '=== 01-basic: SQLite Basics ===' &&
+      bun run examples/01-basic/sqlite-basics.ts &&
+      echo '' &&
+      echo '=== 02-advanced: Prepared Statements & Transactions ===' &&
+      bun run examples/02-advanced/transactions.ts &&
+      echo '' &&
+      echo '=== 03-production: Full-stack with Drizzle ===' &&
+      bun run examples/03-production/drizzle-app.ts
