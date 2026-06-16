@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL 数据库 ────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: bun-db-postgres
+    environment:
+      POSTGRES_USER: bunuser
+      POSTGRES_PASSWORD: bunpass
+      POSTGRES_DB: bunorm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bunuser -d bunorm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis 缓存 ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: bun-db-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Bun 基础服务 ─────────────────────────────────────────────────────
+  bun:
+    image: oven/bun:latest
+    container_name: bun-db-runner
+    working_dir: /workspace
+    volumes:
+      - ./examples:/workspace/examples
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - basic
+      - advanced
+      - production
+
+  # ─── 示例 1: Drizzle + SQLite (基础) ──────────────────────────────────
+  basic:
+    extends:
+      service: bun
+    command: ["run", "examples/01-basic/drizzle-sqlite.ts"]
+
+  # ─── 示例 2: Drizzle + PostgreSQL (进阶) ──────────────────────────────
+  advanced:
+    extends:
+      service: bun
+    command: ["run", "examples/02-advanced/drizzle-pg.ts"]
+
+  # ─── 示例 3: URL 短链接服务 (生产级) ──────────────────────────────────
+  production:
+    extends:
+      service: bun
+    command: ["run", "examples/03-production/url-shortener.ts"]
+
+volumes:
+  pgdata:
