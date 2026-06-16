@@ -1,0 +1,42 @@
+# Dockerfile.simple — 简单的 Bun 应用 Dockerfile
+#
+# 使用场景：快速原型、开发环境、小型应用
+# 特点：单阶段构建，简单直接，但镜像体积较大
+#
+# 构建命令：
+#   docker build -f Dockerfile.simple -t bun-app:simple .
+# 运行命令：
+#   docker run --rm bun-app:simple
+
+FROM oven/bun:latest
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制依赖配置文件
+# 利用 Docker 层缓存：先复制 package.json 和 bun.lock
+# 只有当依赖发生变化时才会重新安装
+COPY package.json bun.lock ./
+
+# 安装生产依赖
+# --frozen-lockfile 确保使用锁文件中的精确版本
+# --production 只安装生产环境需要的依赖，减少镜像体积
+RUN bun install --frozen-lockfile --production
+
+# 复制应用源代码
+# 放在依赖安装之后，利用 Docker 层缓存
+# 修改源代码不会触发依赖重新安装
+COPY . .
+
+# 可选：构建应用（如果使用 TypeScript 或需要打包）
+# RUN bun build ./src/index.ts --outdir ./dist --target bun --minify
+
+# 暴露应用端口
+EXPOSE 3000
+
+# 使用非 root 用户运行（安全最佳实践）
+USER bun
+
+# 设置启动命令
+# 使用 exec 形式的 CMD，确保信号正确处理
+CMD ["bun", "run", "src/index.ts"]

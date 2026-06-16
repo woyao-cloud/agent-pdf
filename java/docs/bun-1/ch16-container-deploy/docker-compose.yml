@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-ch16
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      echo '=== Bun Version ===' && bun --version &&
+      echo '' &&
+      echo '=== 01-basic: Simple Dockerfile Demo ===' &&
+      cd examples/01-basic && bun install && cd /app &&
+      bun run examples/01-basic/build-demo.ts &&
+      echo '' &&
+      echo '=== 02-advanced: Multi-stage Build Demo ===' &&
+      bun run examples/02-advanced/multistage-demo.ts &&
+      echo '' &&
+      echo '=== 03-production: Production Build Demo ===' &&
+      timeout 5 bun run examples/03-production/prod-demo.ts || true

@@ -1,0 +1,86 @@
+# Dockerfile.multistage — 多阶段构建 Bun 应用
+#
+# 使用场景：生产环境部署、需要最小化镜像体积
+# 特点：多阶段构建，分离构建环境和运行环境，镜像体积可减少 80% 以上
+#
+# 构建命令：
+#   docker build -f Dockerfile.multistage -t bun-app:multistage .
+# 运行命令：
+#   docker run --rm -p 3000:3000 bun-app:multistage
+
+# ============================================================
+# 第一阶段：依赖安装阶段（deps）
+# 用途：安装所有依赖，包括开发依赖（用于类型检查等）
+# 基础镜像：使用完整镜像，包含构建所需的所有工具
+# ============================================================
+FROM oven/bun:latest AS deps
+
+WORKDIR /app
+
+# 复制依赖配置文件
+COPY package.json bun.lock ./
+
+# 安装所有依赖（包括开发依赖）
+# 安装开发依赖以便在构建阶段进行类型检查和测试
+RUN bun install --frozen-lockfile
+
+# ============================================================
+# 第二阶段：构建阶段（builder）
+# 用途：编译 TypeScript、打包应用、生成生产代码
+# 依赖：从 deps 阶段复制 node_modules
+# ============================================================
+FROM oven/bun:latest AS builder
+
+WORKDIR /app
+
+# 从 deps 阶段复制安装好的依赖
+COPY --from=deps /app/node_modules ./node_modules
+
+# 复制所有源代码
+COPY . .
+
+# 构建生产版本
+# --target bun 输出适用于 Bun 运行时的代码
+# --minify 压缩输出，减小最终镜像体积
+# --outdir ./dist 指定输出目录
+RUN bun build ./src/index.ts \
+    --target bun \
+    --minify \
+    --outdir ./dist
+
+# ============================================================
+# 第三阶段：运行阶段（runner）
+# 用途：提供最小化的运行环境
+# 基础镜像：使用 alpine 版本，进一步减小镜像体积
+# 关键：只复制构建产物，不包含源代码和构建工具
+# ============================================================
+FROM oven/bun:latest AS runner
+
+WORKDIR /app
+
+# 创建非 root 用户（安全最佳实践）
+# Bun 官方镜像已提供 bun 用户
+# 确保应用不以 root 权限运行
+
+# 仅从 builder 阶段复制构建产物
+# 不复制 node_modules 目录
+# 不复制源代码
+# 不复制构建工具
+COPY --from=builder /app/dist ./dist
+
+# 复制生产依赖的 package.json（用于运行时的依赖信息）
+COPY --from=deps /app/package.json ./
+
+# 暴露应用端口
+EXPOSE 3000
+
+# 使用非 root 用户
+USER bun
+
+# 设置健康检查
+# 确保容器正常运行
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD bun -e "fetch('http://localhost:3000/health').then(r => {if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
+# 启动应用
+CMD ["bun", "run", "dist/index.js"]

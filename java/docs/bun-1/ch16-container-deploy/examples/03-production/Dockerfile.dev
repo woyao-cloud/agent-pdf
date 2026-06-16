@@ -1,0 +1,41 @@
+# Dockerfile.dev — 开发环境 Bun 应用 Dockerfile
+#
+# 使用场景：本地开发、热重载、调试
+# 特点：支持源代码挂载、实时重载、调试工具
+#
+# 构建命令：
+#   docker build -f Dockerfile.dev -t bun-app:dev .
+# 运行命令：
+#   docker run --rm -p 3000:3000 \
+#     -v $(pwd)/src:/app/src \
+#     -v bun-node-modules:/app/node_modules \
+#     -e NODE_ENV=development \
+#     bun-app:dev
+
+FROM oven/bun:latest
+
+WORKDIR /app
+
+# 设置开发环境变量
+ENV NODE_ENV=development \
+    BUN_ENV=development \
+    CHOKIDAR_USEPOLLING=1
+
+# 复制依赖配置文件
+COPY package.json bun.lock ./
+
+# 安装所有依赖（包括开发依赖）
+RUN bun install
+
+# 复制项目配置
+COPY tsconfig.json ./
+COPY .env.example ./.env
+
+# 暴露端口
+EXPOSE 3000
+EXPOSE 9229
+
+# 设置开发启动命令
+# --hot 启用热模块重载
+# --watch 监视文件变化自动重启
+CMD ["bun", "--hot", "run", "src/index.ts"]

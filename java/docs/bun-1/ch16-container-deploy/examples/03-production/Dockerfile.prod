@@ -1,0 +1,90 @@
+# Dockerfile.prod — 生产环境 Bun 应用 Dockerfile
+#
+# 使用场景：生产环境部署、CI/CD 流水线
+# 特点：多阶段构建、安全加固、最小化攻击面、优化缓存策略
+#
+# 构建命令：
+#   docker build -f Dockerfile.prod -t bun-app:prod .
+# 运行命令：
+#   docker run --rm -p 3000:3000 \
+#     -e NODE_ENV=production \
+#     -e DATABASE_URL=postgres://... \
+#     bun-app:prod
+
+# ============================================================
+# 阶段 1：依赖安装（deps）
+# ============================================================
+FROM oven/bun:latest AS deps
+
+WORKDIR /app
+
+# 复制依赖配置文件
+COPY package.json bun.lock ./
+
+# 安装所有依赖
+RUN bun install --frozen-lockfile
+
+# ============================================================
+# 阶段 2：构建（builder）
+# ============================================================
+FROM oven/bun:latest AS builder
+
+WORKDIR /app
+
+# 复制依赖
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./
+
+# 复制源代码
+COPY tsconfig.json ./
+COPY src ./src
+
+# 构建生产版本
+# 启用所有优化选项
+ARG BUILD_ENV=production
+RUN bun build ./src/index.ts \
+    --target bun \
+    --minify \
+    --sourcemap \
+    --outdir ./dist \
+    --define "process.env.NODE_ENV='${BUILD_ENV}'"
+
+# 运行测试（可选，在 CI 中可跳过）
+# RUN bun test
+
+# ============================================================
+# 阶段 3：生产运行（runner）
+# ============================================================
+FROM oven/bun:latest AS runner
+
+WORKDIR /app
+
+# 设置安全相关环境变量
+ENV NODE_ENV=production \
+    BUN_RUNTIME=production \
+    NODE_NO_WARNINGS=1
+
+# 复制构建产物
+COPY --from=builder /app/dist ./dist
+
+# 复制生产依赖（如果需要运行时依赖）
+# COPY --from=deps /app/node_modules ./node_modules
+
+# 暴露端口
+EXPOSE 3000
+
+# 使用非 root 用户
+USER bun
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD bun -e "fetch('http://localhost:3000/health').then(r => process.exit(r.ok?0:1)).catch(() => process.exit(1))"
+
+# 设置标签（metadata）
+LABEL maintainer="your-team@example.com" \
+      version="1.0.0" \
+      description="Bun production application"
+
+# 启动命令
+ENTRYPOINT ["bun", "run"]
+CMD ["dist/index.js"]
