@@ -1,0 +1,7 @@
+{
+  "name": "ch02-basic",
+  "version": "1.0.0",
+  "dependencies": {
+    "@types/bun": "latest"
+  }
+}
