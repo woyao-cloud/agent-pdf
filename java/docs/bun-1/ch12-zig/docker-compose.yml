@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-zig-demo
+    working_dir: /workspace
+    volumes:
+      - ./examples:/workspace/examples
+    entrypoint: ["bun", "run"]
+    profiles:
+      - basic
+      - advanced
+      - production
+
+  basic:
+    extends:
+      service: bun
+    command: ["examples/01-basic/comptime-demo.ts"]
+
+  advanced:
+    extends:
+      service: bun
+    command: ["examples/02-advanced/allocator-demo.ts"]
+
+  production:
+    extends:
+      service: bun
+    command: ["examples/03-production/allocator-bench.ts"]
