@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  bun:
+    image: oven/bun:latest
+    container_name: bun-ch04
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      echo '=== 01-basic: Build TypeScript ===' &&
+      cd examples/01-basic &&
+      bun build index.ts &&
+      echo '' &&
+      echo '=== 02-advanced: Build with multiple targets ===' &&
+      cd /app/examples/02-advanced &&
+      bun build app.ts --target browser --outdir ./dist &&
+      bun build app.ts --target bun --outdir ./dist-bun &&
+      echo 'browser output:' && head -5 dist/index.js &&
+      echo '' &&
+      echo '=== 03-production: Library build ===' &&
+      cd /app/examples/03-production &&
+      bun build src/index.ts --outdir ./dist --minify --splitting &&
+      ls -la dist/
