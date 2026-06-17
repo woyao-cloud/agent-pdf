@@ -1,0 +1,11 @@
+{
+  "name": "effect-ts-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:context": "bun ./java/docs/Effect-ts/ch04-di-context/examples/01-basic/context-tag.ts"
+  },
+  "dependencies": {
+    "effect": "^3.21.3"
+  }
+}

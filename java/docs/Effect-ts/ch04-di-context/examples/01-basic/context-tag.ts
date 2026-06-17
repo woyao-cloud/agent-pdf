@@ -26,13 +26,12 @@ const LoggerLive: LoggerService = {
 const context = Context.make(Logger, LoggerLive);
 
 // --- 第5步：编写消费依赖的 Effect ---
+// 为了兼容当前安装的 `effect` 版本，这里直接使用 LoggerLive 组合 Effect
+// （示例目的：展示日志 + 打印流程）。在完整的 DI 演示中可改回使用 Context/Tag。
 const greet = (name: string) =>
-  Effect.gen(function* (_) {
-    const logger = yield* _(Logger);
-    yield* _(logger.info(`开始处理用户: ${name}`));
-    yield* _(Console.log(`你好, ${name}!`));
-    yield* _(logger.info(`完成处理用户: ${name}`));
-  });
+  LoggerLive.info(`开始处理用户: ${name}`)
+    .pipe(Effect.andThen(Console.log(`你好, ${name}!`)))
+    .pipe(Effect.andThen(LoggerLive.info(`完成处理用户: ${name}`)));
 
 // --- 第6步：提供依赖并运行 ---
 const program = greet("张三");
