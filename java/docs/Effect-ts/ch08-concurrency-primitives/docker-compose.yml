@@ -1,0 +1,23 @@
+version: "3.9"
+services:
+  ch08-basic:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    command: >
+      sh -c "cd /app/examples/01-basic && npm init -y && npm install @effect/platform@latest && npx tsx index.ts"
+  ch08-advanced:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    command: >
+      sh -c "cd /app/examples/02-advanced && npm init -y && npm install @effect/platform@latest && npx tsx index.ts"
+  ch08-production:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    command: >
+      sh -c "cd /app/examples/03-production && npm init -y && npm install @effect/platform@latest && npx tsx index.ts"

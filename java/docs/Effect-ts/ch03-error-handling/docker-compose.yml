@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  effect-examples:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    command: >
+      sh -c "
+        npm install @effect/platform@latest &&
+        echo '=== 01-basic: 错误作为一等公民 ===' &&
+        npx tsx examples/01-basic/error-first-class.ts &&
+        echo '' &&
+        echo '=== 02-advanced: TaggedUnion 与精确错误分类 ===' &&
+        npx tsx examples/02-advanced/tagged-union-errors.ts &&
+        echo '' &&
+        echo '=== 03-production: 生产级错误处理 ===' &&
+        npx tsx examples/03-production/production-error-handling.ts
+      "

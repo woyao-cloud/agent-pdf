@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  basic:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    command: sh -c "npm init -y && npm install @effect/platform@latest && npx tsx examples/01-basic/fiber-concurrency.ts"
+  advanced:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    command: sh -c "npm init -y && npm install @effect/platform@latest && npx tsx examples/02-advanced/semaphore-rate-limit.ts"
+  production:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+    command: sh -c "npm init -y && npm install @effect/platform@latest && npx tsx examples/03-production/structured-concurrency.ts"

@@ -1,0 +1,34 @@
+version: "3.8"
+services:
+  testability-basic:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples/01-basic:/app/examples/01-basic
+    command: >
+      sh -c "npm install @effect/platform@latest effect@latest &&
+             npx tsx examples/01-basic/01-effect-as-requirement.ts &&
+             npx tsx examples/01-basic/02-mock-layer.ts &&
+             npx tsx examples/01-basic/03-test-clock.ts"
+
+  testability-advanced:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples/02-advanced:/app/examples/02-advanced
+    command: >
+      sh -c "npm install @effect/platform@latest effect@latest &&
+             npx tsx examples/02-advanced/01-test-random.ts &&
+             npx tsx examples/02-advanced/02-test-console.ts &&
+             npx tsx examples/02-advanced/03-composing-mocks.ts"
+
+  testability-production:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples/03-production:/app/examples/03-production
+    command: >
+      sh -c "npm install @effect/platform@latest effect@latest &&
+             npx tsx examples/03-production/01-integration-test.ts &&
+             npx tsx examples/03-production/02-property-based-test.ts &&
+             npx tsx examples/03-production/03-test-suite-organization.ts"

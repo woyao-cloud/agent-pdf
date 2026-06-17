@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  effect-examples:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    command: >
+      sh -c "
+        npm install @effect/platform@latest &&
+        echo '=== 01-basic: Promise 痛点演示 ===' &&
+        npx tsx examples/01-basic/promise-pain.ts &&
+        echo '' &&
+        echo '=== 02-advanced: Effect 核心哲学 ===' &&
+        npx tsx examples/02-advanced/effect-philosophy.ts &&
+        echo '' &&
+        echo '=== 03-production: 生产级异步编排 ===' &&
+        npx tsx examples/03-production/production-orchestration.ts
+      "

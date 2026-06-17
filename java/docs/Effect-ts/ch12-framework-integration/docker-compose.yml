@@ -1,0 +1,34 @@
+version: "3.8"
+services:
+  integration-basic:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples/01-basic:/app/examples/01-basic
+    command: >
+      sh -c "npm install @effect/platform@latest effect@latest &&
+             npx tsx examples/01-basic/01-adapter-pattern.ts &&
+             npx tsx examples/01-basic/02-effect-scope.ts &&
+             npx tsx examples/01-basic/03-progressive-refactoring.ts"
+
+  integration-advanced:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples/02-advanced:/app/examples/02-advanced
+    command: >
+      sh -c "npm install @effect/platform@latest effect@latest &&
+             npx tsx examples/02-advanced/01-fastify-adapter.ts &&
+             npx tsx examples/02-advanced/02-express-to-effect.ts &&
+             npx tsx examples/02-advanced/03-nestjs-service.ts"
+
+  integration-production:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples/03-production:/app/examples/03-production
+    command: >
+      sh -c "npm install @effect/platform@latest effect@latest &&
+             npx tsx examples/03-production/01-hono-effect.ts &&
+             npx tsx examples/03-production/02-middleware-chain.ts &&
+             npx tsx examples/03-production/03-full-migration.ts"

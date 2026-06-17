@@ -1,0 +1,104 @@
+version: "3.9"
+
+services:
+  # ============================================================
+  # Benchmark Runner — Node.js 20 Alpine with k6 for load testing
+  # ============================================================
+  benchmark:
+    image: node:20-alpine
+    container_name: effect-benchmark
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    command: >
+      sh -c "
+        npm install &&
+        npx tsx examples/03-production/performance-benchmark-suite.ts
+      "
+    environment:
+      - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=512
+    depends_on:
+      - k6
+      - express-server
+    networks:
+      - perf-net
+
+  # ============================================================
+  # k6 — Load Testing Tool
+  # ============================================================
+  k6:
+    image: grafana/k6:latest
+    container_name: effect-k6
+    volumes:
+      - ./k6-scripts:/scripts
+    command: run /scripts/load-test.js
+    environment:
+      - K6_OUT=json=/results/k6-output.json
+    depends_on:
+      - express-server
+    networks:
+      - perf-net
+
+  # ============================================================
+  # Express Server — Target for load tests
+  # ============================================================
+  express-server:
+    image: node:20-alpine
+    container_name: effect-express
+    working_dir: /app
+    volumes:
+      - ./server:/app
+    command: >
+      sh -c "
+        npm init -y &&
+        npm install express &&
+        node index.js
+      "
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    networks:
+      - perf-net
+
+  # ============================================================
+  # Prometheus — Metrics Collection (optional)
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: effect-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - perf-net
+    profiles:
+      - monitoring
+
+  # ============================================================
+  # Grafana — Metrics Visualization (optional)
+  # ============================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: effect-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - perf-net
+    profiles:
+      - monitoring
+
+volumes:
+  grafana-data:
+
+networks:
+  perf-net:
+    driver: bridge

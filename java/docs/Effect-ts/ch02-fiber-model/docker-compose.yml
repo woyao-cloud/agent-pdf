@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  effect-examples:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./examples:/app/examples
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    command: >
+      sh -c "
+        npm install @effect/platform@latest &&
+        echo '=== 01-basic: Fiber 基础 ===' &&
+        npx tsx examples/01-basic/fiber-basics.ts &&
+        echo '' &&
+        echo '=== 02-advanced: Effect.gen 与结构化并发 ===' &&
+        npx tsx examples/02-advanced/gen-structured.ts &&
+        echo '' &&
+        echo '=== 03-production: 生产级 Fiber 管理 ===' &&
+        npx tsx examples/03-production/fiber-management.ts
+      "
