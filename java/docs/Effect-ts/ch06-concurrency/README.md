@@ -390,6 +390,110 @@ Effect-TS 的并发模型是轻量级的、结构化的、类型安全的。它�
 
 本章全面介绍了 Effect-TS 的并发控制机制。我们从基本概念开始，逐步深入到高级用法和最佳实践。通过学习本章，你应该能够深入理解 Effect-TS 的并发模型，并能够在实际项目中灵活运用。Effect-TS 的并发模型是轻量级的、结构化的、类型安全的。它解决了传统并发编程中的许多痛点，如线程开销、共享状态、回调地狱、错误处理和资源泄漏等问题。与传统的线程模型相比，Effect-TS 的 Fiber 模型更加高效、更加安全、更加易用。
 
+## 二十六、Fiber 并发模型详解
+
+### 26.1 Fiber 的创建策略
+
+Fiber 的创建策略直接影响并发系统的性能和资源消耗。在 Effect-TS 中,Effect.fork 是最基本的 Fiber 创建方式,它创建一个新的 Fiber 并在后台独立执行。除了基本的 fork 之外,Effect-TS 还提供了多种 fork 变体以适应不同的场景。
+
+Effect.forkDaemon 用于创建守护 Fiber,这种 Fiber 的生命周期不受父 Fiber 的影响,即使父 Fiber 完成或被中断,守护 Fiber 仍然继续运行。守护 Fiber 适合后台服务场景,如日志写入、指标收集、心跳检测等。使用守护 Fiber 时需要注意,它们不会自动被清理,需要显式中断或等待。
+
+Effect.forkScoped 用于在 Scope 内创建 Fiber,Fiber 的生命周期与 Scope 绑定。当 Scope 关闭时,Scope 内所有未完成的 Fiber 会被自动中断。这是 Effect-TS 推荐的最安全的 Fiber 创建方式,因为它确保了 Fiber 不会泄漏。forkScoped 返回的 Effect 的依赖类型包含 Scope,这意味着它只能在 Scope 内使用。
+
+Effect.forkIn 允许在指定的 Scope 内创建 Fiber,提供了更灵活的生命周期管理。与 forkScoped 不同,forkIn 接受一个显式的 Scope 参数,允许在多个 Scope 之间共享 Fiber 的生命周期管理。
+
+选择 Fiber 创建策略的决策依据：对于短期任务,使用 forkScoped 以利用自动清理机制；对于长期运行的后台服务,使用 forkDaemon；对于需要精确控制 Scope 的场景,使用 forkIn；对于临时测试,可以使用基本的 fork,但要注意手动清理。
+
+### 26.2 Fiber 的状态管理与监控
+
+Fiber 的状态管理是并发系统监控和调试的基础。每个 Fiber 在其生命周期中经历多个状态,理解这些状态对于诊断并发问题至关重要。
+
+Fiber 的核心状态包括：初始(Initial),Fiber 刚被创建但尚未开始执行；运行中(Running),Fiber 正在执行其 Effect；挂起(Suspended),Fiber 正在等待某个异步操作完成,如等待 Queue.take、Effect.sleep 或 Promise.await；完成(Done),Fiber 成功执行完毕,结果可通过 Fiber.join 获取；失败(Failed),Fiber 执行过程中发生错误；中断(Interrupted),Fiber 收到了中断信号并停止执行。
+
+Fiber 的状态转换由运行时系统管理。当 Fiber 创建时,它处于初始状态,然后立即被调度执行。执行过程中,Fiber 可以因等待异步操作而进入挂起状态,当异步操作完成时,Fiber 被唤醒并继续执行。如果 Fiber 执行成功,进入完成状态；如果执行失败,进入失败状态；如果收到中断信号,进入中断状态。
+
+监控 Fiber 状态的主要工具是 Fiber.dump。Fiber.dump 返回一个包含所有活跃 Fiber 信息的数组,每个 Fiber 信息包括其唯一标识符(id)、当前状态、创建位置的调用栈(location)和当前执行位置的调用栈。通过定期调用 Fiber.dump,可以观察 Fiber 数量随时间的变化趋势,及时发现 Fiber 泄漏。
+
+### 26.3 Fiber 的通信与协调机制
+
+Fiber 之间的通信是并发编程的核心问题。Effect-TS 提供了多种 Fiber 通信机制,以满足不同的并发需求。
+
+Queue 是最常用的通信机制,支持多个生产者向多个消费者发送消息。Queue 可以是有界的或无界的,有界 Queue 提供了背压机制,防止生产者过快地生产消息。Queue 的 offer 操作在队列满时阻塞,take 操作在队列空时阻塞,这种阻塞语义自然地协调了生产者和消费者的速度。
+
+Ref 是另一种通信机制,提供了原子性的共享状态访问。多个 Fiber 可以通过 Ref 共享和更新状态,Ref 的原子操作保证了并发安全。Ref.update 和 Ref.modify 是原子操作,多个 Fiber 同时更新同一个 Ref 时不会出现竞态条件。
+
+Promise(在 Effect-TS 中也称为 Deferred)用于 Fiber 间的一次性通信。Promise 可以被 Fiber 等待,当 Promise 被完成时,等待的 Fiber 会被唤醒。这种机制适合需要等待某个条件满足的场景,如等待初始化完成、等待计算结果等。
+
+Semaphore 用于控制对共享资源的并发访问。通过 Semaphore.withPermit,可以限制同时访问某个资源的 Fiber 数量,Semaphore 的公平性确保了所有 Fiber 最终都能获取许可。
+
+选择合适的通信机制取决于具体的需求：需要持续的消息传递时使用 Queue,需要共享状态时使用 Ref,需要一次性同步时使用 Promise,需要控制并发访问时使用 Semaphore。
+
+## 二十七、Semaphore 限流信号量深入
+
+### 27.1 Semaphore 的内部实现原理
+
+Semaphore 的内部实现基于 Effect-TS 的 Ref 和 Fiber 的等待-唤醒机制。Semaphore 维护一个许可计数器和一个等待队列,许可计数器表示当前可用的许可数量,等待队列用于管理因许可不足而被挂起的 Fiber。
+
+当 Fiber 调用 Semaphore.withPermit 时,首先尝试获取一个许可。如果许可计数器大于零,计数器减一,Fiber 继续执行。如果计数器为零,Fiber 被挂起并加入等待队列。当 Fiber 释放许可时,计数器加一,然后检查等待队列中是否有挂起的 Fiber。如果有,唤醒队列中的第一个 Fiber,该 Fiber 获取许可并继续执行。
+
+Semaphore 的公平性实现基于 FIFO 队列。公平的 Semaphore 按照 Fiber 请求许可的顺序分配许可,先请求的 Fiber 先获得许可。这种公平策略避免了某些 Fiber 永远无法获取许可的饥饿问题。不公平的 Semaphore 允许新请求的 Fiber 插队,提高了吞吐量但可能导致某些 Fiber 饥饿。Effect-TS 的 Semaphore 默认使用公平策略。
+
+Semaphore 的许可数量可以在运行时动态调整。通过 Semaphore.unsafeFree 和 Semaphore.unsafeTake 操作,可以在运行时增加或减少许可数量。动态调整许可数允许系统在运行时根据负载情况自动调整并发限制,适应不同的流量模式。
+
+### 27.2 Semaphore 的高级使用模式
+
+Semaphore 的高级使用模式包括多资源管理、优先级限流和自适应限流。
+
+多资源管理使用多个 Semaphore 来管理不同类型的资源,每个 Semaphore 控制一种资源的并发访问。例如,在一个 Web 服务器中,可以使用一个 Semaphore 限制数据库连接数,使用另一个 Semaphore 限制外部 API 调用数。这种多资源管理方式确保了不同类型的资源不会相互影响。
+
+优先级限流使用多个 Semaphore 来实现不同优先级的限流。高优先级的任务使用更多的许可,低优先级的任务使用更少的许可。例如,在一个任务队列系统中,关键任务使用 5 个许可,普通任务使用 2 个许可,后台任务使用 1 个许可。这种优先级限流方式确保了关键任务在高负载下仍然可以执行。
+
+自适应限流根据系统的实时状态动态调整并发限制。当系统负载较低时,增加并发限制以提高吞吐量；当系统负载较高时,减少并发限制以防止过载。自适应限流的实现需要监控系统的关键指标,如响应时间、错误率、CPU 使用率等,然后根据这些指标动态调整 Semaphore 的许可数。
+
+### 27.3 Semaphore 与 RateLimiter 的对比
+
+Semaphore 和 RateLimiter 都是用于限制并发访问的工具,但它们的工作方式有所不同。
+
+Semaphore 限制的是同时执行的 Fiber 数量,不限制 Fiber 的执行频率。Semaphore.make(5) 允许最多 5 个 Fiber 同时执行,但单个 Fiber 可以在短时间内多次获取和释放许可。
+
+RateLimiter 限制的是单位时间内的操作次数。例如,RateLimiter(100, "1 second") 允许每秒最多 100 次操作,超出限制的操作需要等待或失败。
+
+选择使用 Semaphore 还是 RateLimiter 取决于具体的需求：如果需要限制同时使用的连接数,使用 Semaphore；如果需要限制单位时间内的请求次数,使用 RateLimiter。在实际应用中,Semaphore 和 RateLimiter 可以组合使用,同时控制并发数和频率。
+
+## 二十八、Effect.all 并发执行深入
+
+### 28.1 Effect.all 的并发执行模型
+
+Effect.all 的并发执行模型基于 Fiber 的创建和管理。当 Effect.all 执行时,它为每个输入 Effect 创建一个 Fiber,然后等待所有 Fiber 完成。Effect.all 的并发度控制通过内部的 Semaphore 实现,当 concurrency 参数为有限值时,Effect.all 使用 Semaphore 限制同时执行的 Fiber 数量。
+
+Effect.all 的错误处理机制基于 Fiber 的中断。当使用默认的无限制并发模式时,如果任何一个 Effect 失败,Effect.all 会立即中断所有正在执行的 Fiber,然后以第一个失败的错误失败。这种快速失败机制避免了不必要的资源消耗,提高了系统的响应速度。
+
+当 concurrency 参数设置为有限值时,Effect.all 的行为类似,但只有正在执行的 Fiber 会被中断,等待队列中的 Fiber 不会启动。这意味着如果并发度设置为 3,而输入有 10 个 Effect,当第 1 个 Effect 失败时,正在执行的另外 2 个 Fiber 会被中断,但尚未启动的 7 个 Effect 不会执行。
+
+Effect.all 还有另一种错误处理模式：收集所有错误。通过 Effect.all({ concurrency: "unbounded", mode: "either" }),可以收集所有成功和失败的结果,而不是在第一个失败时立即中断。这种模式适合需要处理所有结果的场景,如批量数据处理。
+
+### 28.2 Effect.all 与 Effect.forEach 的性能对比
+
+Effect.all 和 Effect.forEach 都可以用于并发执行多个 Effect,但它们的性能特性有所不同。
+
+Effect.all 适合并发执行一组已知的 Effect,每个 Effect 是独立定义的。Effect.all 的数组形式在编译时就知道有多少个 Effect,因此可以精确分配资源。Effect.all 的对象形式保留了每个 Effect 的名称,便于在结果中定位。
+
+Effect.forEach 适合对集合中的每个元素执行相同的 Effect。Effect.forEach 在运行时才知道集合的大小,因此资源分配是动态的。Effect.forEach 的 type 参数可以进一步控制并发行为,type: "all" 表示所有元素并发执行,type: "race" 表示竞态执行(返回第一个完成的结果),type: "sequantial" 表示顺序执行。
+
+性能对比方面,Effect.all 在已知数量的 Effect 场景中性能略好,因为它可以避免运行时迭代开销。Effect.forEach 在动态集合场景中更加灵活,但有一定的迭代开销。在大多数实际应用中,两者的性能差异可以忽略,选择的原则应该是语义匹配而非性能差异。
+
+### 28.3 结构化并发与 Effect.all
+
+结构化并发是 Effect-TS 并发模型的核心设计原则,Effect.all 是结构化并发的典型体现。Effect.all 的结构化特性体现在以下几个方面：
+
+生命周期管理：Effect.all 自动管理所有子 Effect 对应的 Fiber 的生命周期。当 Effect.all 完成或失败时,所有子 Fiber 都会被清理,不会出现 Fiber 泄漏。这种自动管理机制消除了手动 Join 或 Interrupt Fiber 的需要。
+
+错误传播：Effect.all 中的错误会从子 Effect 传播到父 Effect。如果任何一个子 Effect 失败,Effect.all 会失败,并将错误传播给调用方。这种错误传播机制确保了错误不会被忽略。
+
+取消传播：当 Effect.all 被中断时(例如被 Effect.timeout 或 Effect.race 中断),所有正在执行的子 Effect 也会被中断。这种取消传播机制确保了中断的正确处理,不会出现部分 Effect 仍然运行的情况。
+
+结构化并发与 Effect.all 的结合使得并发代码的推理变得简单。开发者不需要关心底层的 Fiber 管理,只需要声明哪些 Effect 需要并发执行,Effect-TS 运行时会自动处理所有并发细节。
+
 ## 二十二、Fiber 并发模型深入
 
 ### 22.1 Fiber 的创建与执行策略

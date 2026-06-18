@@ -3939,3 +3939,693 @@ Ref 提供了不可变状态的原子更新，是构建并发安全状态的基�
 8. 理解并发系统中的常见陷阱和最佳实践。
 
 在下一章中，我们将探讨 Schedule 模块——一个将重试策略、延迟和定时任务抽象为可组合数据结构的强大工具。
+
+## 11. Ref/SynchronizedRef 安全状态共享深入
+
+### 11.1 Ref 的原子性保证机制
+
+Ref 的原子性是通过 Effect-TS 运行时的 Fiber 调度系统实现的。当一个 Fiber 执行 Ref.update 时,整个"读取-修改-写入"操作在一个不可中断的临界区内完成。这意味着在更新操作完成之前,没有其他 Fiber 可以读取或修改该 Ref 的值。
+
+Ref 的原子性保证了以下特性：没有竞态条件,两个 Fiber 同时更新 Ref 时不会出现丢失更新的情况；没有脏读,读取 Ref 时总是看到一个一致的状态；没有死锁,Ref 的操作是非阻塞的,不会导致死锁。
+
+Ref 的内部实现使用 CAS(Compare-And-Swap)操作而非锁。CAS 是一种乐观并发控制机制,它通过比较当前值和期望值来确定是否可以写入。如果当前值与期望值一致,说明没有其他 Fiber 修改过,写入成功；否则写入失败并重试。CAS 的性能优于锁,因为它不会导致 Fiber 挂起和唤醒的开销。
+
+Ref 的 get 操作返回当前值的引用。这意味着如果 Ref 存储的是可变对象,通过 get 获取引用后修改该对象会导致 Ref 的状态发生变化,但 Ref 无法感知这种变化。因此,建议 Ref 存储不可变数据,或者每次更新时创建新的副本。
+
+### 11.2 Ref 的性能优化策略
+
+Ref 的性能优化主要关注减少竞争和降低更新成本。以下是一些实用的性能优化策略：
+
+第一,分片策略。当多个 Fiber 频繁更新同一个 Ref 时,竞争会非常激烈。可以将一个 Ref 拆分为多个 Ref,每个 Fiber 更新其中一个分片,然后定期合并分片的结果。例如,在一个计数器场景中,可以将一个全局计数器拆分为 10 个分片计数器,每个 Fiber 更新随机的一个分片,定期将所有分片的值相加得到总数。
+
+第二,批量更新策略。当需要频繁更新 Ref 时,可以将多个小更新合并为一个大更新,减少更新次数。例如,在一个实时统计系统中,可以将每秒的多次更新合并为一次批量更新。
+
+第三,使用 modify 而非 updateAndGet。modify 允许在更新函数中返回自定义结果,避免了更新后再次 get 的开销。updateAndGet 需要两次 Ref 操作(更新和获取),而 modify 只需要一次。
+
+第四,避免在更新函数中执行耗时操作。Ref 的更新函数在临界区内执行,耗时操作会阻塞其他 Fiber。更新函数应尽量轻量,只包含必要的计算。
+
+### 11.3 SynchronizedRef 的复合操作设计
+
+SynchronizedRef 的设计目标是解决 Ref 无法原子地执行复合操作的问题。在 Ref 中,如果需要先读取当前值,基于它执行一个 Effect,然后更新值,这三个步骤不是原子的,可能在中间被其他 Fiber 中断。SynchronizedRef 通过内部互斥锁将这三个步骤绑定在一起,确保整个操作的原子性。
+
+SynchronizedRef 的核心方法是 modifyEffect,它接受一个函数 f,该函数接收当前值并返回 Effect。modifyEffect 保证在整个过程中,没有其他 Fiber 可以修改 SynchronizedRef 的值。
+
+SynchronizedRef 的使用场景包括：需要在更新过程中调用外部 API；需要在更新过程中执行数据库操作；需要原子地更新多个相关的状态；需要在更新过程中记录日志或发送事件。
+
+使用 SynchronizedRef 时需要注意其性能特性：锁竞争在高并发下会降低性能,因此 modifyEffect 中的 Effect 执行时间应尽量短；嵌套使用多个 SynchronizedRef 时需要注意死锁问题；对于读多写少的场景,使用 Ref 替代 SynchronizedRef 以提高性能。
+
+### 11.4 Ref 在状态机中的应用
+
+Ref 非常适合实现状态机,因为状态机的状态转换需要原子性。使用 Ref 实现状态机的基本模式是：定义一个状态类型,使用 Ref 存储当前状态,使用 Ref.modify 原子地执行状态转换。
+
+状态机的状态转换函数通常需要检查当前状态是否允许转换到目标状态。如果允许,执行转换并可能执行副作用；如果不允许,返回错误或保持原状态。通过 Ref.modify,状态转换和状态检查可以在一个原子操作中完成,避免了竞态条件。
+
+例如,一个连接状态机包含 disconnected、connecting、connected、reconnecting 四个状态。connect 操作只有在当前状态为 disconnected 时才能执行,connect 操作将状态从 disconnected 转换为 connecting,连接建立后将状态从 connecting 转换为 connected。如果连接失败,状态从 connecting 回退到 disconnected。所有这些转换都需要原子性,防止多个 Fiber 同时尝试连接导致状态混乱。
+
+## 12. Queue 生产者-消费者深入
+
+### 12.1 Queue 的背压机制详解
+
+背压(Backpressure)是 Queue 最核心的设计特性。背压允许消费者控制生产者的生产速度,防止消费者被数据淹没。在 Effect-TS 的 Queue 中,背压通过队列容量来实现。
+
+有界 Queue 的背压机制：当队列已满时,生产者的 offer 操作会被阻塞,直到消费者取走元素腾出空间。这种阻塞自然地将消费者的处理速度反向传递给生产者。如果消费者处理速度慢,队列会持续满,生产者被阻塞,生产速度自动降低。如果消费者处理速度快,队列经常为空,生产者可以快速生产。
+
+背压的粒度控制：通过调整队列容量,可以控制背压的敏感度。小容量队列提供更强的背压,生产者更容易被阻塞,系统对消费者的处理速度更加敏感。大容量队列提供较弱的背压,生产者不容易被阻塞,但消费者可能积压较多数据。
+
+背压与丢包策略：对于某些实时系统,背压导致的阻塞是不可接受的。Effect-TS 提供了两种替代策略：dropping(新元素被丢弃)和 sliding(旧元素被丢弃)。这些策略避免了生产者阻塞,但代价是数据丢失。
+
+背压在分布式系统中的延伸：在分布式系统中,背压的概念可以延伸到服务间通信。当一个服务接收请求的速度超过其处理能力时,可以通过背压信号通知上游服务降低发送速度。这种端到端的背压机制可以防止级联故障。
+
+### 12.2 Queue 的批处理与性能优化
+
+Queue 的批处理操作可以显著提高吞吐量。批处理的核心思想是将多个操作合并为一次操作,减少操作次数和上下文切换开销。
+
+takeUpTo 是批处理消费的关键操作。它从队列中取出最多指定数量的元素,如果队列中的元素不足则取出所有可用元素。通过一次取出多个元素,可以减少 take 操作的次数,降低 Fiber 切换开销。
+
+offerAll 是批处理生产的关键操作。它将多个元素一次性放入队列,减少了 offer 操作的次数。offerAll 返回未成功放入的元素(队列已满时),这些元素需要后续处理。
+
+批处理与窗口大小：批处理的大小选择是性能优化的关键。批处理太小,优化效果不明显；批处理太大,单次处理时间过长,可能导致其他 Fiber 等待。通常建议批处理大小在 10-100 之间,具体取决于业务场景。
+
+### 12.3 有界队列与无界队列的选择
+
+选择有界队列还是无界队列取决于具体的业务需求。有界队列提供了背压机制,可以控制数据的流入速度,防止系统过载。无界队列不限制容量,所有数据都可以进入队列,但可能导致内存耗尽。
+
+有界队列适用于以下场景：生产者速度可能超过消费者速度；需要控制内存使用；需要背压机制协调生产者和消费者的速度；系统对资源使用有严格的限制。
+
+无界队列适用于以下场景：生产者和消费者的速度匹配良好；数据丢失不可接受；消息量可控；消费者的处理速度通常超过生产者的生产速度。
+
+在实际应用中,推荐优先使用有界队列。有界队列的安全边界可以防止系统在突发流量下崩溃。如果担心有界队列导致生产者频繁阻塞,可以适当增大队列容量,或者在队列满时使用 dropping 或 sliding 策略。
+
+### 12.4 Queue 在分布式系统中的应用
+
+在分布式系统中,Queue 的概念可以扩展到跨进程通信。Effect-TS 的 Queue 是进程内的通信机制,但可以通过与其他组件结合,实现分布式队列的效果。
+
+本地 Queue 与数据库结合：将本地 Queue 与数据库表结合,可以实现持久化的消息队列。本地 Queue 负责缓冲消息,后台 Fiber 定期将 Queue 中的消息写入数据库表。即使应用崩溃,数据库中的消息也不会丢失。
+
+本地 Queue 与消息代理结合：将本地 Queue 与外部消息代理(如 RabbitMQ、Kafka、Redis)结合,可以实现分布式消息传递。本地 Queue 负责处理应用内部的消息传递,外部消息代理负责跨服务的消息传递。本地 Queue 作为消息代理的缓冲区,减少网络通信次数。
+
+## 13. Hub 发布-订阅深入
+
+### 13.1 Hub 的内部实现机制
+
+Hub 内部维护了一组 Queue,每个订阅者对应一个独立的 Queue。当消息被发布到 Hub 时,它会被复制到所有订阅者的 Queue 中。这种设计实现了发布-订阅模式的"一对多"语义：一个生产者发布的消息可以被多个消费者独立消费。
+
+Hub 的实现需要考虑消息复制的性能。对于少量订阅者,消息复制开销很小；对于大量订阅者,每条消息都需要被复制多次,开销显著增加。在 Effect-TS 中,Hub 的消息复制使用 forEach 操作,依次将消息放入每个订阅者的 Queue。
+
+Hub 的背压机制与 Queue 的背压机制相同,但按订阅者独立管理。每个订阅者都有自己的 Queue,因此每个订阅者的消费速度独立影响其对生产者的背压。慢订阅者不会影响快订阅者,快订阅者可以继续正常消费。
+
+Hub 的容量决定了每个订阅者 Queue 的大小。创建 Hub 时指定的容量会被用于初始化每个订阅者的 Queue。这意味着 Hub 的总容量是容量乘以订阅者数量。对于大量订阅者,需要合理选择容量,避免内存占用过高。
+
+### 13.2 Hub 与 EventBus 的对比
+
+Hub 和 EventBus 都是实现发布-订阅模式的机制,但它们的设计目标和特性有所不同。
+
+Hub 是一个低级别的原语,提供了基本的发布和订阅功能。它没有事件过滤、事件转换等高级功能,但性能更高,内存占用更小。Hub 适合需要高性能广播的场景。
+
+EventBus 是一个更高层次的抽象,通常基于 Hub 实现。EventBus 提供了事件类型过滤、事件转换、事件路由等高级功能。EventBus 适合需要复杂事件处理逻辑的场景。
+
+选择 Hub 还是 EventBus 取决于具体的需求：如果只需要简单的广播功能,使用 Hub；如果需要复杂的事件处理逻辑,使用 EventBus；如果需要高性能,优先考虑 Hub。
+
+### 13.3 Hub 的背压与慢订阅者处理
+
+Hub 的背压机制需要特别关注慢订阅者的处理。当某个订阅者的消费速度明显慢于其他订阅者时,它的 Queue 会持续满,导致发布者被阻塞。
+
+慢订阅者的处理策略包括：增加 Hub 容量,为慢订阅者提供更大的缓冲区；使用 sliding 策略,丢弃慢订阅者的旧消息；使用 dropping 策略,丢弃慢订阅者的新消息；或者将慢订阅者从 Hub 中移除,由独立的处理流程处理。
+
+在实际应用中,推荐为 Hub 设置合理的容量,并监控每个订阅者的消费速度。如果发现某个订阅者持续慢速,应该分析其处理逻辑是否存在性能问题,而不是简单地增加缓冲区大小。
+
+### 13.4 Hub 在实时数据分发中的应用
+
+Hub 在实时数据分发场景中有广泛的应用。以下是一些典型的使用案例：
+
+实时仪表盘：将实时数据通过 Hub 广播到多个仪表盘实例。每个仪表盘实例是 Hub 的一个订阅者,独立接收和处理实时数据。当数据源发生变化时,所有仪表盘同时更新。
+
+WebSocket 广播：将 Hub 与 WebSocket 结合,实现消息的实时推送。每个 WebSocket 连接是 Hub 的一个订阅者,当消息发布到 Hub 时,所有连接的客户端都会收到消息。
+
+缓存失效通知：当缓存数据发生变化时,通过 Hub 通知所有相关的缓存实例清除过期的缓存数据。每个缓存实例作为 Hub 的订阅者,收到通知后立即清除对应的缓存项。
+
+## 14. 有界队列背压深入
+
+### 14.1 背压的核心原理
+
+背压的核心原理是：当消费者的处理能力不足以应对生产者的生产速度时,消费者通过某种机制通知生产者降低速度。在 Effect-TS 中,这种机制通过有界 Queue 的阻塞 offer 实现。
+
+背压的实现需要以下条件：生产者和消费者之间有明确的边界(即 Queue)；Queue 的容量是有限的；offer 操作在队列满时阻塞；take 操作在队列空时阻塞。
+
+背压的关键参数是 Queue 的容量。容量决定了系统可以缓冲的数据量。容量越大,系统对短暂的速度波动越不敏感,但突发流量下的最大延迟也越大。容量越小,系统的响应越及时,但生产者被阻塞的频率也越高。
+
+选择容量的经验公式：容量 = 预期的最大生产速度 × 可接受的等待时间 / 单个消息的大小。例如,如果最大生产速度是 1000 msg/s,可接受的最大等待时间是 100ms,那么容量至少需要 100 个槽位。
+
+### 14.2 背压在流处理中的应用
+
+在流处理系统中,背压是保证系统稳定的关键机制。Effect-TS 的 Stream 模块与 Queue 深度集成,提供了天然的背压支持。
+
+Stream 的背压通过内部的 Queue 实现。当 Stream 的生产者(数据源)速度超过消费者(处理器)速度时,Stream 内部的 Queue 会满,生产者被阻塞,生产速度自动降低。
+
+Stream 的背压与调度器的交互：Stream 的背压不仅影响数据源的读取速度,还影响 Fiber 的调度。当 Stream 阻塞时,当前的 Fiber 让出 CPU,其他 Fiber 可以获得执行机会。这种协作式调度确保了系统资源的高效利用。
+
+Stream 的背压与错误处理：当 Stream 的背压导致数据源阻塞时,如果阻塞时间超过设定的超时,Stream 可以报告错误,由错误处理器决定是重试还是跳过。
+
+### 14.3 背压与弹性伸缩
+
+背压与弹性伸缩是两个互补的机制。背压在微观层面控制数据流,弹性伸缩在宏观层面调整系统容量。
+
+在基于背压的系统中,当消费者负载过高时,背压会减慢生产者的速度。但长期来看,需要增加消费者的数量或提高消费者的处理能力。弹性伸缩根据负载情况动态调整资源分配,从根本上解决负载问题。
+
+背压与弹性伸缩的结合：背压信号可以作为弹性伸缩的触发条件。当 Queue 持续满时,说明消费者处理能力不足,可以触发扩容操作。当 Queue 持续空时,说明消费者处理能力过剩,可以触发缩容操作。
+
+在实际系统中,背压和弹性伸缩通常配合使用。背压作为第一道防线,处理瞬时的负载波动。弹性伸缩作为第二道防线,处理持续性的负载变化。这种分层设计既保证了系统的稳定性,又提高了资源的利用效率。
+
+## 15. Ref/SynchronizedRef 高级状态共享实战
+
+### 15.1 多层缓存状态共享
+
+在大型应用中,状态共享往往涉及多层结构。使用 Ref 管理多层缓存状态需要精细的设计。典型的多层缓存包括本地内存缓存(L1)、分布式缓存(L2)、数据库(L3)三个层级。
+
+```typescript
+class MultiLayerCache<K, V> {
+  private l1Cache: Ref.Ref<Map<K, { value: V; timestamp: number }>>
+  private l2CacheRef: Ref.Ref<Map<K, { value: V; timestamp: number }>>
+  private stats: Ref.Ref<{ l1Hits: number; l2Hits: number; l3Hits: number }>
+
+  constructor(private l2TTL: Duration.Duration, private l1TTL: Duration.Duration) {
+    this.l1Cache = Ref.unsafeMake(new Map())
+    this.l2CacheRef = Ref.unsafeMake(new Map())
+    this.stats = Ref.unsafeMake({ l1Hits: 0, l2Hits: 0, l3Hits: 0 })
+  }
+
+  get(key: K, fetchFromDB: (key: K) => Effect.Effect<V>): Effect.Effect<V> {
+    return Effect.gen(function* (_) {
+      const now = Date.now()
+
+      // L1 缓存检查
+      const l1Result = yield* _(Ref.modify(this.l1Cache, (map) => {
+        const entry = map.get(key)
+        if (entry && now - entry.timestamp < this.l1TTL.millis) {
+          return [Option.some(entry.value), map] as const
+        }
+        return [Option.none(), map] as const
+      }))
+      if (Option.isSome(l1Result)) {
+        yield* _(Ref.update(this.stats, (s) => ({ ...s, l1Hits: s.l1Hits + 1 })))
+        return l1Result.value
+      }
+
+      // L2 缓存检查
+      const l2Result = yield* _(Ref.modify(this.l2CacheRef, (map) => {
+        const entry = map.get(key)
+        if (entry && now - entry.timestamp < this.l2TTL.millis) {
+          return [Option.some(entry.value), map] as const
+        }
+        return [Option.none(), map] as const
+      }))
+      if (Option.isSome(l2Result)) {
+        yield* _(Ref.update(this.l1Cache, (map) => {
+          const newMap = new Map(map)
+          newMap.set(key, { value: l2Result.value, timestamp: now })
+          return newMap
+        }))
+        yield* _(Ref.update(this.stats, (s) => ({ ...s, l2Hits: s.l2Hits + 1 })))
+        return l2Result.value
+      }
+
+      // L3 数据库查询
+      const value = yield* _(fetchFromDB(key))
+      yield* _(Ref.update(this.l1Cache, (map) => {
+        const newMap = new Map(map)
+        newMap.set(key, { value, timestamp: now })
+        return newMap
+      }))
+      yield* _(Ref.update(this.l2CacheRef, (map) => {
+        const newMap = new Map(map)
+        newMap.set(key, { value, timestamp: now })
+        return newMap
+      }))
+      yield* _(Ref.update(this.stats, (s) => ({ ...s, l3Hits: s.l3Hits + 1 })))
+      return value
+    })
+  }
+
+  getStats(): Effect.Effect<{ l1HitRate: number; l2HitRate: number }> {
+    return Ref.get(this.stats).pipe(
+      Effect.map((s) => {
+        const total = s.l1Hits + s.l2Hits + s.l3Hits
+        return {
+          l1HitRate: total > 0 ? s.l1Hits / total : 0,
+          l2HitRate: total > 0 ? s.l2Hits / total : 0,
+        }
+      })
+    )
+  }
+
+  invalidate(key: K): Effect.Effect<void> {
+    return Effect.gen(function* (_) {
+      yield* _(Ref.update(this.l1Cache, (map) => {
+        const newMap = new Map(map)
+        newMap.delete(key)
+        return newMap
+      }))
+      yield* _(Ref.update(this.l2CacheRef, (map) => {
+        const newMap = new Map(map)
+        newMap.delete(key)
+        return newMap
+      }))
+    })
+  }
+}
+```
+
+这个多层缓存实现中,L1 缓存使用极短的 TTL,提供最快的访问速度但容量有限。L2 缓存使用较长的 TTL,提供次快的访问速度但容量更大。L3 是数据库回源,是最慢但数据最完整的方式。stat 计数器的设计让开发者可以清晰地了解缓存的命中率分布,从而优化 TTL 和缓存容量配置。
+
+### 15.2 SynchronizedRef 的乐观锁模式
+
+SynchronizedRef 的 modifyEffect 本质上是一个悲观锁——它通过互斥锁确保复合操作的原子性。对于某些场景,使用乐观锁(基于 Ref 的 CAS 操作)可以获得更高的性能。
+
+```typescript
+// 乐观锁模式：使用 Ref 实现 CAS 操作
+const optimisticUpdate = <A>(ref: Ref.Ref<A>, f: (a: A) => A): Effect.Effect<A> => {
+  const attempt: Effect.Effect<A> = Effect.gen(function* (_) {
+    const current = yield* _(Ref.get(ref))
+    const newValue = f(current)
+    const success = yield* _(Ref.compareAndSet(ref, current, newValue))
+    if (!success) {
+      // CAS 失败,重试
+      return yield* _(attempt)
+    }
+    return newValue
+  })
+  return attempt
+}
+```
+
+乐观锁模式适用于读多写少、冲突概率低的场景。当多个 Fiber 同时更新 Ref 时,只有第一个成功,其他 Fiber 需要重试。这种模式避免了互斥锁的开销,但在高冲突场景下会导致大量重试,反而降低性能。
+
+### 15.3 SynchronizedRef 的分片锁优化
+
+当 SynchronizedRef 保护的共享状态包含多个独立的部分时,可以使用分片锁来减少锁竞争。每个分片有独立的 SynchronizedRef,不同 Fiber 更新不同分片时互不干扰。
+
+```typescript
+class ShardedCounter {
+  private shards: SynchronizedRef.SynchronizedRef<number>[]
+  private numShards: number
+
+  constructor(numShards: number = 16) {
+    this.numShards = numShards
+    this.shards = Array.from({ length: numShards }, () =>
+      Effect.runSync(SynchronizedRef.make(0))
+    )
+  }
+
+  private getShard(key: string): number {
+    let hash = 0
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash * 31 + key.charCodeAt(i)) | 0
+    }
+    return Math.abs(hash) % this.numShards
+  }
+
+  increment(key: string, amount: number = 1): Effect.Effect<number> {
+    const shardIndex = this.getShard(key)
+    return SynchronizedRef.modify(
+      this.shards[shardIndex],
+      (current) => [current + amount, current + amount] as const
+    )
+  }
+
+  getTotal(): Effect.Effect<number> {
+    return Effect.forEach(
+      this.shards,
+      (shard) => SynchronizedRef.modify(shard, (n) => [n, n] as const),
+      { concurrency: "unbounded" }
+    ).pipe(
+      Effect.map((counts) => counts.reduce((a, b) => a + b, 0))
+    )
+  }
+}
+```
+
+分片锁的核心思想是将一个锁拆分为多个更细粒度的锁,降低每个锁上的竞争概率。分片数量的选择需要在减少竞争和增加管理开销之间取得平衡。通常建议分片数量为 CPU 核心数的 2-4 倍。
+
+## 16. Queue 背压深度实战
+
+### 16.1 自适应背压控制
+
+在某些场景中,固定的队列容量无法适应变化的负载。自适应背压根据系统的实时状态动态调整队列容量,在低负载时减少内存占用,在高负载时提供更大的缓冲区。
+
+```typescript
+class AdaptiveBackpressureQueue<A> {
+  private queue: Ref.Ref<{ items: A[]; capacity: number }>
+  private metrics: Ref.Ref<{ totalEnqueued: number; totalDequeued: number; lastAdjustTime: number }>
+
+  constructor(initialCapacity: number = 100) {
+    this.queue = Ref.unsafeMake({ items: [], capacity: initialCapacity })
+    this.metrics = Ref.unsafeMake({ totalEnqueued: 0, totalDequeued: 0, lastAdjustTime: Date.now() })
+  }
+
+  offer(item: A): Effect.Effect<boolean> {
+    return Effect.gen(function* (_) {
+      const state = yield* _(Ref.get(this.queue))
+      if (state.items.length >= state.capacity) {
+        return false // 队列满,由调用方决定重试或丢弃
+      }
+      yield* _(Ref.update(this.queue, (s) => ({
+        ...s,
+        items: [...s.items, item]
+      })))
+      yield* _(Ref.update(this.metrics, (m) => ({
+        ...m,
+        totalEnqueued: m.totalEnqueued + 1
+      })))
+      return true
+    })
+  }
+
+  take(): Effect.Effect<Option.Option<A>> {
+    return Effect.gen(function* (_) {
+      const result = yield* _(Ref.modify(this.queue, (state) => {
+        if (state.items.length === 0) return [Option.none(), state] as const
+        const [head, ...tail] = state.items
+        return [Option.some(head), { ...state, items: tail }] as const
+      }))
+      if (Option.isSome(result)) {
+        yield* _(Ref.update(this.metrics, (m) => ({
+          ...m,
+          totalDequeued: m.totalDequeued + 1
+        })))
+      }
+      return result
+    })
+  }
+
+  adjustCapacity(): Effect.Effect<void> {
+    return Effect.gen(function* (_) {
+      const m = yield* _(Ref.get(this.metrics))
+      const now = Date.now()
+      const elapsed = now - m.lastAdjustTime
+      if (elapsed < 5000) return // 每 5 秒调整一次
+
+      const queueLength = m.totalEnqueued - m.totalDequeued
+      const state = yield* _(Ref.get(this.queue))
+      const currentCapacity = state.capacity
+
+      let newCapacity = currentCapacity
+      if (queueLength > currentCapacity * 0.8) {
+        newCapacity = Math.min(currentCapacity * 2, 10000) // 扩容
+      } else if (queueLength < currentCapacity * 0.2 && currentCapacity > 100) {
+        newCapacity = Math.max(currentCapacity / 2, 100) // 缩容
+      }
+
+      if (newCapacity !== currentCapacity) {
+        yield* _(Ref.update(this.queue, (s) => ({ ...s, capacity: newCapacity })))
+      }
+      yield* _(Ref.update(this.metrics, (m) => ({
+        ...m,
+        totalEnqueued: 0,
+        totalDequeued: 0,
+        lastAdjustTime: now
+      })))
+    })
+  }
+}
+```
+
+自适应背压的核心是持续监控队列的积压情况,据此动态调整容量。当积压比例超过 80% 时扩容,低于 20% 时缩容。调整间隔设为 5 秒可以避免频繁调整导致的震荡。
+
+### 16.2 背压与健康检查的结合
+
+背压信息可以作为系统健康状态的重要指标。通过监控 Queue 的积压情况,可以判断系统是否处于健康状态,并在必要时触发保护措施。
+
+```typescript
+class HealthAwareQueue<A> {
+  private queue: Queue.Queue<A>
+  private healthRef: Ref.Ref<"healthy" | "stressed" | "critical">
+
+  constructor(capacity: number) {
+    this.queue = Effect.runSync(Queue.bounded<A>(capacity))
+    this.healthRef = Ref.unsafeMake<"healthy" | "stressed" | "critical">("healthy")
+  }
+
+  getHealth(): Effect.Effect<"healthy" | "stressed" | "critical"> {
+    return Effect.gen(function* (_) {
+      const size = yield* _(Queue.size(this.queue))
+      const capacity = Queue.capacity(this.queue)
+      const ratio = size / capacity
+
+      if (ratio > 0.9) {
+        yield* _(Ref.set(this.healthRef, "critical"))
+      } else if (ratio > 0.6) {
+        yield* _(Ref.set(this.healthRef, "stressed"))
+      } else {
+        yield* _(Ref.set(this.healthRef, "healthy"))
+      }
+
+      return yield* _(Ref.get(this.healthRef))
+    })
+  }
+
+  offerWithProtection(item: A): Effect.Effect<boolean> {
+    return Effect.gen(function* (_) {
+      const health = yield* _(this.getHealth())
+      if (health === "critical") {
+        // 达到临界状态,拒绝新请求并触发降级
+        return false
+      }
+      if (health === "stressed") {
+        // 压力状态,尝试 offer 但设置超时
+        return yield* _(
+          Queue.offer(this.queue, item).pipe(
+            Effect.timeout("100 millis"),
+            Effect.catchAll(() => Effect.succeed(false))
+          )
+        )
+      }
+      // 健康状态,正常 offer
+      return yield* _(Queue.offer(this.queue, item))
+    })
+  }
+}
+```
+
+健康感知队列根据积压比例定义三级健康状态,不同状态采取不同的处理策略。临界状态直接拒绝请求,压力状态使用超时 offer,健康状态正常处理。这种分级保护机制可以防止系统在过载时完全崩溃。
+
+## 17. Hub 高级发布-订阅模式
+
+### 17.1 Hub 的分级路由
+
+在复杂的发布-订阅系统中,消息通常需要根据类型或优先级路由到不同的订阅者。基于 Hub 可以实现分级路由模式。
+
+```typescript
+type EventPriority = "low" | "normal" | "high" | "critical"
+
+interface RoutedEvent {
+  type: string
+  priority: EventPriority
+  payload: unknown
+  timestamp: number
+}
+
+class PriorityHub {
+  private hubs: Record<EventPriority, Hub.Hub<RoutedEvent>>
+  private metrics: Ref.Ref<Map<EventPriority, number>>
+
+  constructor(capacity: number) {
+    this.hubs = {
+      low: Effect.runSync(Hub.bounded<RoutedEvent>(capacity)),
+      normal: Effect.runSync(Hub.bounded<RoutedEvent>(capacity)),
+      high: Effect.runSync(Hub.bounded<RoutedEvent>(capacity)),
+      critical: Effect.runSync(Hub.bounded<RoutedEvent>(capacity)),
+    }
+    this.metrics = Ref.unsafeMake(new Map<EventPriority, number>())
+  }
+
+  publish(event: RoutedEvent): Effect.Effect<void> {
+    return Effect.gen(function* (_) {
+      yield* _(Hub.publish(this.hubs[event.priority], event))
+      yield* _(Ref.update(this.metrics, (map) => {
+        const newMap = new Map(map)
+        newMap.set(event.priority, (newMap.get(event.priority) ?? 0) + 1)
+        return newMap
+      }))
+    })
+  }
+
+  subscribe(priorities: EventPriority[]): Effect.Effect<Stream.Stream<RoutedEvent>> {
+    return Effect.gen(function* (_) {
+      const queues = yield* _(Effect.forEach(
+        priorities,
+        (p) => Hub.subscribe(this.hubs[p]),
+        { concurrency: "unbounded" }
+      ))
+      const streams = queues.map((q) => Queue.toStream(q))
+      return Stream.mergeAll(streams, { concurrency: "unbounded" })
+    })
+  }
+
+  subscribeByPriority(priority: EventPriority): Effect.Effect<Stream.Stream<RoutedEvent>> {
+    return Effect.gen(function* (_) {
+      const queue = yield* _(Hub.subscribe(this.hubs[priority]))
+      return Queue.toStream(queue)
+    })
+  }
+
+  getMetrics(): Effect.Effect<Record<EventPriority, number>> {
+    return Ref.get(this.metrics).pipe(
+      Effect.map((map) => ({
+        low: map.get("low") ?? 0,
+        normal: map.get("normal") ?? 0,
+        high: map.get("high") ?? 0,
+        critical: map.get("critical") ?? 0,
+      }))
+    )
+  }
+}
+```
+
+分级路由的设计使得高优先级事件不会因为低优先级事件的积压而被阻塞。每个优先级对应独立的 Hub,订阅者可以选择订阅感兴趣的优先级级别。这种设计在监控系统和告警系统中尤为重要——critical 级别的告警必须实时传递,不受普通日志事件的影响。
+
+### 17.2 Hub 的扇出与扇入模式
+
+扇出(Fan-out)是指将一个消息分发到多个处理单元,扇入(Fan-in)是指将多个消息源聚合到一个处理单元。Hub 天然支持扇出,配合 Queue 可以实现扇入。
+
+```typescript
+// 扇入模式：多个数据源聚合到同一个 Hub
+class FanInHub<A> {
+  private hub: Hub.Hub<A>
+  private sources: Ref.Ref<Map<string, Fiber.Fiber<void>>>
+
+  constructor(capacity: number) {
+    this.hub = Effect.runSync(Hub.bounded<A>(capacity))
+    this.sources = Ref.unsafeMake(new Map())
+  }
+
+  addSource(name: string, stream: Stream.Stream<A>): Effect.Effect<void> {
+    return Effect.gen(function* (_) {
+      const fiber = yield* _(Effect.fork(
+        stream.pipe(
+          Stream.runForEach((item) => Hub.publish(this.hub, item))
+        )
+      ))
+      yield* _(Ref.update(this.sources, (map) => {
+        const newMap = new Map(map)
+        newMap.set(name, fiber)
+        return newMap
+      }))
+    })
+  }
+
+  removeSource(name: string): Effect.Effect<void> {
+    return Effect.gen(function* (_) {
+      const fiber = yield* _(Ref.modify(this.sources, (map) => {
+        const newMap = new Map(map)
+        const fiber = newMap.get(name)
+        newMap.delete(name)
+        return [fiber, newMap] as const
+      }))
+      if (fiber) {
+        yield* _(Fiber.interrupt(fiber))
+      }
+    })
+  }
+
+  subscribe(): Effect.Effect<Stream.Stream<A>> {
+    return Effect.gen(function* (_) {
+      const queue = yield* _(Hub.subscribe(this.hub))
+      return Queue.toStream(queue)
+    })
+  }
+}
+```
+
+扇入模式通常用于日志聚合、指标收集和事件整合场景。多个数据源(如不同的微服务实例)将数据发送到同一个 Hub,订阅者从 Hub 获取聚合后的数据。
+
+### 17.3 Hub 与 Fiber 的生命周期绑定
+
+在实际应用中,Hub 的订阅者通常与 Fiber 的生命周期绑定。当 Fiber 结束时,订阅者应该自动从 Hub 中移除,防止资源泄漏。
+
+```typescript
+class ScopedHubSubscriber<A> {
+  private activeSubscriptions: Ref.Ref<Map<string, { queue: Queue.Queue<A>; fiber: Fiber.Fiber<void> }>>
+
+  constructor() {
+    this.activeSubscriptions = Ref.unsafeMake(new Map())
+  }
+
+  subscribeInScope(
+    hub: Hub.Hub<A>,
+    id: string,
+    handler: (item: A) => Effect.Effect<void>
+  ): Effect.Effect<void> {
+    return Effect.scoped(
+      Effect.gen(function* (_) {
+        const scope = yield* _(Scope.make())
+        const queue = yield* _(Hub.subscribe(hub))
+        const fiber = yield* _(Effect.forkIn(scope,
+          Queue.toStream(queue).pipe(
+            Stream.runForEach((item) => handler(item))
+          )
+        ))
+        yield* _(Ref.update(this.activeSubscriptions, (map) => {
+          const newMap = new Map(map)
+          newMap.set(id, { queue, fiber })
+          return newMap
+        }))
+
+        // Scope 关闭时自动清理
+        yield* _(Effect.addFinalizer(() =>
+          Ref.update(this.activeSubscriptions, (map) => {
+            const newMap = new Map(map)
+            newMap.delete(id)
+            return newMap
+          })
+        ))
+      })
+    )
+  }
+
+  getActiveCount(): Effect.Effect<number> {
+    return Ref.get(this.activeSubscriptions).pipe(
+      Effect.map((map) => map.size)
+    )
+  }
+}
+```
+
+使用 Scope 管理 Hub 订阅者的生命周期是最佳实践。Scope 关闭时,所有注册的 Fiber 被中断,订阅者队列被清理,确保不会发生 Fiber 泄漏。
+
+通过本章的学习,我们深入理解了 Ref/SynchronizedRef 的状态共享机制、Queue 的背压原理以及 Hub 的发布-订阅模式。这些并发原语是构建高可靠、高并发 Effect-TS 应用的基石。掌握这些原语的最佳使用方式,可以帮助开发者编写出既安全又高效的生产级并发代码。
+
+## 18. 并发原语的监控与诊断
+
+### 18.1 Ref 竞争监控
+
+在高并发场景下,Ref 的竞争情况是评估系统健康状态的重要指标。当多个 Fiber 频繁更新同一个 Ref 时,竞争会导致吞吐量下降。监控 Ref 竞争的方法包括记录每次更新操作的等待时间、统计 CAS 重试次数、以及分析 Ref 的更新频率。
+
+Ref 竞争监控的实现方式：在 Ref 的更新操作前后记录时间戳,计算更新操作的耗时。如果耗时超过正常范围,说明存在竞争。对于使用 CAS 的 Ref,记录 CAS 重试次数,重试次数过高说明竞争激烈。通过定期采样这些指标,可以了解 Ref 的竞争趋势。
+
+缓解 Ref 竞争的策略包括：使用分片 Ref 将竞争分散到多个 Ref 上；使用 SynchronizedRef 替代 Ref 但注意锁竞争的开销；对于读多写少的场景,考虑使用 Copy-on-Write 模式减少写操作频率。
+
+### 18.2 Queue 背压水平监控
+
+Queue 的背压水平是判断系统负载状态的关键指标。通过监控 Queue 的积压比例(当前大小/容量),可以了解消费者的处理能力是否足够。积压比例持续高于 80% 说明消费者处理能力不足,需要扩容或优化消费者逻辑。
+
+Queue 背压监控的实践方法：定期调用 Queue.size 获取当前队列大小,计算积压比例。记录积压比例的时间序列数据,用于趋势分析。设置多级告警阈值：积压比例超过 60% 时记录警告日志,超过 80% 时触发告警,超过 95% 时触发紧急处理流程。
+
+Queue 的吞吐量监控同样重要。记录单位时间内成功 offer 和 take 的次数,计算生产速度和消费速度。如果生产速度持续高于消费速度,说明背压正在积累,需要采取措施。如果消费速度持续高于生产速度,说明系统有富余的处理能力。
+
+### 18.3 Hub 订阅者健康监控
+
+Hub 的订阅者健康监控是确保发布-订阅系统可靠运行的关键。每个订阅者独立消费消息,一个慢订阅者可能影响整个 Hub 的发布性能。监控每个订阅者的消费速度和积压情况,可以及时发现和处理慢订阅者。
+
+Hub 订阅者监控的实现：为每个订阅者记录消费的消息数量和消费时间。计算每个订阅者的平均消费速度和积压消息数。如果某个订阅者的积压持续增长,说明该订阅者处理能力不足。对于关键订阅者,设置积压告警阈值,超过阈值时触发告警。
+
+慢订阅者的处理策略包括：增加订阅者的处理资源(如增加 Fiber 数量)；优化订阅者的处理逻辑减少处理时间；使用 sliding 或 dropping 策略丢弃部分消息；将慢订阅者从 Hub 中移除,由独立的处理流程异步处理。
+
+### 18.4 并发原语的指标导出
+
+将并发原语的监控指标导出到外部监控系统,可以实现对系统状态的持续观察。推荐的指标导出方式包括 Prometheus 指标导出和结构化日志记录。
+
+Prometheus 指标导出：将 Ref 竞争次数、Queue 积压比例、Hub 订阅者数量等指标注册为 Prometheus Gauge 或 Counter。定期更新这些指标的值,Prometheus 定期拉取。在 Grafana 中创建仪表盘可视化这些指标的变化趋势。
+
+结构化日志记录：在关键操作(如 Ref 更新、Queue offer/take、Hub publish/subscribe)前后记录结构化日志。日志包含操作名称、耗时、当前状态等信息。通过日志分析系统(如 ELK Stack)可以查询和分析这些日志,发现性能瓶颈和异常模式。
+
+通过建立完善的监控体系,开发者可以及时发现并发原语的使用问题,在它们影响系统稳定性之前采取措施。监控数据还可以指导性能优化方向,帮助开发者做出数据驱动的优化决策。

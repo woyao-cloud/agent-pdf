@@ -1896,6 +1896,248 @@ const compiledSchema = Schema.compile(Schema.decode(effectSchema))
 - 选择 Zod 的场景：小型项目、快速原型、团队对函数式编程不熟悉、需要丰富的第三方集成。
 - 选择 @effect/schema 的场景：大型项目、已经使用 Effect 生态、需要 AST 级别转换、需要 Branded 类型、对类型安全有极高要求。
 
+### 10.10.7 Schema 的模块化设计
+
+在大型项目中,Schema 的模块化设计对于代码的可维护性和可复用性至关重要。推荐的模块化策略包括按业务领域组织 Schema、将核心实体 Schema 与请求/响应 Schema 分离、以及提取公共 Schema 片段。
+
+按业务领域组织 Schema 是指将不同业务领域的 Schema 放在独立的文件中。例如,用户领域的 Schema 放在 user.schema.ts,订单领域的 Schema 放在 order.schema.ts。这种组织方式使得 Schema 的定位和修改变得容易,也便于团队分工。
+
+将核心实体 Schema 与请求/响应 Schema 分离可以避免类型混淆。核心实体 Schema 定义数据库模型的形状,请求 Schema 定义 API 输入的形状,响应 Schema 定义 API 输出的形状。这三者可能不同,分离定义可以清晰地表达它们的差异。
+
+提取公共 Schema 片段可以避免重复定义。常见的公共 Schema 片段包括分页参数、时间戳字段、API 响应包装等。将这些片段提取为独立的 Schema,可以在多个地方复用,减少重复代码。
+
+### 10.11 Schema 的类型安全校验深入
+
+### 10.11.1 编译时与运行时的双重校验
+
+@effect/schema 最核心的价值在于提供了编译时和运行时的双重校验。编译时校验由 TypeScript 的类型系统提供,确保代码中使用的类型与 Schema 定义一致。运行时校验由 Schema 的 decode/encode/assert 操作提供,确保实际数据的形状与 Schema 定义一致。
+
+编译时校验捕获的问题包括：使用了未定义的字段、传递了错误类型的值、缺少必需的字段等。这些问题在代码编写阶段就被发现,不会进入运行时。
+
+运行时校验捕获的问题包括：从外部系统(如 HTTP 请求、数据库、消息队列)接收的数据不符合预期格式、数据在传输过程中被篡改、不同版本的系统产生了不兼容的数据等。这些问题只能在运行时发现,但 Schema 可以确保在数据进入系统核心逻辑之前就发现并处理它们。
+
+双重校验的结合提供了最完善的数据保护。编译时校验保证了代码层面的类型安全,运行时校验保证了实际数据的类型安全。两者互为补充,缺一不可。
+
+### 10.11.2 Schema 的编解码流程详解
+
+Schema 的编解码流程是 @effect/schema 的核心功能。理解编解码的完整流程对于正确使用 Schema 至关重要。
+
+解码(decode)流程：第一步,接收未知类型的数据。第二步,检查数据的类型是否与 Schema 定义的类型匹配。如果类型不匹配,返回 ParseError。第三步,如果类型匹配,检查数据是否满足所有的约束条件(如 minLength、maxLength、pattern 等)。如果不满足,返回 ParseError。第四步,如果所有约束都满足,应用 transform 转换(如果有),将数据转换为目标类型。第五步,返回转换后的类型安全数据。
+
+编码(encode)流程：第一步,接收类型安全的数据。第二步,应用反向的 transform 转换,将数据转换为编码格式。第三步,返回编码后的数据。
+
+编解码流程的设计原则是：decode 将外部数据转换为内部安全的类型,encode 将内部安全的数据转换为外部可用的格式。这种双向转换确保了系统边界的数据一致性。
+
+### 10.11.3 Schema 的 ParseError 详解
+
+ParseError 是 Schema 校验失败时返回的错误类型。理解 ParseError 的结构对于错误处理和调试非常重要。
+
+ParseError 的结构包括：_tag 字段,标识错误类型(如 "Type"、"Missing"、"Unexpected"、"Refinement"、"Transform" 等)；message 字段,提供人类可读的错误描述；path 字段,指示错误发生的字段路径(如 ["address", "city"])；actual 字段,指示实际接收到的值；expected 字段,指示期望的类型或值。
+
+ParseError 的嵌套结构：当校验嵌套的 Schema(如 Struct 中有嵌套的 Struct)时,ParseError 可以嵌套,形成一个错误树。根节点表示整体校验失败,子节点表示具体字段的校验失败。
+
+处理 ParseError 的最佳实践：将 ParseError 转换为友好的错误响应,记录详细的错误信息用于调试,对不同类型的 ParseError 采取不同的处理策略。
+
+### 10.12 Schema AST 转换深入
+
+### 10.12.1 AST 的树形结构
+
+@effect/schema 的 AST(抽象语法树)是 Schema 的底层表示。每个 Schema 在内部都表示为一个 AST 节点,Schema 的组合就是 AST 节点的组合。
+
+AST 的树形结构由不同的节点类型构成。类型节点(Type Nodes)表示基本类型,如 String、Number、Boolean。结构节点(Structural Nodes)表示复合类型,如 Struct、Union、Intersect、Array。修饰节点(Modifier Nodes)对类型节点或结构节点进行修饰,如 Refinement、Transform、Suspend。
+
+AST 的遍历是 Schema 转换的基础。通过递归遍历 AST 树,可以访问 Schema 的所有节点,并对其进行读取、修改或替换。AST 的遍历可以使用深度优先或广度优先策略,具体取决于转换的需求。
+
+AST 的元信息：每个 AST 节点都包含丰富的元信息,如节点类型(_tag)、子节点、注解(annotations)等。注解可以用于存储额外的元数据,如字段描述、示例值、验证消息等。
+
+### 10.12.2 AST 转换的实际应用
+
+AST 转换在实际应用中有很多用途。以下是一些常见的应用场景：
+
+自动生成表单：通过遍历 Schema 的 AST,可以自动生成表单的字段定义。每个字段的类型、约束、默认值等信息都可以从 AST 中提取。生成的表单字段定义可以直接用于前端表单渲染。
+
+自动生成文档：通过遍历 Schema 的 AST,可以自动生成 API 文档。每个字段的类型、约束、描述等信息都可以从 AST 中提取。生成的文档可以用于 OpenAPI/Swagger 规范或内部文档系统。
+
+自动生成测试数据：通过遍历 Schema 的 AST,可以自动生成测试数据。每个字段的类型、约束、默认值等信息都可以用于生成符合 Schema 的随机数据。生成的测试数据可以用于单元测试和集成测试。
+
+Schema 版本迁移：通过 AST 转换,可以实现 Schema 的版本迁移。例如,将 v1 的 Schema 转换为 v2 的 Schema,包括字段重命名、类型变更、默认值添加等。AST 转换使得版本迁移可以自动化,减少人工操作的错误。
+
+### 10.12.3 AST 节点类型的完整参考
+
+以下是 @effect/schema AST 节点类型的完整参考：
+
+类型节点：String(字符串)、Number(数字)、Boolean(布尔)、BigInt(大整数)、Symbol(符号)、Undefined、Null、Void、Any(任意)、Unknown(未知)、Never(永不)、Literal(字面量)、UniqueSymbol(唯一符号)
+
+结构节点：Struct(对象结构,包含 fields 和 record)、Union(联合类型,包含 types)、Intersect(交叉类型,包含 types)、Array(数组,包含 element 和 minLength/maxLength)、Tuple(元组,包含 elements 和 rest)
+
+修饰节点：Refinement(精炼,包含 target 和 filter)、Transform(转换,包含 from、to、decode、encode)、Suspend(延迟,包含 f)
+
+每个节点类型都有其特定的属性和子节点。通过组合这些节点类型,可以表示任意复杂的数据结构。
+
+### 10.13 Schema 与 TypeScript 类型系统的对比
+
+### 10.13.1 Schema 类型与 TypeScript 类型的关系
+
+@effect/schema 的类型与 TypeScript 的类型是互补的,而非互斥的。Schema 类型描述的是运行时的数据结构,TypeScript 类型描述的是编译时的数据结构。
+
+Schema 类型和 TypeScript 类型的关系可以类比为：Schema 类型是"运行时类型",TypeScript 类型是"编译时类型"。两者共同构建了完整的类型安全体系。
+
+Schema 类型可以推导出 TypeScript 类型。通过 Schema.Schema.Type<typeof MySchema>,可以从 Schema 自动生成对应的 TypeScript 类型。这种推导是精确的,能够保留字段名、类型、可选性、只读性等信息。
+
+TypeScript 类型不能自动推导出 Schema 类型。这是因为 TypeScript 类型在运行时被擦除,无法从中恢复 Schema 定义。因此,在 @effect/schema 中,Schema 是单一数据源,TypeScript 类型由 Schema 推导而来。
+
+### 10.13.2 Schema 表达能力的边界
+
+@effect/schema 的表达能力非常强大,但仍然存在一些边界。理解这些边界对于选择合适的解决方案非常重要。
+
+Schema 无法表达的条件约束：某些业务规则依赖于运行时上下文(如当前用户角色、当前时间),这些规则无法直接在 Schema 中表达。对于这种约束,需要在 Schema 校验之外添加额外的业务逻辑校验。
+
+Schema 无法表达的跨实体约束：某些业务规则涉及多个实体之间的关系(如订单总金额必须等于订单项金额之和),这些规则无法在单个 Schema 中表达。对于这种约束,需要在 Service 层添加额外的校验逻辑。
+
+Schema 无法表达的顺序约束：某些业务规则涉及操作顺序(如必须先审核后发布),这些规则无法在 Schema 中表达。对于这种约束,需要使用状态机或工作流引擎来实现。
+
+### 10.14 Schema 在微服务架构中的应用
+
+### 10.14.1 Schema 作为契约
+
+在微服务架构中,Services 之间通过 API 通信。API 的契约定义了请求和响应的数据格式。@effect/schema 可以作为这种契约的实现工具。
+
+使用 Schema 定义 API 契约的优势包括：类型安全,契约在编译时和运行时都得到验证；自文档化,契约本身就是 API 文档；可测试,契约可以被单元测试验证。
+
+Schema 作为契约的使用模式：每个微服务定义自己的请求和响应 Schema,将这些 Schema 作为公共包发布。其他微服务引用这些 Schema 来构建客户端。当 Schema 发生变化时,TypeScript 编译器可以立即发现不兼容的变更。
+
+### 10.14.2 Schema 的版本兼容性
+
+在微服务架构中,Schema 的版本兼容性非常重要。不同的微服务可能运行在不同版本上,它们之间的通信需要保证 Schema 的兼容性。
+
+向前兼容：新版本的 Schema 可以处理旧版本的数据。实现方式包括添加可选字段、使用默认值、保持必需字段不变等。
+
+向后兼容：旧版本的 Schema 可以处理新版本的数据。实现方式包括忽略未知字段、使用 Schema.partial 等。
+
+版本兼容性测试：通过编写兼容性测试,验证不同版本的 Schema 之间的数据传递是否正确。兼容性测试应该作为 CI/CD 流水线的一部分,确保 Schema 变更不会破坏服务间的通信。
+
+### 10.15 Schema 性能优化高级技巧
+
+### 10.15.1 Schema 编译优化
+
+Schema 编译优化是提高运行时性能的关键技术。@effect/schema 支持将 Schema 编译为高效的校验函数,大幅提高校验速度。
+
+编译优化的原理：通过分析 Schema 的结构,生成针对性的校验代码。编译后的校验函数避免了 Schema 解析的开销,直接进行数据校验。
+
+编译优化的适用场景：高频调用的 Schema(如每个请求都会使用的 API 校验 Schema)；批量数据处理的 Schema(如数据导入/导出时的校验)；对延迟敏感的场景。
+
+编译优化的使用方法：使用 Schema.compile 函数将 Schema 编译为校验函数。编译后的函数直接返回结果或抛出异常,没有 Effect 包装,性能更好。
+
+### 10.15.2 Schema 缓存策略
+
+Schema 的缓存策略对于提高性能非常重要。频繁创建相同的 Schema 实例会导致不必要的内存分配和解析开销。
+
+Schema 实例级别的缓存：将 Schema 实例定义为模块级别的常量,避免在每次请求时重新创建。这是最基本也是最重要的缓存策略。
+
+Schema 解析结果的缓存：对于需要重复校验相同数据的场景,可以缓存校验结果。例如,缓存从数据库读取的数据的校验结果,避免重复校验。
+
+Schema 编译结果的缓存：将编译后的校验函数缓存起来,避免重复编译。编译缓存可以显著提高 Schema 的使用性能。
+
+### 10.15.3 选择性校验的性能收益
+
+选择性校验通过只校验必要的字段来提高性能。@effect/schema 提供了 Schema.pick 和 Schema.omit 来实现选择性校验。
+
+Schema.pick 选择 Schema 的部分字段,只校验选中的字段。适用于部分更新(PATCH)场景,只校验请求中包含的字段,忽略其他字段。
+
+Schema.omit 排除 Schema 的部分字段,不校验排除的字段。适用于不需要校验的场景,如从数据库读取的数据,已经在上次写入时校验过。
+
+选择性校验的性能收益：减少校验的字段数量,直接减少校验时间；减少内存分配,避免创建不必要的中间对象；提高缓存命中率,较小的 Schema 更容易被缓存命中。
+
+### 10.16 Schema 在表单验证中的应用
+
+### 10.16.1 表单 Schema 的设计
+
+表单验证是 Schema 最常见的应用场景之一。设计良好的表单 Schema 需要考虑用户体验和开发效率的平衡。
+
+表单 Schema 的设计原则：提供清晰明确的错误消息,帮助用户理解哪里错了以及如何修正；支持渐进式验证,先验证格式再验证业务逻辑；支持异步验证,如检查用户名是否已存在；支持跨字段验证,如密码确认、日期范围等。
+
+表单 Schema 的实现方式：使用 Schema.Struct 定义表单字段,使用 Schema.filter 添加自定义验证逻辑,使用 Schema.default 处理可选字段的默认值。每个字段的错误消息应该清晰明了,避免技术术语。
+
+### 10.16.2 表单错误的友好展示
+
+@effect/schema 的 ParseError 包含了详细的错误信息,但直接展示给用户可能不够友好。需要将 ParseError 转换为用户友好的错误消息。
+
+错误消息的转换策略：提取字段路径和错误描述,生成针对每个字段的错误消息；支持国际化,根据用户的语言环境返回不同语言的错误消息；支持错误分组,将同一个字段的多个错误合并为一个；支持错误排序,按照字段的显示顺序排列错误。
+
+表单错误的处理流程：收到表单提交请求后,使用 Schema 校验表单数据。如果校验失败,将 ParseError 转换为友好错误消息,返回给前端展示。如果校验成功,执行业务逻辑。
+
+### 10.17 Schema 在数据持久化中的应用
+
+### 10.17.1 数据库 Schema 与 @effect/schema 的映射
+
+在数据持久化场景中,@effect/schema 可以与数据库 Schema 映射,确保存储的数据符合预期的格式。
+
+数据库 Schema 与 @effect/schema 的映射方法：数据库表的字段类型映射为对应的 Schema 类型(varchar 映射为 Schema.String,integer 映射为 Schema.Number),数据库约束映射为 Schema 的约束(NOT NULL 映射为非可选字段,UNIQUE 映射需要在业务层处理)。
+
+数据读取时的校验：从数据库读取数据后,使用 Schema 校验数据的完整性。如果数据不符合 Schema(如存储了损坏的数据),捕获错误并记录日志。
+
+数据写入时的校验：在数据写入数据库之前,使用 Schema 校验数据的正确性。确保只有符合 Schema 的数据才能写入数据库,防止脏数据的产生。
+
+### 10.17.2 Schema 在 ORM 中的集成
+
+@effect/schema 可以与 ORM(对象关系映射)库集成,在 ORM 层面提供类型安全的数据库操作。
+
+集成方式：在 ORM 的实体定义中使用 @effect/schema 的 Schema 替代传统的 TypeScript 接口；在 ORM 的查询和写入操作中使用 Schema 的 decode 和 encode 方法进行数据转换。
+
+集成的优势：统一的类型系统,ORM 和校验使用相同的 Schema 定义；自动的类型推导,ORM 返回的数据自动具有正确的 TypeScript 类型；数据完整性保证,确保写入数据库的数据符合 Schema。
+
+### 10.18 Schema 在消息队列中的应用
+
+### 10.18.1 消息 Schema 的定义
+
+在消息队列系统中,消息的格式一致性非常重要。使用 @effect/schema 定义消息 Schema,可以确保消息的发送和接收使用相同的格式。
+
+消息 Schema 的设计考虑：消息的版本号,便于 Schema 演化；消息的元数据(如时间戳、来源、追踪 ID)；消息体的具体格式；消息的序列化方式(JSON、Protobuf 等)。
+
+消息 Schema 的使用流程：发送消息前,使用 Schema.encode 将消息对象转换为可传输的格式；接收消息后,使用 Schema.decode 将消息数据转换为类型安全的对象。
+
+### 10.18.2 消息的 Schema 演化
+
+在消息队列系统中,消息 Schema 的演化是一个常见挑战。不同的消费者可能运行在不同版本上,消息 Schema 的变化需要兼容所有消费者。
+
+消息 Schema 的演化策略：添加可选字段,新字段使用 Schema.optional 定义；使用默认值,新字段使用 Schema.default 提供默认值；避免删除或重命名字段；使用 Schema.Intersect 添加新的字段组。
+
+消息 Schema 的版本管理：在消息中添加版本字段,不同的消费者根据版本字段选择不同的处理方法；使用 Schema 迁移函数,将旧版本的消息自动转换为新版本。
+
+### 10.19 Schema 在 API Gateway 中的应用
+
+### 10.19.1 请求校验
+
+API Gateway 是请求进入系统的第一道关卡。在 API Gateway 中使用 @effect/schema 校验请求,可以在请求到达后端服务之前就过滤掉无效请求。
+
+请求校验的层次：路径参数校验,验证 URL 中的路径参数是否符合格式要求；查询参数校验,验证 URL 中的查询参数的类型和值范围；请求体校验,验证请求体是否包含所有必需的字段且值有效；请求头校验,验证请求头中的认证信息、内容类型等。
+
+请求校验的错误处理：当请求校验失败时,返回标准的 HTTP 错误响应(如 400 Bad Request),包含详细的错误信息,帮助客户端理解和修复问题。
+
+### 10.19.2 响应校验
+
+响应校验确保后端服务返回的数据符合预期的格式。在 API Gateway 中使用 @effect/schema 校验响应,可以及时发现后端服务的数据格式问题。
+
+响应校验的收益：及时发现数据结构变更,当后端服务的数据格式发生变化时,API Gateway 可以立即发现并记录错误；保护客户端,避免客户端接收到不符合契约的数据；提供统一错误处理,当响应校验失败时,API Gateway 可以返回统一的错误响应。
+
+响应校验的使用场景：在开发环境中,详细记录所有响应校验失败的信息,帮助开发者快速发现和修复问题。在生产环境中,可以选择只记录错误,不阻塞请求,确保系统的可用性。
+
+### 10.20 Schema 与 OpenAPI/Swagger 集成
+
+### 10.20.1 自动生成 OpenAPI 规范
+
+@effect/schema 可以自动生成 OpenAPI(原 Swagger)规范,将 Schema 定义转换为标准的 API 文档格式。
+
+自动生成的优势：文档与代码同步,每次修改 Schema 后,文档自动更新；减少手动工作量,不需要手动编写和维护 OpenAPI 规范文件；保证文档的准确性,避免文档与实际 API 不一致的问题。
+
+自动生成的实现：遍历 Schema 的 AST,提取类型信息、约束条件、默认值等；根据提取的信息生成 OpenAPI Schema 对象；组合路径、请求方法、参数、响应等信息,生成完整的 OpenAPI 规范。
+
+### 10.20.2 从 OpenAPI 规范生成 Schema
+
+反向地,也可以从 OpenAPI 规范生成 @effect/schema 的 Schema 定义。这在集成外部 API 的时特别有用,可以将外部 API 的文档自动转换为类型安全的 Schema。
+
+从 OpenAPI 生成 Schema 的应用场景：集成第三方服务,将第三方 API 的 OpenAPI 规范转换为 Schema,获得类型安全的 API 调用体验；兼容性测试,使用 OpenAPI 规范生成的 Schema 与现有 Schema 进行兼容性测试；文档同步,将外部 API 的 OpenAPI 规范转换后,与内部 Schema 一起管理和维护。
+
 ### 10.9.2 vs io-ts
 
 io-ts 是 fp-ts 生态中的校验库。`@effect/schema` 在设计上受到了 io-ts 的影响，但有以下改进：
@@ -2379,3 +2621,37 @@ Branded 类型和 Filtered Schema 提供了更精确的类型安全和业务规�
 总的来说，`@effect/schema` 是一个值得在 TypeScript 项目中采用的 Schema 系统。它不仅解决了类型安全的问题，还提供了丰富的功能和灵活的扩展能力，适用于从简单的表单验证到复杂的 API 校验等各种场景。通过掌握 `@effect/schema`，你可以显著提高代码的类型安全性和可维护性，减少运行时错误，提升开发效率。
 
 在下一章中，我们将探讨 Effect 的测试能力，包括如何利用 Effect 的依赖注入系统来编写可测试的代码，以及如何使用 TestClock、TestRandom 和 TestConsole 等测试工具来模拟时间、随机数和控制台输出。
+
+## 10.22 Schema 类型定义与类型推导深入
+
+### 10.22.1 Schema 类型推导的编译时保证
+
+@effect/schema 最强大的特性之一是它能够在编译时从 Schema 定义精确推导 TypeScript 类型。这种推导不是简单的映射，而是保留了原始 Schema 的所有细节，包括可选性、只读性、字面量精确值、Brand 标记等。
+
+类型推导的机制涉及 TypeScript 的高级类型特性。Schema.Schema.Type 是一个条件类型，它递归地遍历 Schema 的 AST 节点，根据每个节点的类型生成对应的 TypeScript 类型。例如，对于 Struct 节点，它生成一个包含所有字段的对象类型；对于 Union 节点，它生成联合类型；对于 Literal 节点，它生成字面量类型。
+
+与其他校验库（Zod、Yup）相比，@effect/schema 的类型推导更加精确。Zod 的类型推导基于 z.infer，它在处理某些高级类型（如 Transform、Brand）时可能丢失精确信息。@effect/schema 由于拥有完整的 AST 信息，可以精确推导出任何 Schema 定义的类型。
+
+### 10.22.2 Schema 编码类型与解码类型的分离
+
+@effect/schema 的一个重要设计是区分了编码类型（Encoded）和解码类型（Type）。编码类型是数据在外部世界的表示形式，解码类型是数据在系统内部的类型安全的表示形式。
+
+这种分离在处理数据转换时特别有用。例如，一个日期字段在外部（如 JSON 请求体）中可能表示为 ISO 字符串，但在系统内部使用 Date 对象。Schema.Type 推导出的类型是 Date，而 Schema.Encoded 推导出的类型是 string。开发者可以根据使用场景选择合适的类型。
+
+编码类型与解码类型的分离还体现在 Schema 的组合中。当多个 Transform Schema 嵌套组合时，@effect/schema 能够正确推导出最内层的编码类型和最外层的解码类型，确保类型信息的正确传递。
+
+### 10.22.3 AST 转换的高级模式
+
+AST 转换是 @effect/schema 最独特的特性之一。通过操作 Schema 的 AST，可以实现从 Schema 到其他格式的自动化转换。
+
+从 Schema 生成 TypeScript 类型定义文件：通过遍历 Schema 的 AST，可以生成对应的 .d.ts 文件。这在将 Schema 共享给其他不使用 @effect/schema 的项目时特别有用。生成的类型定义文件可以作为独立的 npm 包发布，供其他团队使用。
+
+从 Schema 生成 JSON Schema：通过遍历 Schema 的 AST，可以生成符合 JSON Schema 标准的规范。这在需要与其他语言或工具集成的场景中非常有用。生成的 JSON Schema 可以用于 API 文档生成、请求校验、数据验证等。
+
+从 Schema 生成 GraphQL 类型：通过遍历 Schema 的 AST，可以生成 GraphQL 的类型定义。这在构建 GraphQL API 时特别有用，可以保证 GraphQL Schema 与内部数据模型的一致性。
+
+AST 转换的链式调用：多个 AST 转换操作可以通过组合形成转换链。例如，先进行字段重命名，然后添加默认值，最后生成 OpenAPI 规范。这种链式调用使得 Schema 转换可以灵活组合，适应各种不同的输出需求。
+
+### 10.22.4 Schema 在 GraphQL 类型生成中的应用
+
+@effect/schema 的 AST 转换能力可以扩展到 GraphQL 类型生成。通过遍历 Schema 的 AST 树，可以将每个 Schema 节点映射为对应的 GraphQL 类型。Struct 节点映射为 ObjectType，Union 节点映射为 UnionType，Literal 节点映射为 EnumType。Struct 的每个字段映射为 GraphQL 的 field，字段的 Schema 类型决定其 GraphQL 类型。Refinement 的约束可映射为 custom scalar。Transform 的编解码逻辑在 resolve 函数中实现。这种自动化生成保证了 GraphQL Schema 与内部数据模型的一致性，避免了手动同步的出错风险。
