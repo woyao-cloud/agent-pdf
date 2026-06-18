@@ -1,10 +1,5 @@
-import type { Apple, GameConfig } from '../types/game';
+import type { Apple, GameConfig, WordBank } from '../types/game';
 import { createApple } from './Apple';
-
-export interface SpawnResult {
-  newApples: Apple[];
-  nextSpawnTime: number;
-}
 
 export function shouldSpawn(
   now: number,
@@ -17,18 +12,12 @@ export function shouldSpawn(
 
 export function spawnApple(
   canvasWidth: number,
-  canvasHeight: number,
   config: GameConfig,
+  activeWordBank: WordBank | null,
 ): Apple {
-  return createApple(canvasWidth, canvasHeight, config.mode);
+  return createApple(canvasWidth, config.mode, activeWordBank);
 }
 
 export function calculateAppleSpeed(config: GameConfig): number {
-  // config.fallSpeed: 1-10 → speed: 0.8 - 4 px/frame
   return 0.5 + config.fallSpeed * 0.35;
-}
-
-export function maxApplesOnScreen(config: GameConfig): number {
-  // More apples allowed at higher difficulty
-  return Math.floor(8 + config.fallSpeed * 0.5);
 }

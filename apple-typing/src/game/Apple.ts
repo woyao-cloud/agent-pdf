@@ -1,8 +1,8 @@
-import type { Apple as AppleType, GameMode } from '../types/game';
-import { getRandomLetter, getRandomWord } from '../utils/words';
+import type { Apple as AppleType, GameMode, WordBank } from '../types/game';
+import { getRandomItem } from '../hooks/useWordBank';
+import { getRandomFromWordBank } from '../utils/words';
 
 let globalAppleId = 0;
-// Cache image once loaded
 let appleImage: HTMLImageElement | null = null;
 
 export function loadAppleImage(src: string): Promise<HTMLImageElement> {
@@ -18,7 +18,6 @@ export function loadAppleImage(src: string): Promise<HTMLImageElement> {
       resolve(img);
     };
     img.onerror = () => {
-      // Fallback: create a canvas-rendered apple
       const canvas = document.createElement('canvas');
       canvas.width = 120;
       canvas.height = 130;
@@ -53,7 +52,6 @@ export function drawFallbackApple(ctx: CanvasRenderingContext2D, w: number, h: n
   gradient.addColorStop(1, '#880000');
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  // Apple shape using bezier curves
   ctx.moveTo(cx, cy - 40);
   ctx.bezierCurveTo(cx - 40, cy - 45, cx - 50, cy + 5, cx - 45, cy + 25);
   ctx.bezierCurveTo(cx - 40, cy + 45, cx - 15, cy + 50, cx, cy + 45);
@@ -67,8 +65,6 @@ export function drawFallbackApple(ctx: CanvasRenderingContext2D, w: number, h: n
   ctx.beginPath();
   ctx.ellipse(cx - 15, cy - 18, 12, 18, -0.3, 0, Math.PI * 2);
   ctx.fill();
-
-  // Small highlight
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   ctx.beginPath();
   ctx.ellipse(cx - 18, cy - 22, 5, 8, -0.3, 0, Math.PI * 2);
@@ -89,8 +85,19 @@ export function drawFallbackApple(ctx: CanvasRenderingContext2D, w: number, h: n
   ctx.fill();
 }
 
-export function createApple(canvasWidth: number, _canvasHeight: number, mode: GameMode): AppleType {
-  const letter = mode === 'letter' ? getRandomLetter() : getRandomWord('easy');
+export function createApple(
+  canvasWidth: number,
+  mode: GameMode,
+  activeWordBank: WordBank | null,
+): AppleType {
+  // Pick a letter from the active word bank (or fallback to built-in)
+  let letter: string;
+  if (activeWordBank && activeWordBank.items.length > 0) {
+    letter = getRandomItem(activeWordBank);
+  } else {
+    letter = getRandomFromWordBank(null, mode);
+  }
+
   const size = mode === 'letter' ? 70 : 90;
   const padding = size;
   const x = padding + Math.random() * (canvasWidth - padding * 2);
@@ -130,11 +137,9 @@ export function renderApple(
   const hw = w / 2;
   const hh = h / 2;
 
-  // Draw apple image
   if (image) {
     ctx.drawImage(image, -hw, -hh, w, h);
   } else {
-    // Fallback: draw apple shape programmatically
     drawFallbackApple(ctx, w, h);
   }
 

@@ -7,6 +7,7 @@ interface HUDProps {
   onPause: () => void;
   onResume: () => void;
   wordBuffer?: string;
+  activeBankName?: string | null;
 }
 
 export function HUD({
@@ -18,6 +19,7 @@ export function HUD({
   onPause,
   onResume,
   wordBuffer,
+  activeBankName,
 }: HUDProps) {
   return (
     <div className="hud">
@@ -45,6 +47,11 @@ export function HUD({
         )}
         {wordBuffer && (
           <div className="hud-word-buffer">{wordBuffer}</div>
+        )}
+        {activeBankName && (
+          <div className="hud-bank-name" title="当前字库">
+            📖 {activeBankName}
+          </div>
         )}
       </div>
 

@@ -1,9 +1,10 @@
 interface StartScreenProps {
   highScore: number;
   onStart: () => void;
+  activeBankName?: string | null;
 }
 
-export function StartScreen({ highScore, onStart }: StartScreenProps) {
+export function StartScreen({ highScore, onStart, activeBankName }: StartScreenProps) {
   return (
     <div className="overlay start-screen">
       <div className="overlay-content">
@@ -17,6 +18,12 @@ export function StartScreen({ highScore, onStart }: StartScreenProps) {
           <br />
           苹果落地会失去一条命。
         </p>
+
+        {activeBankName && (
+          <div className="start-active-bank">
+            📖 当前字库：<strong>{activeBankName}</strong>
+          </div>
+        )}
 
         <div className="start-controls">
           <div className="control-item">

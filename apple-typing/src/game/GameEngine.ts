@@ -1,6 +1,7 @@
 import type {
   GameConfig,
   GameState,
+  WordBank,
 } from '../types/game';
 import { renderApple, loadAppleImage } from './Apple';
 import { shouldSpawn, spawnApple, calculateAppleSpeed } from './Spawner';
@@ -19,6 +20,7 @@ const DEFAULT_CONFIG: GameConfig = {
   lives: 5,
   volume: 70,
   soundEnabled: true,
+    activeWordBankId: null,
 };
 
 export function createInitialState(): GameState {
@@ -46,6 +48,7 @@ export class GameEngine {
   private soundManager: SoundManager;
   private onStateChange: (state: GameState) => void;
   private groundY: number;
+  private activeWordBank: WordBank | null = null;
   private animFrameId: number | null = null;
   private lastTime: number = 0;
   private missedFlashTimer: number = 0;
@@ -107,6 +110,10 @@ export class GameEngine {
   updateConfig(config: Partial<GameConfig>) {
     this.state.config = { ...this.state.config, ...config };
     this.emitState();
+  }
+
+  setActiveWordBank(bank: WordBank | null) {
+    this.activeWordBank = bank;
   }
 
   handleKeyPress(key: string) {
@@ -176,7 +183,7 @@ export class GameEngine {
     // ---- Spawn new apples ----
     if (shouldSpawn(now, this.state.lastSpawnTime, config)) {
       if (apples.filter(a => a.state === 'falling').length < 15) {
-        const newApple = spawnApple(this.canvasWidth, this.canvasHeight, config);
+        const newApple = spawnApple(this.canvasWidth, config, this.activeWordBank);
         newApple.speed = calculateAppleSpeed(config);
         apples.push(newApple);
         this.state.lastSpawnTime = now;

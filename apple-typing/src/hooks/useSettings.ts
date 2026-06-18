@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS: GameConfig = {
   lives: 5,
   volume: 70,
   soundEnabled: true,
+  activeWordBankId: null,
 };
 
 function loadSettings(): GameConfig {

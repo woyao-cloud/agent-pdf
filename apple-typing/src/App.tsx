@@ -4,10 +4,12 @@ import { HUD } from './components/HUD';
 import { StartScreen } from './components/StartScreen';
 import { GameOverModal } from './components/GameOverModal';
 import { SettingsPanel } from './components/SettingsPanel';
+import { WordBankManager } from './components/WordBankManager';
 import { GameEngine } from './game/GameEngine';
 import type { GameState, GamePhase } from './types/game';
 import { useSettings } from './hooks/useSettings';
 import { loadHighScore } from './hooks/useScore';
+import { useWordBank, getWordBankById } from './hooks/useWordBank';
 import { SoundManager } from './hooks/useSound';
 import './App.css';
 
@@ -17,7 +19,15 @@ function App() {
   const [gamePhase, setGamePhase] = useState<GamePhase>('idle');
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showWordBank, setShowWordBank] = useState(false);
   const { settings, updateSetting, resetSettings } = useSettings();
+  const {
+    banks,
+    addBank,
+    updateBank,
+    deleteBank,
+    getBankName,
+  } = useWordBank();
 
   // High score display
   const [highScore, setHighScore] = useState(loadHighScore);
@@ -27,25 +37,38 @@ function App() {
   const [lastGameScore, setLastGameScore] = useState(0);
   const [lastGameMaxCombo, setLastGameMaxCombo] = useState(0);
 
+  // Active word bank name for HUD display
+  const activeBankName = settings.activeWordBankId
+    ? getBankName(settings.activeWordBankId)
+    : null;
+
   const handleStateChange = useCallback((state: GameState) => {
     setGameState(state);
   }, []);
 
-  // Sync settings to engine
+  // Sync settings and word bank to engine
   useEffect(() => {
     const engine = engineRef.current;
     if (engine) {
       engine.updateConfig(settings);
+      const bank = getWordBankById(settings.activeWordBankId);
+      engine.setActiveWordBank(bank);
     }
     soundManagerRef.current.volume = settings.volume;
     soundManagerRef.current.enabled = settings.soundEnabled;
   }, [settings]);
+
+  const handleActivateBank = useCallback((id: string | null) => {
+    updateSetting('activeWordBankId', id);
+  }, [updateSetting]);
 
   const handleStart = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
 
     engine.updateConfig(settings);
+    const bank = getWordBankById(settings.activeWordBankId);
+    engine.setActiveWordBank(bank);
     soundManagerRef.current.playStartBeep();
     engine.start();
     setGamePhase('playing');
@@ -57,6 +80,8 @@ function App() {
     if (!engine) return;
 
     engine.updateConfig(settings);
+    const bank = getWordBankById(settings.activeWordBankId);
+    engine.setActiveWordBank(bank);
     engine.restart();
     setGamePhase('playing');
     setIsNewHighScore(false);
@@ -86,7 +111,6 @@ function App() {
 
       const hs = loadHighScore();
       setHighScore(hs);
-      // Check if this is a new high score
       if (gameState.score >= hs && gameState.score > 0) {
         setIsNewHighScore(true);
       }
@@ -102,33 +126,45 @@ function App() {
         isPlaying={gamePhase === 'playing'}
       />
 
-      {/* Settings button (always visible) */}
-      <button
-        className="settings-gear"
-        onClick={() => setShowSettings(true)}
-        title="设置"
-      >
-        ⚙️
-      </button>
+      {/* Floating action buttons */}
+      <div className="fab-group">
+        <button
+          className="fab fab-wordbank"
+          onClick={() => setShowWordBank(true)}
+          title="字库管理"
+        >
+          📚
+        </button>
+        <button
+          className="fab fab-settings"
+          onClick={() => setShowSettings(true)}
+          title="设置"
+        >
+          ⚙️
+        </button>
+      </div>
 
       {/* Start Screen */}
       {gamePhase === 'idle' && (
-        <StartScreen highScore={highScore} onStart={handleStart} />
+        <StartScreen
+          highScore={highScore}
+          onStart={handleStart}
+          activeBankName={activeBankName}
+        />
       )}
 
       {/* HUD (during gameplay) */}
       {(gamePhase === 'playing' || gamePhase === 'paused') && gameState && (
-        <>
-          <HUD
-            score={gameState.score}
-            lives={gameState.lives}
-            combo={gameState.combo}
-            highScore={highScore}
-            phase={gamePhase}
-            onPause={handlePause}
-            onResume={handleResume}
-          />
-        </>
+        <HUD
+          score={gameState.score}
+          lives={gameState.lives}
+          combo={gameState.combo}
+          highScore={highScore}
+          phase={gamePhase}
+          onPause={handlePause}
+          onResume={handleResume}
+          activeBankName={activeBankName}
+        />
       )}
 
       {/* Pause overlay */}
@@ -163,6 +199,18 @@ function App() {
         onReset={resetSettings}
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+      />
+
+      {/* Word Bank Manager */}
+      <WordBankManager
+        banks={banks}
+        activeBankId={settings.activeWordBankId}
+        onActivate={handleActivateBank}
+        onAdd={addBank}
+        onUpdate={updateBank}
+        onDelete={deleteBank}
+        isOpen={showWordBank}
+        onClose={() => setShowWordBank(false)}
       />
     </div>
   );
