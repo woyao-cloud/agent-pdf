@@ -3,6 +3,8 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/java/andrej-karpathy-skills" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/docs/Effect-ts/effect-source" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/java/docs/bun-1/ch01-environment/demo2/hello-effect" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/aws-eks-devops" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/aws-eks-kubernetes-masterclass" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/java/stacksimplify/aws/aws-eks-master" vcs="Git" />

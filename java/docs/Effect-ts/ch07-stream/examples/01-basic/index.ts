@@ -27,7 +27,7 @@ Effect.runPromise(
 ).then(() => console.log("range done"))
 
 // runCount: 统计流中元素个数
-const count = Effect.runSync(Stream.runCount(Stream.range(1, 100)))
+const count = Effect.runSync(Stream.runCount(Stream.range(0, 98)))
 console.log("count:", count) // 99
 
 // --- 1.3 流的转换：map / filter / take / drop ---
@@ -36,7 +36,7 @@ const transformed = pipe(
   Stream.range(1, 20),
   Stream.filter((n) => n % 2 === 0), // 只保留偶数
   Stream.map((n) => n * 10),          // 每个元素乘以 10
-  Stream.take(5)                       // 只取前 5 个
+  Stream.take(7)                       // 只取前 7 个
 )
 
 Effect.runPromise(
