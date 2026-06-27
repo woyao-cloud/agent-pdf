@@ -1,0 +1,30 @@
+replicaCount: 3
+image:
+  repository: ccr.ccs.tencentyun.com/demo/user-service
+  tag: latest
+  pullPolicy: Always
+
+canary:
+  enabled: false
+  weight: 10
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+
+env:
+  SPRING_PROFILES_ACTIVE: production

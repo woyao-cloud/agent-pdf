@@ -1,0 +1,10 @@
+com\graphdb\demo\algorithms\FraudDetection.class
+com\graphdb\demo\algorithms\ShortestPath$Edge.class
+com\graphdb\demo\algorithms\CommunityDetection.class
+com\graphdb\demo\algorithms\ShortestPath.class
+com\graphdb\demo\algorithms\PageRank.class
+com\graphdb\demo\algorithms\ShortestPath$State.class
+com\graphdb\demo\algorithms\ShortestPath$Node.class
+com\graphdb\demo\algorithms\FraudDetection$Transaction.class
+com\graphdb\demo\algorithms\ShortestPath$SearchResult.class
+com\graphdb\demo\algorithms\Main.class

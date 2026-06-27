@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: opentelemetry
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+      attributes:
+        actions:
+        - key: environment
+          value: production
+          action: upsert
+
+    exporters:
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: demo
+      otlp:
+        endpoint: ap-guangzhou.tencentcloud.com:4317
+        headers:
+          X-Tencent-Service: tcop
+        tls:
+          insecure: false
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, attributes]
+          exporters: [prometheus, otlp]

@@ -1,0 +1,13 @@
+com\graphdb\demo\storage\CSRStore$CSRNeighbor.class
+com\graphdb\demo\storage\WALDemo.class
+com\graphdb\demo\storage\CSRStore.class
+com\graphdb\demo\storage\WALDemo$LogRecord.class
+com\graphdb\demo\storage\AdjacencyListStore$Node.class
+com\graphdb\demo\storage\AdjacencyListStore$Edge.class
+com\graphdb\demo\storage\WALDemo$WriteAheadLog.class
+com\graphdb\demo\storage\CSRStore$CSRNeighborIterable$1.class
+com\graphdb\demo\storage\CSRStore$CSRNeighborIterable.class
+com\graphdb\demo\storage\Main.class
+com\graphdb\demo\storage\AdjacencyListStore$GraphStore.class
+com\graphdb\demo\storage\WALDemo$OperationType.class
+com\graphdb\demo\storage\AdjacencyListStore.class

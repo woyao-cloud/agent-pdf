@@ -1,0 +1,83 @@
+# CNB 流水线配置 (CODING CI)
+version: 2.0
+stages:
+- name: 代码检查
+  jobs:
+  - name: sonarqube
+    steps:
+    - name: 代码扫描
+      plugin: sonarqube
+      params:
+        project_key: user-service
+        sources: src
+        quality_gate: true
+
+- name: 构建与测试
+  jobs:
+  - name: compile
+    steps:
+    - name: Maven编译
+      plugin: maven
+      params:
+        command: clean package -DskipTests=false
+        settings: settings.xml
+    - name: 镜像构建
+      plugin: docker
+      params:
+        dockerfile: Dockerfile
+        image: ccr.ccs.tencentyun.com/demo/user-service
+        tag: ${GIT_TAG:-latest}
+    - name: 镜像扫描
+      plugin: trivy
+      params:
+        image: ccr.ccs.tencentyun.com/demo/user-service:${GIT_TAG:-latest}
+        severity: CRITICAL,HIGH
+        exit_code: 1
+
+- name: 部署到测试环境
+  jobs:
+  - name: deploy-test
+    steps:
+    - name: Helm部署
+      plugin: helm
+      params:
+        command: upgrade --install user-service ./charts/user-service
+          --namespace test
+          --set image.tag=${GIT_TAG:-latest}
+          --wait --timeout 5m
+
+- name: 质量门禁
+  jobs:
+  - name: quality-gate
+    steps:
+    - name: 等待审批
+      plugin: manual-approval
+      params:
+        approvers: ["admin", "tech-lead"]
+        timeout: 3600
+
+- name: 部署到生产环境
+  jobs:
+  - name: deploy-production
+    steps:
+    - name: 金丝雀发布
+      plugin: helm
+      params:
+        command: upgrade --install user-service ./charts/user-service
+          --namespace production
+          --set image.tag=${GIT_TAG:-latest}
+          --set canary.enabled=true
+          --set canary.weight=10
+          --wait --timeout 10m
+    - name: 健康检查
+      script: |
+        kubectl rollout status deployment/user-service-canary -n production
+        kubectl get pods -n production -l app=user-service,version=canary
+    - name: 全量发布
+      plugin: helm
+      params:
+        command: upgrade --install user-service ./charts/user-service
+          --namespace production
+          --set image.tag=${GIT_TAG:-latest}
+          --set canary.enabled=false
+          --wait --timeout 10m

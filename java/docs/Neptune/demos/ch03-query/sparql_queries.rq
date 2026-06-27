@@ -1,0 +1,49 @@
+# SPARQL 查询示例
+# 适用于 Neptune RDF 模式
+
+# 1. 查询所有人物
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+SELECT ?name ?age
+WHERE {
+  ?person a foaf:Person ;
+          foaf:name ?name ;
+          foaf:age ?age .
+}
+
+# 2. 查询特定城市的人物
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX schema: <http://schema.org/>
+SELECT ?name
+WHERE {
+  ?person a foaf:Person ;
+          foaf:name ?name ;
+          schema:city "Beijing" .
+}
+
+# 3. 查询人物关系
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+SELECT ?person1 ?person2
+WHERE {
+  ?person1 foaf:knows ?person2 .
+  ?person1 foaf:name ?name1 .
+  ?person2 foaf:name ?name2 .
+}
+
+# 4. 属性路径查询（朋友的朋友）
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+SELECT ?person ?friend_of_friend
+WHERE {
+  ?person foaf:name "Alice" .
+  ?person foaf:knows/foaf:knows ?friend_of_friend .
+  FILTER(?person != ?friend_of_friend)
+}
+
+# 5. 查询电影评分
+PREFIX schema: <http://schema.org/>
+SELECT ?title ?rating
+WHERE {
+  ?rating a schema:Rating ;
+          schema:itemReviewed ?movie ;
+          schema:ratingValue ?ratingValue .
+  ?movie schema:name ?title .
+}

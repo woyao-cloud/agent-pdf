@@ -1,0 +1,7 @@
+CHECKPOINT_SEQ=5
+NODE_COUNT=3
+NODE|1|name=Alice|city=北京|age=30
+NODE|2|name=Bob|city=上海|age=25
+NODE|3|name=Carol|city=深圳|age=35
+EDGE|1|1|2|FOLLOWS|since=2023-01
+EDGE|2|1|3|FOLLOWS|since=2023-03

@@ -1,0 +1,11 @@
+com\graphdb\demo\MiniGraphDBDemo.class
+com\graphdb\mini\GraphElement.class
+com\graphdb\mini\GraphStore.class
+com\graphdb\mini\TransactionManager$TransactionContext.class
+com\graphdb\mini\Edge.class
+com\graphdb\mini\Edge$Direction.class
+com\graphdb\mini\MiniGraphDB.class
+com\graphdb\mini\TransactionManager.class
+com\graphdb\mini\IndexManager.class
+com\graphdb\mini\QueryEngine.class
+com\graphdb\mini\Node.class

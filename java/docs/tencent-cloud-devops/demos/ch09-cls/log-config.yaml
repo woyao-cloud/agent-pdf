@@ -1,0 +1,35 @@
+apiVersion: cls.cloud.tencent.com/v1
+kind: LogConfig
+metadata:
+  name: user-service-log
+  namespace: production
+spec:
+  clsDetail:
+    topicId: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    logType: json
+    extractRule:
+      isGBK: 0
+      keys:
+      - timestamp
+      - level
+      - traceId
+      - spanId
+      - userId
+      - service
+      - logger
+      - message
+      metaTags:
+      - key: kubernetes.namespace_name
+        value: production
+      - key: kubernetes.pod_name
+        value: {{.PodName}}
+      - key: kubernetes.container_name
+        value: {{.ContainerName}}
+  inputDetail:
+    inputType: container_stdout
+    containerFile:
+      container: user-service
+      namespace: production
+      workload:
+        type: deployment
+        name: user-service
