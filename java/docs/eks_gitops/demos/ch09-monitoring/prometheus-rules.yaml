@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-alerts
+  namespace: monitoring
+spec:
+  groups:
+  - name: argocd
+    rules:
+    - alert: ArgoCDAppOutOfSync
+      expr: argocd_app_sync_status{status="OutOfSync"} > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Argo CD 应用 {{ $labels.name }} 不同步"
+        description: "应用 {{ $labels.name }} 已 OutOfSync 超过 5 分钟"
+
+    - alert: ArgoCDAppDegraded
+      expr: argocd_app_health_status{status="Degraded"} > 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Argo CD 应用 {{ $labels.name }} 降级"
+        description: "应用 {{ $labels.name }} 健康状态为 Degraded"
+
+    - alert: ArgoCDAppSyncFailure
+      expr: argocd_app_sync_status{status="Failed"} > 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Argo CD 应用 {{ $labels.name }} 同步失败"
+        description: "应用 {{ $labels.name }} 同步操作失败"
+
+    - alert: ArgoCDComponentDown
+      expr: up{namespace="argocd"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Argo CD 组件 {{ $labels.job }} 不可用"
+        description: "组件 {{ $labels.job }} 已宕机超过 1 分钟"

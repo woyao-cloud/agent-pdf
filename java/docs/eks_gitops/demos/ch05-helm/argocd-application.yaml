@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-microservice
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/company/helm-charts.git
+    targetRevision: HEAD
+    path: charts/demo-microservice
+    helm:
+      valueFiles:
+      - values.yaml
+      parameters:
+      - name: image.tag
+        value: v1.0.0
+      - name: env.SPRING_PROFILES_ACTIVE
+        value: production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

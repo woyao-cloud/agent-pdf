@@ -1,0 +1,64 @@
+name: Skaffold Build and Deploy
+
+on:
+  push:
+    branches: [main, 'release/*']
+    tags: ['v*']
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  APP_NAME: demo-app
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Login to ECR
+      uses: aws-actions/amazon-ecr-login@v2
+    - name: Setup Skaffold
+      run: |
+        curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+        chmod +x skaffold && sudo mv skaffold /usr/local/bin/
+    - name: Build and push
+      run: |
+        skaffold build --profile dev \
+          --default-repo $ECR_REGISTRY \
+          --file-output build.json \
+          --tag ${{ github.sha }}
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build
+        path: build.json
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build
+    - name: Deploy
+      run: |
+        skaffold deploy --profile dev --build-artifacts build.json
+    - name: Health check
+      run: |
+        python scripts/health_check.py --namespace ${{ env.APP_NAME }}-dev

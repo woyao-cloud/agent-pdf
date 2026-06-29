@@ -1,0 +1,33 @@
+# Promotion 工作流
+# 1. 开发环境：自动部署 main 分支
+# 2. 预发布环境：手动触发，从 dev 提升
+# 3. 生产环境：审批后部署
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: demo-app-git-generator
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/company/manifests.git
+      revision: HEAD
+      directories:
+      - path: apps/demo-app/overlays/*
+  template:
+    metadata:
+      name: 'demo-app-{{path.basename}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/company/manifests.git
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'demo-{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

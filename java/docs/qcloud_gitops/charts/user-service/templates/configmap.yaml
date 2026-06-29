@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "user-service.fullname" . }}-config
+  labels:
+    {{- include "user-service.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    service:
+      name: {{ .Values.env.SERVICE_NAME }}
+    logging:
+      level: {{ .Values.env.LOG_LEVEL }}
+    database:
+      url: {{ .Values.env.DATABASE_URL }}

@@ -1,0 +1,53 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: demo-app
+
+build:
+  artifacts:
+  - image: demo-app
+    docker:
+      dockerfile: Dockerfile
+      cacheFrom:
+      - $ECR_REGISTRY/demo-app:latest
+  tagPolicy:
+    gitCommit:
+      variant: AbbrevCommitSha
+  local:
+    useBuildkit: true
+
+deploy:
+  helm:
+    releases:
+    - name: demo-app
+      chartPath: charts/demo-app
+      valuesFiles:
+      - charts/demo-app/values.yaml
+      - charts/demo-app/values-dev.yaml
+      namespace: demo-app-dev
+      createNamespace: true
+      setValueTemplates:
+        image.tag: "{{.IMAGE_TAG}}"
+
+profiles:
+- name: staging
+  deploy:
+    helm:
+      releases:
+      - name: demo-app
+        chartPath: charts/demo-app
+        valuesFiles:
+        - charts/demo-app/values.yaml
+        - charts/demo-app/values-staging.yaml
+        namespace: demo-app-staging
+
+- name: prod
+  deploy:
+    helm:
+      releases:
+      - name: demo-app
+        chartPath: charts/demo-app
+        valuesFiles:
+        - charts/demo-app/values.yaml
+        - charts/demo-app/values-prod.yaml
+        namespace: demo-app-prod

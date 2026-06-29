@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: team-a
+  namespace: argocd
+spec:
+  description: Team A Project
+  sourceRepos:
+  - 'https://github.com/company/team-a-manifests.git'
+  destinations:
+  - namespace: team-a-dev
+    server: https://kubernetes.default.svc
+  - namespace: team-a-staging
+    server: https://kubernetes.default.svc
+  - namespace: team-a-prod
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'rbac.authorization.k8s.io'
+    kind: Role
+  - group: 'rbac.authorization.k8s.io'
+    kind: RoleBinding
+  namespaceResourceBlacklist:
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRole
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRoleBinding
+  roles:
+  - name: admin
+    description: Team A Administrator
+    policies:
+    - p, proj:team-a:admin, applications, *, team-a/*, allow
+    groups:
+    - team-a-admins
+  - name: developer
+    description: Team A Developer
+    policies:
+    - p, proj:team-a:developer, applications, get, team-a/*, allow
+    - p, proj:team-a:developer, applications, sync, team-a/*, allow
+    groups:
+    - team-a-developers

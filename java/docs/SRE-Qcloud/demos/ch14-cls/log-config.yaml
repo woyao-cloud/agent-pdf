@@ -1,0 +1,30 @@
+apiVersion: cls.cloud.tencent.com/v1
+kind: LogConfig
+metadata:
+  name: app-log-config
+  namespace: production
+spec:
+  clsDetail:
+    topicId: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    logType: json
+    extractRule:
+      isGBK: 0
+      keys:
+      - timestamp
+      - level
+      - traceId
+      - service
+      - message
+      metaTags:
+      - key: namespace
+        value: production
+      - key: pod_name
+        value: {{.PodName}}
+  inputDetail:
+    inputType: container_stdout
+    containerFile:
+      container: app
+      namespace: production
+      workload:
+        type: deployment
+        name: sre-demo-app

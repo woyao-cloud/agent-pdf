@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: demo-app-envs
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - environment: dev
+        namespace: demo-dev
+        replicas: 1
+        cpu_request: 50m
+        memory_request: 64Mi
+      - environment: staging
+        namespace: demo-staging
+        replicas: 2
+        cpu_request: 100m
+        memory_request: 128Mi
+      - environment: prod
+        namespace: demo-prod
+        replicas: 5
+        cpu_request: 200m
+        memory_request: 256Mi
+  template:
+    metadata:
+      name: 'demo-app-{{environment}}'
+      labels:
+        environment: '{{environment}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/company/manifests.git
+        targetRevision: HEAD
+        path: 'overlays/{{environment}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

@@ -1,0 +1,73 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: demo-app
+
+build:
+  artifacts:
+  - image: demo-app
+    docker:
+      dockerfile: Dockerfile
+      cacheFrom:
+      - demo-app:latest
+    sync:
+      manual:
+      - src: src/**/*.html
+        dest: /app/templates
+      - src: src/**/*.css
+        dest: /app/static
+  tagPolicy:
+    gitCommit:
+      variant: AbbrevCommitSha
+  local:
+    useBuildkit: true
+    concurrency: 0
+
+deploy:
+  helm:
+    releases:
+    - name: demo-app
+      chartPath: charts/demo-app
+      valuesFiles:
+      - charts/demo-app/values.yaml
+      - charts/demo-app/values-dev.yaml
+      namespace: demo-app-dev
+      createNamespace: true
+      setValues:
+        image.repository: demo-app
+      setValueTemplates:
+        image.tag: "{{.IMAGE_TAG}}"
+
+portForward:
+- resourceType: Service
+  resourceName: demo-app
+  namespace: demo-app-dev
+  port: 8080
+  localPort: 8080
+
+profiles:
+- name: staging
+  deploy:
+    helm:
+      releases:
+      - name: demo-app
+        chartPath: charts/demo-app
+        valuesFiles:
+        - charts/demo-app/values.yaml
+        - charts/demo-app/values-staging.yaml
+        namespace: demo-app-staging
+        setValueTemplates:
+          image.tag: "{{.IMAGE_TAG}}"
+
+- name: prod
+  deploy:
+    helm:
+      releases:
+      - name: demo-app
+        chartPath: charts/demo-app
+        valuesFiles:
+        - charts/demo-app/values.yaml
+        - charts/demo-app/values-prod.yaml
+        namespace: demo-app-prod
+        setValueTemplates:
+          image.tag: "{{.IMAGE_TAG}}"

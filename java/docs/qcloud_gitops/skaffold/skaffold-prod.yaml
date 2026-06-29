@@ -1,0 +1,30 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: user-service-prod
+
+build:
+  artifacts:
+  - image: user-service
+    docker:
+      dockerfile: src/Dockerfile
+      cacheFrom:
+      - your-dockerhub-user/user-service:latest
+  tagPolicy:
+    gitCommit:
+      variant: AbbrevCommitSha
+  local:
+    useBuildkit: true
+
+deploy:
+  helm:
+    releases:
+    - name: user-service
+      chartPath: charts/user-service
+      valuesFiles:
+      - charts/user-service/values.yaml
+      - charts/user-service/values-prod.yaml
+      namespace: tke-gitops-prod
+      createNamespace: true
+      setValueTemplates:
+        image.tag: "{{.IMAGE_TAG}}"

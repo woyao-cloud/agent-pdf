@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: multi-cluster-app
+  namespace: argocd
+spec:
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          environment: prod
+  template:
+    metadata:
+      name: '{{name}}-demo-app'
+      labels:
+        environment: '{{metadata.labels.environment}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/company/manifests.git
+        targetRevision: HEAD
+        path: overlays/prod
+      destination:
+        server: '{{server}}'
+        namespace: demo-app
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

@@ -1,0 +1,69 @@
+# CNB CI 流水线配置
+# 触发条件：git push 到 main 分支
+version: 2.0
+stages:
+- name: code-check
+  jobs:
+  - name: lint
+    steps:
+    - name: flake8检查
+      plugin: python
+      params:
+        command: |
+          pip install flake8
+          flake8 src/app --max-line-length=120 --exclude=__pycache__,venv
+
+    - name: 代码格式检查
+      plugin: python
+      params:
+        command: |
+          pip install black
+          black --check src/app --line-length=120
+
+- name: test
+  jobs:
+  - name: unit-test
+    steps:
+    - name: 安装依赖
+      plugin: python
+      params:
+        command: |
+          pip install -r src/requirements.txt
+          pip install pytest-cov
+
+    - name: 运行测试
+      plugin: python
+      params:
+        command: |
+          cd src
+          python -m pytest tests/ -v --cov=app --cov-report=term --cov-report=xml
+          coverage report --fail-under=80
+
+- name: build
+  jobs:
+  - name: docker-build
+    steps:
+    - name: 构建Docker镜像
+      plugin: docker
+      params:
+        dockerfile: src/Dockerfile
+        context: src
+        image: your-dockerhub-user/user-service
+        tag: ${GIT_TAG:-latest}
+
+    - name: 推送镜像
+      plugin: docker
+      params:
+        command: push
+        image: your-dockerhub-user/user-service
+        tag: ${GIT_TAG:-latest}
+
+- name: notify
+  jobs:
+  - name: send-email
+    steps:
+    - name: 发送邮件通知
+      plugin: python
+      params:
+        command: |
+          python scripts/notify.py dev ${GIT_TAG:-latest} "构建成功"

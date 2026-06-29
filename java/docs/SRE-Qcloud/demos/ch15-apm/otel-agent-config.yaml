@@ -1,0 +1,28 @@
+# OpenTelemetry Java Agent 配置
+# 使用方式：
+# java -javaagent:opentelemetry-javaagent.jar \
+#   -Dotel.service.name=sre-demo-app \
+#   -Dotel.exporter.otlp.endpoint=http://apm-collector:4318 \
+#   -Dotel.traces.sampler=parentbased_traceidratio \
+#   -Dotel.traces.sampler.arg=0.1 \
+#   -jar app.jar
+
+otel:
+  service:
+    name: sre-demo-app
+  resource:
+    attributes:
+      environment: production
+      region: ap-guangzhou
+  traces:
+    exporter: otlp
+    sampler: parentbased_traceidratio
+    sampler.arg: "0.1"
+  metrics:
+    exporter: otlp
+  logs:
+    exporter: otlp
+  propagators:
+    - tracecontext
+    - baggage
+    - b3

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    # 平台管理员
+    p, role:platform-admin, applications, *, */*, allow
+    p, role:platform-admin, clusters, *, *, allow
+    p, role:platform-admin, projects, *, *, allow
+    p, role:platform-admin, repositories, *, *, allow
+
+    # 团队管理员
+    p, role:team-admin, applications, *, team-*/*, allow
+    p, role:team-admin, projects, get, team-*, allow
+    p, role:team-admin, repositories, get, *, allow
+
+    # 开发者
+    p, role:developer, applications, create, team-*/*, allow
+    p, role:developer, applications, get, team-*/*, allow
+    p, role:developer, applications, update, team-*/*, allow
+    p, role:developer, applications, sync, team-*/*, allow
+    p, role:developer, applications, delete, team-*/*, allow
+    p, role:developer, logs, get, team-*/*, allow
+
+    # 只读用户
+    p, role:readonly, applications, get, *, allow
+    p, role:readonly, applications, list, *, allow
+    p, role:readonly, logs, get, *, allow
+
+    # 角色绑定（通过 SSO group 映射）
+    g, platform-admins, role:platform-admin
+    g, team-a-admins, role:team-admin
+    g, team-a-developers, role:developer
+    g, team-b-admins, role:team-admin
+    g, team-b-developers, role:developer
+    g, external-auditors, role:readonly

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: user-service
+description: User Management Microservice Helm Chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - user-service
+  - fastapi
+  - microservice
+maintainers:
+  - name: SRE Team
+    email: sre@example.com

@@ -1,0 +1,36 @@
+# eksctl 配置文件
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: gitops-demo
+  region: us-east-1
+  version: "1.29"
+
+managedNodeGroups:
+- name: managed-ng
+  instanceType: t3.medium
+  minSize: 2
+  maxSize: 10
+  desiredCapacity: 3
+  volumeSize: 50
+  labels:
+    role: worker
+  tags:
+    Environment: demo
+  iam:
+    withAddonPolicies:
+      autoScaler: true
+      cloudWatch: true
+      albIngress: true
+
+iam:
+  withOIDC: true
+
+addons:
+- name: vpc-cni
+  version: latest
+- name: coredns
+  version: latest
+- name: kube-proxy
+  version: latest

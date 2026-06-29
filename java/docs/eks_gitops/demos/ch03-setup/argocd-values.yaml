@@ -1,0 +1,52 @@
+# Argo CD Helm values - 高可用配置
+global:
+  domain: argocd.example.com
+
+controller:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+server:
+  replicas: 2
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/xxxxx
+    hosts:
+    - argocd.example.com
+
+repoServer:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+redis:
+  enabled: true
+
+dex:
+  enabled: true
+
+configs:
+  params:
+    server.insecure: false
+  cm:
+    url: https://argocd.example.com
+    admin.enabled: true
+    statusbadge.enabled: true
+  rbac:
+    policy.default: role:readonly

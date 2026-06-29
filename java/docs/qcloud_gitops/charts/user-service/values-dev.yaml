@@ -1,0 +1,23 @@
+# 开发环境 values
+replicaCount: 1
+
+image:
+  tag: latest
+  pullPolicy: Always
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+env:
+  LOG_LEVEL: DEBUG
+
+persistence:
+  enabled: false
