@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: neo4j-import
+    ports:
+      - "7479:7474"
+      - "7692:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_directories_import=/import
+    volumes:
+      - neo4j-import-data:/data
+      - ./init.cypher:/init.cypher
+      - ./import:/import
+
+volumes:
+  neo4j-import-data:
