@@ -1,0 +1,81 @@
+# ============================================================
+# ShardingSphere-Proxy 分片配置
+# 分片策略：t_order 按 user_id 取模分片
+#           t_order_item 按 order_id 取模分片（绑定表）
+#           t_config 为广播表
+# ============================================================
+
+databaseName: sharding_db
+
+dataSources:
+  ds_0:
+    url: jdbc:mysql://mysql-shard0:3306/order_db?serverTimezone=UTC&useSSL=false
+    username: root
+    password: root123
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 50
+    minPoolSize: 1
+  ds_1:
+    url: jdbc:mysql://mysql-shard1:3306/order_db?serverTimezone=UTC&useSSL=false
+    username: root
+    password: root123
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 50
+    minPoolSize: 1
+
+rules:
+  - !SHARDING
+    tables:
+      # 订单表：按 user_id 取模分片
+      t_order:
+        actualDataNodes: ds_${0..1}.t_order
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: order_db_inline
+        keyGenerateStrategy:
+          column: order_id
+          keyGeneratorName: snowflake
+
+      # 订单明细表：按 order_id 取模分片（与订单表绑定）
+      t_order_item:
+        actualDataNodes: ds_${0..1}.t_order_item
+        databaseStrategy:
+          standard:
+            shardingColumn: order_id
+            shardingAlgorithmName: order_item_db_inline
+        keyGenerateStrategy:
+          column: item_id
+          keyGeneratorName: snowflake
+
+      # 广播表：每个分片都有完整数据
+      t_config:
+        actualDataNodes: ds_${0..1}.t_config
+
+    # 绑定表：t_order 和 t_order_item 使用相同的分片规则
+    bindingTables:
+      - t_order,t_order_item
+
+    # 广播表
+    broadcastTables:
+      - t_config
+
+    # 分片算法
+    shardingAlgorithms:
+      order_db_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${user_id % 2}
+      order_item_db_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds_${order_id % 2}
+
+    # 分布式主键生成器
+    keyGenerators:
+      snowflake:
+        type: SNOWFLAKE

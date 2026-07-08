@@ -1,0 +1,29 @@
+# ============================================================
+# ShardingSphere-Proxy 服务配置
+# ============================================================
+
+mode:
+  type: Standalone
+  repository:
+    type: JDBC
+
+authority:
+  users:
+    - user: root@%
+      password: root123
+    - user: sharding
+      password: sharding
+  privilege:
+    type: ALL_PERMITTED
+
+transaction:
+  defaultType: XA
+  providerType: Atomikos
+
+props:
+  # 是否在日志中打印SQL
+  sql-show: true
+  # 最大连接数
+  max-connections-size-per-query: 1
+  # 是否检查重复表
+  check-duplicate-table-enabled: false

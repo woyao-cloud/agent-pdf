@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  # MySQL 分片1（存储 userId % 2 == 0 的数据）
+  mysql-shard0:
+    image: mysql:8.0
+    container_name: mysql-shard0
+    ports:
+      - "3318:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=order_db
+    volumes:
+      - mysql-shard0-data:/var/lib/mysql
+      - ./init-shard.sql:/docker-entrypoint-initdb.d/init.sql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+  # MySQL 分片1（存储 userId % 2 == 1 的数据）
+  mysql-shard1:
+    image: mysql:8.0
+    container_name: mysql-shard1
+    ports:
+      - "3319:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=order_db
+    volumes:
+      - mysql-shard1-data:/var/lib/mysql
+      - ./init-shard.sql:/docker-entrypoint-initdb.d/init.sql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+  # ShardingSphere-Proxy 分片中间件
+  shardingsphere-proxy:
+    image: apache/shardingsphere-proxy:5.4.1
+    container_name: shardingsphere-proxy
+    ports:
+      - "3307:3307"
+    environment:
+      - PORT=3307
+    volumes:
+      - ./proxy-conf:/opt/shardingsphere-proxy/conf
+      - ./proxy-lib:/opt/shardingsphere-proxy/ext-lib
+    depends_on:
+      - mysql-shard0
+      - mysql-shard1
+
+volumes:
+  mysql-shard0-data:
+  mysql-shard1-data:
